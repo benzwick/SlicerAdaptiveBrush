@@ -223,16 +223,23 @@ intensity similarity, stopping at edges and boundaries.</p>
 <h4>Usage:</h4>
 <ul>
 <li><b>Left-click and drag</b>: Paint adaptive regions</li>
-<li><b>Radius</b>: Controls the maximum brush size</li>
-<li><b>Edge Sensitivity</b>: How strictly to follow intensity boundaries</li>
-<li><b>Algorithm</b>: Choose segmentation method (Watershed, Level Set, etc.)</li>
+<li><b>Radius</b>: Maximum brush extent (circle shows limit)</li>
+<li><b>Edge Sensitivity</b>: How strictly to follow intensity boundaries (0%=permissive, 100%=strict)</li>
+<li><b>Algorithm</b>: Choose segmentation method</li>
 </ul>
-<h4>Tips:</h4>
+<h4>Algorithms:</h4>
 <ul>
-<li>Start with Watershed algorithm for general use</li>
-<li>Use Level Set (GPU) for faster processing if you have a GPU</li>
-<li>Increase edge sensitivity for stricter boundary following</li>
-<li>Enable 3D mode for volumetric painting</li>
+<li><b>Geodesic Distance</b>: Fast, follows edges naturally (recommended)</li>
+<li><b>Watershed</b>: Good edge following, may be blocky on noisy images</li>
+<li><b>Random Walker</b>: Smooth boundaries, good for ambiguous edges</li>
+<li><b>Level Set</b>: Smooth contours, slower but precise</li>
+<li><b>Region Growing</b>: Fast, good for homogeneous regions</li>
+<li><b>Threshold Brush</b>: Simple intensity thresholding</li>
+</ul>
+<h4>Notes:</h4>
+<ul>
+<li>Circle outline shows <b>maximum extent</b> - actual painting may be smaller based on edges</li>
+<li>Higher edge sensitivity = tighter boundary following = smaller regions</li>
 </ul>
 </html>"""
         )
@@ -820,11 +827,9 @@ intensity similarity, stopping at edges and boundaries.</p>
         else:  # Default: watershed
             mask = self._watershed(roi, localSeed, thresholds, params)
 
-        # Apply circular brush mask ONLY for Threshold Brush
-        # Other algorithms use their natural boundary detection (edges, gradients)
-        # and are already constrained by the ROI extraction (1.2x radius margin)
-        if algorithm == "threshold_brush":
-            mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
+        # Apply circular brush mask as MAXIMUM extent for ALL algorithms
+        # Adaptive algorithms use edges to stop earlier, but should never exceed brush radius
+        mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
 
         # Expand back to full volume size
         fullMask = np.zeros_like(volumeArray, dtype=np.uint8)
@@ -1191,8 +1196,11 @@ intensity similarity, stopping at edges and boundaries.</p>
             dist_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)  # 1.0-1.5x radius
             mask = (distArray < dist_threshold).astype(np.uint8)
 
-            # Clean up with morphological operations
+            # Clean up with morphological operations - fill holes and close gaps
             maskSitk = sitk.GetImageFromArray(mask)
+            # Fill holes inside the segmentation
+            maskSitk = sitk.BinaryFillhole(maskSitk)
+            # Close small gaps
             maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
             mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
 
