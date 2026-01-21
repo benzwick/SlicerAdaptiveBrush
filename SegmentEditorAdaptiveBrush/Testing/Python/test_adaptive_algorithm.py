@@ -578,6 +578,9 @@ class TestPerformanceCache(unittest.TestCase):
 
     def test_threshold_caching_reuses_when_similar_intensity(self):
         """Threshold cache should be reused when seed intensity is similar."""
+        # Enable caching (disabled by default)
+        self.cache.threshold_caching_enabled = True
+
         # Set up cached threshold
         self.cache.threshold_cache = {"lower": 80, "upper": 120, "mean": 100, "std": 10}
         self.cache.threshold_seed_intensity = 100.0
@@ -593,7 +596,29 @@ class TestPerformanceCache(unittest.TestCase):
 
     def test_threshold_caching_no_cache_returns_false(self):
         """Should not reuse when no cache exists."""
+        self.cache.threshold_caching_enabled = True
         self.assertFalse(self.cache._canReuseThresholds(100.0))
+
+    def test_threshold_caching_disabled_by_default(self):
+        """Threshold caching should be disabled by default."""
+        cache = PerformanceCache()
+        self.assertFalse(cache.threshold_caching_enabled)
+
+        # Even with valid cache, should not reuse when disabled
+        cache.threshold_cache = {"lower": 80, "upper": 120, "mean": 100, "std": 10}
+        cache.threshold_seed_intensity = 100.0
+        cache.threshold_tolerance = 15.0
+        self.assertFalse(cache._canReuseThresholds(100.0))
+
+    def test_threshold_caching_can_be_enabled(self):
+        """Threshold caching should work when explicitly enabled."""
+        cache = PerformanceCache(threshold_caching_enabled=True)
+        self.assertTrue(cache.threshold_caching_enabled)
+
+        cache.threshold_cache = {"lower": 80, "upper": 120, "mean": 100, "std": 10}
+        cache.threshold_seed_intensity = 100.0
+        cache.threshold_tolerance = 15.0
+        self.assertTrue(cache._canReuseThresholds(100.0))
 
     def test_gradient_caching_reuses_same_slice(self):
         """Gradient cache should be reused for same slice."""

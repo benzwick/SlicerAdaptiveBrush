@@ -162,6 +162,7 @@ class SegmentEditorEffect:
         self.algorithm = "watershed"
         self.backend = "auto"
         self.sphereMode = False
+        self.useThresholdCaching = False  # Disabled by default for accuracy
 
         # Brush outline visualization - one pipeline per slice view
         self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
@@ -300,6 +301,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backendCombo.setToolTip(_("Computation backend"))
         algorithmLayout.addRow(_("Backend:"), self.backendCombo)
 
+        # Threshold caching checkbox
+        self.cachingCheckbox = qt.QCheckBox(_("Enable threshold caching"))
+        self.cachingCheckbox.setToolTip(
+            _(
+                "Reuse threshold calculations when painting in similar intensity regions. "
+                "Improves drag performance but may reduce accuracy at region boundaries."
+            )
+        )
+        self.cachingCheckbox.checked = self.useThresholdCaching
+        algorithmLayout.addRow(self.cachingCheckbox)
+
         # ----- Threshold Brush Settings -----
         self.thresholdGroup = qt.QWidget()
         thresholdLayout = qt.QFormLayout(self.thresholdGroup)
@@ -377,6 +389,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.sphereModeCheckbox.toggled.connect(self.onSphereModeChanged)
         self.algorithmCombo.currentIndexChanged.connect(self.onAlgorithmChanged)
         self.backendCombo.currentIndexChanged.connect(self.onBackendChanged)
+        self.cachingCheckbox.toggled.connect(self.onCachingChanged)
         self.lowerThresholdSlider.valueChanged.connect(self.onThresholdChanged)
         self.upperThresholdSlider.valueChanged.connect(self.onThresholdChanged)
         self.autoThresholdCheckbox.toggled.connect(self.onAutoThresholdChanged)
@@ -436,6 +449,15 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         volumeArray = slicer.util.arrayFromVolume(sourceVolumeNode)
         self._setThresholdsFromSeed(volumeArray, self.lastIjk, self.toleranceSlider.value)
+
+    def onCachingChanged(self, checked):
+        """Handle threshold caching toggle."""
+        self.useThresholdCaching = checked
+        self.cache.threshold_caching_enabled = checked
+        if not checked:
+            # Clear threshold cache when disabling
+            self.cache.threshold_cache = None
+            self.cache.threshold_seed_intensity = None
 
     def onBackendChanged(self, index):
         """Handle backend selection change."""

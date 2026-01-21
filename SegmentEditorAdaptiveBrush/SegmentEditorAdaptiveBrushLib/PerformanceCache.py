@@ -24,14 +24,17 @@ class PerformanceCache:
     - Tier 3 (ROI): Short-lived, cleared on mouse release
     """
 
-    def __init__(self, cache_margin: float = 2.0):
+    def __init__(self, cache_margin: float = 2.0, threshold_caching_enabled: bool = False):
         """Initialize the cache.
 
         Args:
             cache_margin: Multiplier for ROI size to cache (e.g., 2.0 means
                 cache 2x the brush radius).
+            threshold_caching_enabled: Whether to enable threshold caching.
+                Disabled by default for maximum accuracy.
         """
         self.cache_margin = cache_margin
+        self.threshold_caching_enabled = threshold_caching_enabled
 
         # Gradient cache (Tier 1 - persists across drag, until slice changes)
         self.gradient_cache: Optional[np.ndarray] = None
@@ -39,6 +42,7 @@ class PerformanceCache:
         self.gradient_volume_id: Optional[str] = None
 
         # Threshold cache (Tier 2 - reused when seed intensity is similar)
+        # Only active when threshold_caching_enabled is True
         self.threshold_cache: Optional[Dict] = None
         self.threshold_seed_intensity: Optional[float] = None
         self.threshold_tolerance: float = 0.0  # Will be set based on std
@@ -156,8 +160,13 @@ class PerformanceCache:
             seed_intensity: Current seed point intensity.
 
         Returns:
-            True if cache is valid and seed intensity is within tolerance.
+            True if caching is enabled, cache is valid, and seed intensity
+            is within tolerance.
         """
+        # Check if caching is enabled
+        if not self.threshold_caching_enabled:
+            return False
+
         if self.threshold_cache is None:
             return False
 
