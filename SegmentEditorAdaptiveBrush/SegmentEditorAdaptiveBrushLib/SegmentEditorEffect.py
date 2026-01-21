@@ -40,44 +40,71 @@ except ImportError:
 class BrushOutlinePipeline:
     """VTK pipeline for brush outline visualization in a slice view.
 
-    Shows a circle outline indicating the brush radius at the cursor position.
-    The circle is created by cutting a sphere with the slice plane.
+    Shows two circle outlines:
+    - Outer circle (yellow): Maximum brush extent
+    - Inner circle (cyan): Threshold sampling zone
     """
 
     def __init__(self):
         """Initialize the brush outline pipeline."""
-        # Create a circle using vtkRegularPolygonSource (simpler than sphere + cutter)
-        self.circleSource = vtk.vtkRegularPolygonSource()
-        self.circleSource.SetNumberOfSides(64)  # Smooth circle
-        self.circleSource.SetRadius(1.0)  # Will be updated
-        self.circleSource.GeneratePolygonOff()  # Just the outline
-        self.circleSource.GeneratePolylineOn()
+        # OUTER CIRCLE - Maximum extent (yellow)
+        self.outerCircleSource = vtk.vtkRegularPolygonSource()
+        self.outerCircleSource.SetNumberOfSides(64)
+        self.outerCircleSource.SetRadius(1.0)
+        self.outerCircleSource.GeneratePolygonOff()
+        self.outerCircleSource.GeneratePolylineOn()
 
-        # Transform to position in slice XY coordinates
-        self.transform = vtk.vtkTransform()
-        self.transformFilter = vtk.vtkTransformPolyDataFilter()
-        self.transformFilter.SetTransform(self.transform)
-        self.transformFilter.SetInputConnection(self.circleSource.GetOutputPort())
+        self.outerTransform = vtk.vtkTransform()
+        self.outerTransformFilter = vtk.vtkTransformPolyDataFilter()
+        self.outerTransformFilter.SetTransform(self.outerTransform)
+        self.outerTransformFilter.SetInputConnection(self.outerCircleSource.GetOutputPort())
 
-        # 2D mapper
-        self.mapper = vtk.vtkPolyDataMapper2D()
-        self.mapper.SetInputConnection(self.transformFilter.GetOutputPort())
+        self.outerMapper = vtk.vtkPolyDataMapper2D()
+        self.outerMapper.SetInputConnection(self.outerTransformFilter.GetOutputPort())
 
-        # 2D actor for the outline
-        self.actor = vtk.vtkActor2D()
-        self.actor.SetMapper(self.mapper)
-        self.actor.VisibilityOff()
-        self.actor.SetPickable(False)
+        self.outerActor = vtk.vtkActor2D()
+        self.outerActor.SetMapper(self.outerMapper)
+        self.outerActor.VisibilityOff()
+        self.outerActor.SetPickable(False)
 
-        # Styling - yellow outline
-        prop = self.actor.GetProperty()
-        prop.SetColor(1.0, 0.9, 0.1)  # Yellow
-        prop.SetLineWidth(2)
-        prop.SetOpacity(0.8)
+        # Outer circle styling - yellow, solid
+        outerProp = self.outerActor.GetProperty()
+        outerProp.SetColor(1.0, 0.9, 0.1)  # Yellow
+        outerProp.SetLineWidth(2)
+        outerProp.SetOpacity(0.8)
+
+        # INNER CIRCLE - Threshold zone (cyan)
+        self.innerCircleSource = vtk.vtkRegularPolygonSource()
+        self.innerCircleSource.SetNumberOfSides(64)
+        self.innerCircleSource.SetRadius(1.0)
+        self.innerCircleSource.GeneratePolygonOff()
+        self.innerCircleSource.GeneratePolylineOn()
+
+        self.innerTransform = vtk.vtkTransform()
+        self.innerTransformFilter = vtk.vtkTransformPolyDataFilter()
+        self.innerTransformFilter.SetTransform(self.innerTransform)
+        self.innerTransformFilter.SetInputConnection(self.innerCircleSource.GetOutputPort())
+
+        self.innerMapper = vtk.vtkPolyDataMapper2D()
+        self.innerMapper.SetInputConnection(self.innerTransformFilter.GetOutputPort())
+
+        self.innerActor = vtk.vtkActor2D()
+        self.innerActor.SetMapper(self.innerMapper)
+        self.innerActor.VisibilityOff()
+        self.innerActor.SetPickable(False)
+
+        # Inner circle styling - cyan, dashed effect via stipple
+        innerProp = self.innerActor.GetProperty()
+        innerProp.SetColor(0.2, 0.9, 1.0)  # Cyan
+        innerProp.SetLineWidth(1.5)
+        innerProp.SetOpacity(0.7)
 
         # Store the renderer
         self.renderer = None
         self.sliceWidget = None
+
+        # Keep reference to old actor for backwards compatibility
+        self.actor = self.outerActor
 
     def setSliceWidget(self, sliceWidget):
         """Attach the pipeline to a slice widget's renderer.
@@ -86,47 +113,57 @@ class BrushOutlinePipeline:
             sliceWidget: The qMRMLSliceWidget to attach to.
         """
         if self.renderer is not None:
-            self.renderer.RemoveActor2D(self.actor)
+            self.renderer.RemoveActor2D(self.outerActor)
+            self.renderer.RemoveActor2D(self.innerActor)
 
         self.sliceWidget = sliceWidget
         if sliceWidget is not None:
             self.renderer = sliceWidget.sliceView().renderWindow().GetRenderers().GetFirstRenderer()
             if self.renderer is not None:
-                self.renderer.AddActor2D(self.actor)
+                self.renderer.AddActor2D(self.outerActor)
+                self.renderer.AddActor2D(self.innerActor)
 
-    def updateOutline(self, xyPosition, radiusPixels):
+    def updateOutline(self, xyPosition, radiusPixels, innerRadiusRatio=0.5):
         """Update the brush outline position and size.
 
         Args:
             xyPosition: Center position in slice XY coordinates (x, y).
-            radiusPixels: Brush radius in pixels.
+            radiusPixels: Outer brush radius in pixels.
+            innerRadiusRatio: Inner circle as fraction of outer (0.0-1.0).
         """
         if self.renderer is None:
             return
 
-        # Update circle radius
-        self.circleSource.SetRadius(radiusPixels)
+        # Update outer circle
+        self.outerCircleSource.SetRadius(radiusPixels)
+        self.outerTransform.Identity()
+        self.outerTransform.Translate(xyPosition[0], xyPosition[1], 0)
+        self.outerActor.VisibilityOn()
 
-        # Position the circle at the cursor
-        self.transform.Identity()
-        self.transform.Translate(xyPosition[0], xyPosition[1], 0)
-
-        self.actor.VisibilityOn()
+        # Update inner circle
+        innerRadius = radiusPixels * innerRadiusRatio
+        self.innerCircleSource.SetRadius(innerRadius)
+        self.innerTransform.Identity()
+        self.innerTransform.Translate(xyPosition[0], xyPosition[1], 0)
+        # Only show inner circle if it's meaningfully different from outer
+        self.innerActor.SetVisibility(innerRadiusRatio < 0.95)
 
         # Request render
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
 
     def hide(self):
-        """Hide the brush outline."""
-        self.actor.VisibilityOff()
+        """Hide the brush outlines."""
+        self.outerActor.VisibilityOff()
+        self.innerActor.VisibilityOff()
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
 
     def cleanup(self):
-        """Remove the actor from the renderer and clean up."""
+        """Remove the actors from the renderer and clean up."""
         if self.renderer is not None:
-            self.renderer.RemoveActor2D(self.actor)
+            self.renderer.RemoveActor2D(self.outerActor)
+            self.renderer.RemoveActor2D(self.innerActor)
             self.renderer = None
         self.sliceWidget = None
 
@@ -159,6 +196,8 @@ class SegmentEditorEffect:
         # Default parameters
         self.radiusMm = 5.0
         self.edgeSensitivity = 50
+        self.thresholdZone = 50  # Inner zone is 50% of brush radius
+        self.samplingMethod = "mean_std"  # How to compute thresholds from zone
         self.algorithm = "geodesic_distance"
         self.backend = "auto"
         self.sphereMode = False
@@ -274,6 +313,36 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.sensitivitySlider.singleStep = 5
         self.sensitivitySlider.suffix = "%"
         brushLayout.addRow(_("Edge Sensitivity:"), self.sensitivitySlider)
+
+        # Threshold zone slider (inner circle for sampling)
+        self.zoneSlider = ctk.ctkSliderWidget()
+        self.zoneSlider.setToolTip(
+            _(
+                "Size of inner zone (cyan circle) used to sample intensities for threshold "
+                "calculation. This zone is also guaranteed to be included in the result."
+            )
+        )
+        self.zoneSlider.minimum = 10
+        self.zoneSlider.maximum = 100
+        self.zoneSlider.value = self.thresholdZone
+        self.zoneSlider.singleStep = 5
+        self.zoneSlider.suffix = "%"
+        brushLayout.addRow(_("Threshold Zone:"), self.zoneSlider)
+
+        # Intensity sampling method dropdown
+        self.samplingMethodCombo = qt.QComboBox()
+        self.samplingMethodCombo.addItem(_("Mean ± Std"), "mean_std")
+        self.samplingMethodCombo.addItem(_("Percentile (5-95%)"), "percentile")
+        self.samplingMethodCombo.addItem(_("Min / Max"), "minmax")
+        self.samplingMethodCombo.setToolTip(
+            _(
+                "How to compute intensity thresholds from the sampling zone:\n"
+                "• Mean ± Std: Use mean intensity ± (edge_sensitivity × std)\n"
+                "• Percentile: Use 5th to 95th percentile range\n"
+                "• Min / Max: Use actual min and max values"
+            )
+        )
+        brushLayout.addRow(_("Sampling Method:"), self.samplingMethodCombo)
 
         # 3D sphere mode checkbox
         self.sphereModeCheckbox = qt.QCheckBox(_("3D Sphere Mode"))
@@ -395,6 +464,8 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Connect signals
         self.radiusSlider.valueChanged.connect(self.onRadiusChanged)
         self.sensitivitySlider.valueChanged.connect(self.onSensitivityChanged)
+        self.zoneSlider.valueChanged.connect(self.onZoneChanged)
+        self.samplingMethodCombo.currentIndexChanged.connect(self.onSamplingMethodChanged)
         self.sphereModeCheckbox.toggled.connect(self.onSphereModeChanged)
         self.algorithmCombo.currentIndexChanged.connect(self.onAlgorithmChanged)
         self.backendCombo.currentIndexChanged.connect(self.onBackendChanged)
@@ -414,6 +485,16 @@ intensity similarity, stopping at edges and boundaries.</p>
     def onSensitivityChanged(self, value):
         """Handle edge sensitivity change."""
         self.edgeSensitivity = value
+        self.cache.invalidate()
+
+    def onZoneChanged(self, value):
+        """Handle threshold zone size change."""
+        self.thresholdZone = value
+        self.cache.invalidate()
+
+    def onSamplingMethodChanged(self, index):
+        """Handle sampling method change."""
+        self.samplingMethod = self.samplingMethodCombo.currentData
         self.cache.invalidate()
 
     def onSphereModeChanged(self, checked):
@@ -508,7 +589,7 @@ intensity similarity, stopping at edges and boundaries.</p>
     def _updateBrushPreview(self, xy, viewWidget):
         """Update the brush outline at the cursor position.
 
-        Shows a circle indicating the brush radius.
+        Shows two circles: outer (max extent) and inner (threshold zone).
 
         Args:
             xy: Screen coordinates (x, y).
@@ -532,9 +613,12 @@ intensity similarity, stopping at edges and boundaries.</p>
         spacing = self._getSliceSpacing(viewWidget)
         radiusPixels = self.radiusMm / spacing if spacing > 0 else 50
 
+        # Inner zone ratio (0.0 to 1.0)
+        innerRatio = self.thresholdZone / 100.0
+
         # Update the pipeline for this view
         if viewName in self.outlinePipelines:
-            self.outlinePipelines[viewName].updateOutline(xy, radiusPixels)
+            self.outlinePipelines[viewName].updateOutline(xy, radiusPixels, innerRatio)
 
         # Hide outlines in other views
         for name, pipeline in self.outlinePipelines.items():
@@ -770,6 +854,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             "radius_mm": self.radiusMm,
             "radius_voxels": radiusVoxels,
             "edge_sensitivity": self.edgeSensitivity / 100.0,
+            "threshold_zone": self.thresholdZone / 100.0,  # Inner zone as fraction
+            "sampling_method": self.samplingMethod,
             "algorithm": self.algorithm,
             "backend": self.backend,
             "sphere_mode": self.sphereMode,
@@ -809,6 +895,11 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Local seed coordinates
         localSeed = tuple(seedIjk[i] - roiStart[i] for i in range(3))
 
+        # Compute zone-based thresholds (overrides analyzer thresholds if zone is set)
+        zone_thresholds = self._computeZoneThresholds(roi, localSeed, params)
+        if zone_thresholds is not None:
+            thresholds = zone_thresholds
+
         # Select algorithm
         algorithm = params["algorithm"]
 
@@ -830,6 +921,10 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Apply circular brush mask as MAXIMUM extent for ALL algorithms
         # Adaptive algorithms use edges to stop earlier, but should never exceed brush radius
         mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
+
+        # Ensure inner zone (threshold zone) is included in result
+        inner_zone_mask = self._createInnerZoneMask(roi.shape, localSeed, params)
+        mask = mask | inner_zone_mask
 
         # Expand back to full volume size
         fullMask = np.zeros_like(volumeArray, dtype=np.uint8)
@@ -1332,6 +1427,101 @@ intensity similarity, stopping at edges and boundaries.</p>
         brushMask = distance <= 1.0
 
         return (mask & brushMask).astype(np.uint8)
+
+    def _computeZoneThresholds(self, roi, localSeed, params):
+        """Compute intensity thresholds from the inner threshold zone.
+
+        Args:
+            roi: ROI array (z, y, x).
+            localSeed: Seed point in local coordinates (i, j, k).
+            params: Parameters including threshold_zone and sampling_method.
+
+        Returns:
+            Dict with 'lower' and 'upper' thresholds, or None to use default.
+        """
+        threshold_zone = params.get("threshold_zone", 0.5)
+        sampling_method = params.get("sampling_method", "mean_std")
+        radius_voxels = params.get("radius_voxels", [10, 10, 10])
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+
+        # Create mask for inner zone
+        shape = roi.shape
+        z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+
+        # Zone radius is threshold_zone fraction of brush radius
+        zone_radius = [r * threshold_zone for r in radius_voxels]
+
+        dx = (x - localSeed[0]) / max(zone_radius[0], 0.1)
+        dy = (y - localSeed[1]) / max(zone_radius[1], 0.1)
+        dz = (z - localSeed[2]) / max(zone_radius[2], 0.1)
+        distance = np.sqrt(dx**2 + dy**2 + dz**2)
+        zone_mask = distance <= 1.0
+
+        # Extract intensities from zone
+        zone_intensities = roi[zone_mask].astype(np.float64)
+
+        if len(zone_intensities) < 5:
+            return None  # Not enough samples, use default
+
+        # Compute thresholds based on sampling method
+        if sampling_method == "mean_std":
+            mean_val = np.mean(zone_intensities)
+            std_val = np.std(zone_intensities)
+            # Multiplier scales with inverse of edge sensitivity
+            # Low sensitivity = wide range, high sensitivity = narrow range
+            multiplier = 3.0 - 2.0 * edge_sensitivity  # 1.0 to 3.0
+            lower = mean_val - multiplier * std_val
+            upper = mean_val + multiplier * std_val
+
+        elif sampling_method == "percentile":
+            # Use 5th to 95th percentile, narrowing with edge sensitivity
+            low_pct = 5 + 10 * edge_sensitivity  # 5% to 15%
+            high_pct = 95 - 10 * edge_sensitivity  # 85% to 95%
+            lower = np.percentile(zone_intensities, low_pct)
+            upper = np.percentile(zone_intensities, high_pct)
+
+        elif sampling_method == "minmax":
+            lower = np.min(zone_intensities)
+            upper = np.max(zone_intensities)
+            # Optionally narrow the range slightly with edge sensitivity
+            range_val = upper - lower
+            margin = range_val * 0.1 * edge_sensitivity
+            lower += margin
+            upper -= margin
+
+        else:
+            return None
+
+        return {"lower": float(lower), "upper": float(upper)}
+
+    def _createInnerZoneMask(self, shape, localSeed, params):
+        """Create a mask for the inner threshold zone.
+
+        This mask is OR'd with the algorithm result to guarantee the
+        inner zone is always included in the segmentation.
+
+        Args:
+            shape: Shape of the ROI (z, y, x).
+            localSeed: Seed point in local coordinates (i, j, k).
+            params: Parameters including threshold_zone and radius_voxels.
+
+        Returns:
+            Binary mask array for inner zone.
+        """
+        threshold_zone = params.get("threshold_zone", 0.5)
+        radius_voxels = params.get("radius_voxels", [10, 10, 10])
+
+        z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+
+        # Zone radius is threshold_zone fraction of brush radius
+        zone_radius = [r * threshold_zone for r in radius_voxels]
+
+        dx = (x - localSeed[0]) / max(zone_radius[0], 0.1)
+        dy = (y - localSeed[1]) / max(zone_radius[1], 0.1)
+        dz = (z - localSeed[2]) / max(zone_radius[2], 0.1)
+        distance = np.sqrt(dx**2 + dy**2 + dz**2)
+
+        return (distance <= 1.0).astype(np.uint8)
 
     def _computeAutoThreshold(self, roi, localSeed, method="otsu"):
         """Compute automatic threshold using specified method.
