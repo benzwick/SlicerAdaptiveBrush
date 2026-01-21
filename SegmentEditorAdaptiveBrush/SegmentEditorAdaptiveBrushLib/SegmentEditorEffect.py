@@ -8,6 +8,7 @@ boundaries) rather than using a fixed geometric shape.
 import logging
 import os
 import sys
+from typing import Dict
 
 import ctk
 import numpy as np
@@ -35,6 +36,100 @@ try:
 except ImportError:
     HAS_SIMPLEITK = False
     logging.warning("SimpleITK not available - some features will be disabled")
+
+
+class BrushOutlinePipeline:
+    """VTK pipeline for brush outline visualization in a slice view.
+
+    Shows a circle outline indicating the brush radius at the cursor position.
+    The circle is created by cutting a sphere with the slice plane.
+    """
+
+    def __init__(self):
+        """Initialize the brush outline pipeline."""
+        # Create a circle using vtkRegularPolygonSource (simpler than sphere + cutter)
+        self.circleSource = vtk.vtkRegularPolygonSource()
+        self.circleSource.SetNumberOfSides(64)  # Smooth circle
+        self.circleSource.SetRadius(1.0)  # Will be updated
+        self.circleSource.GeneratePolygonOff()  # Just the outline
+        self.circleSource.GeneratePolylineOn()
+
+        # Transform to position in slice XY coordinates
+        self.transform = vtk.vtkTransform()
+        self.transformFilter = vtk.vtkTransformPolyDataFilter()
+        self.transformFilter.SetTransform(self.transform)
+        self.transformFilter.SetInputConnection(self.circleSource.GetOutputPort())
+
+        # 2D mapper
+        self.mapper = vtk.vtkPolyDataMapper2D()
+        self.mapper.SetInputConnection(self.transformFilter.GetOutputPort())
+
+        # 2D actor for the outline
+        self.actor = vtk.vtkActor2D()
+        self.actor.SetMapper(self.mapper)
+        self.actor.VisibilityOff()
+        self.actor.SetPickable(False)
+
+        # Styling - yellow outline
+        prop = self.actor.GetProperty()
+        prop.SetColor(1.0, 0.9, 0.1)  # Yellow
+        prop.SetLineWidth(2)
+        prop.SetOpacity(0.8)
+
+        # Store the renderer
+        self.renderer = None
+        self.sliceWidget = None
+
+    def setSliceWidget(self, sliceWidget):
+        """Attach the pipeline to a slice widget's renderer.
+
+        Args:
+            sliceWidget: The qMRMLSliceWidget to attach to.
+        """
+        if self.renderer is not None:
+            self.renderer.RemoveActor2D(self.actor)
+
+        self.sliceWidget = sliceWidget
+        if sliceWidget is not None:
+            self.renderer = sliceWidget.sliceView().renderWindow().GetRenderers().GetFirstRenderer()
+            if self.renderer is not None:
+                self.renderer.AddActor2D(self.actor)
+
+    def updateOutline(self, xyPosition, radiusPixels):
+        """Update the brush outline position and size.
+
+        Args:
+            xyPosition: Center position in slice XY coordinates (x, y).
+            radiusPixels: Brush radius in pixels.
+        """
+        if self.renderer is None:
+            return
+
+        # Update circle radius
+        self.circleSource.SetRadius(radiusPixels)
+
+        # Position the circle at the cursor
+        self.transform.Identity()
+        self.transform.Translate(xyPosition[0], xyPosition[1], 0)
+
+        self.actor.VisibilityOn()
+
+        # Request render
+        if self.sliceWidget is not None:
+            self.sliceWidget.sliceView().scheduleRender()
+
+    def hide(self):
+        """Hide the brush outline."""
+        self.actor.VisibilityOff()
+        if self.sliceWidget is not None:
+            self.sliceWidget.sliceView().scheduleRender()
+
+    def cleanup(self):
+        """Remove the actor from the renderer and clean up."""
+        if self.renderer is not None:
+            self.renderer.RemoveActor2D(self.actor)
+            self.renderer = None
+        self.sliceWidget = None
 
 
 class SegmentEditorEffect:
@@ -69,6 +164,10 @@ class SegmentEditorEffect:
         self.backend = "auto"
         self.sphereMode = False
 
+        # Brush outline visualization - one pipeline per slice view
+        self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
+        self.activeViewWidget = None
+
     def clone(self):
         """Create a copy of this effect.
 
@@ -93,6 +192,22 @@ class SegmentEditorEffect:
         if os.path.exists(iconPath):
             return qt.QIcon(iconPath)
         return qt.QIcon()
+
+    def createCursor(self, widget):
+        """Create a custom cursor for the effect.
+
+        Returns a cursor with a small crosshair, similar to other segment editor effects.
+        The base class implementation composites the effect icon with an arrow cursor.
+
+        Args:
+            widget: The view widget.
+
+        Returns:
+            QCursor for this effect.
+        """
+        # Use the default cursor creation from the base class
+        # This composites a small effect icon with an arrow cursor
+        return self.scriptedEffect.createCursor(widget)
 
     def helpText(self):
         """Return help text for the effect.
@@ -220,11 +335,95 @@ intensity similarity, stopping at edges and boundaries.</p>
     def activate(self):
         """Called when the effect is selected."""
         self.cache.clear()
+        self._createOutlinePipelines()
 
     def deactivate(self):
         """Called when the effect is deselected."""
         self.cache.clear()
         self.isDrawing = False
+        self._cleanupOutlinePipelines()
+
+    def _createOutlinePipelines(self):
+        """Create brush outline pipelines for all slice views."""
+        layoutManager = slicer.app.layoutManager()
+        if layoutManager is None:
+            return
+
+        for sliceViewName in layoutManager.sliceViewNames():
+            sliceWidget = layoutManager.sliceWidget(sliceViewName)
+            if sliceWidget is not None:
+                pipeline = BrushOutlinePipeline()
+                pipeline.setSliceWidget(sliceWidget)
+                self.outlinePipelines[sliceViewName] = pipeline
+
+    def _cleanupOutlinePipelines(self):
+        """Clean up and remove all outline pipelines."""
+        for pipeline in self.outlinePipelines.values():
+            pipeline.cleanup()
+        self.outlinePipelines.clear()
+        self.activeViewWidget = None
+
+    def _updateBrushPreview(self, xy, viewWidget):
+        """Update the brush outline at the cursor position.
+
+        Shows a circle indicating the brush radius.
+
+        Args:
+            xy: Screen coordinates (x, y).
+            viewWidget: The slice view widget.
+        """
+        if viewWidget is None:
+            return
+
+        sliceLogic = viewWidget.sliceLogic()
+        if sliceLogic is None:
+            return
+
+        sliceNode = sliceLogic.GetSliceNode()
+        if sliceNode is None:
+            return
+
+        viewName = sliceNode.GetName()
+
+        # Calculate radius in pixels
+        # Get the spacing in the slice view to convert mm to pixels
+        spacing = self._getSliceSpacing(viewWidget)
+        radiusPixels = self.radiusMm / spacing if spacing > 0 else 50
+
+        # Update the pipeline for this view
+        if viewName in self.outlinePipelines:
+            self.outlinePipelines[viewName].updateOutline(xy, radiusPixels)
+
+        # Hide outlines in other views
+        for name, pipeline in self.outlinePipelines.items():
+            if name != viewName:
+                pipeline.hide()
+
+    def _getSliceSpacing(self, viewWidget):
+        """Get the pixel spacing in mm for the slice view.
+
+        Args:
+            viewWidget: The slice view widget.
+
+        Returns:
+            Average spacing in mm per pixel.
+        """
+        sliceNode = viewWidget.sliceLogic().GetSliceNode()
+        # Get field of view and dimensions
+        fov = sliceNode.GetFieldOfView()
+        dims = sliceNode.GetDimensions()
+
+        if dims[0] > 0 and dims[1] > 0:
+            # Average of X and Y spacing
+            spacingX = fov[0] / dims[0]
+            spacingY = fov[1] / dims[1]
+            return (spacingX + spacingY) / 2
+        return 1.0
+
+    def _hideBrushPreview(self):
+        """Hide brush outline in all views."""
+        for pipeline in self.outlinePipelines.values():
+            pipeline.hide()
 
     def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
         """Handle mouse interaction events.
@@ -240,25 +439,39 @@ intensity similarity, stopping at edges and boundaries.</p>
         if viewWidget.className() != "qMRMLSliceWidget":
             return False
 
+        xy = callerInteractor.GetEventPosition()
+
         if eventId == vtk.vtkCommand.LeftButtonPressEvent:
             # Save undo state at the START of the stroke (once per stroke)
             self.scriptedEffect.saveStateForUndo()
             self.isDrawing = True
-            xy = callerInteractor.GetEventPosition()
+            self._updateBrushPreview(xy, viewWidget)
             self.processPoint(xy, viewWidget)
             return True
 
         elif eventId == vtk.vtkCommand.MouseMoveEvent:
+            # Update preview on mouse move
+            self._updateBrushPreview(xy, viewWidget)
             if self.isDrawing:
-                xy = callerInteractor.GetEventPosition()
                 self.processPoint(xy, viewWidget)
-                return True
+                return True  # Only consume when drawing
+            return False  # Don't consume when just hovering
 
         elif eventId == vtk.vtkCommand.LeftButtonReleaseEvent:
             self.isDrawing = False
             self.lastIjk = None
             self.cache.onMouseRelease()
             return True
+
+        elif eventId == vtk.vtkCommand.LeaveEvent:
+            # Hide preview when mouse leaves the view
+            self._hideBrushPreview()
+            return False
+
+        elif eventId == vtk.vtkCommand.EnterEvent:
+            # Update preview when mouse enters
+            self._updateBrushPreview(xy, viewWidget)
+            return False
 
         return False
 
