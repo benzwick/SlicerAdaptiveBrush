@@ -4,11 +4,14 @@ set(MODULE_NAME SegmentEditorAdaptiveBrush)
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS
   ${MODULE_NAME}.py
+  ${MODULE_NAME}Lib/__init__.py
+  ${MODULE_NAME}Lib/SegmentEditorEffect.py
+  ${MODULE_NAME}Lib/IntensityAnalyzer.py
+  ${MODULE_NAME}Lib/PerformanceCache.py
   )
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
-  Resources/UI/${MODULE_NAME}.ui
   )
 
 #-----------------------------------------------------------------------------
