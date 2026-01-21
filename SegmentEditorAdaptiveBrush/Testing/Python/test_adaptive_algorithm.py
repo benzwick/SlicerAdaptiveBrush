@@ -381,6 +381,154 @@ class TestThresholdBrushAlgorithm(unittest.TestCase):
         self.assertGreater(low_overlap, high_overlap * 5)
 
 
+class TestGeodesicDistanceAlgorithm(unittest.TestCase):
+    """Tests for geodesic distance segmentation."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        np.random.seed(42)
+
+    @requires_sitk
+    def test_geodesic_segments_uniform_region(self):
+        """Geodesic distance should segment uniform intensity region."""
+        image = create_uniform_image(size=(50, 50, 10), intensity=100.0, noise_std=5.0)
+        seed_point = (25, 25, 5)
+
+        sitk_image = sitk.GetImageFromArray(image.astype(np.float32))
+
+        # Compute gradient
+        gradient = sitk.GradientMagnitude(sitk_image)
+        grad_array = sitk.GetArrayFromImage(gradient)
+
+        # Create speed image
+        grad_max = np.percentile(grad_array, 99) + 1e-8
+        speed_array = 1.0 / (1.0 + grad_array / grad_max)
+        speed = sitk.GetImageFromArray(speed_array.astype(np.float32))
+
+        # Run fast marching
+        fast_marching = sitk.FastMarchingImageFilter()
+        fast_marching.SetStoppingValue(100.0)
+        fast_marching.AddTrialPoint(seed_point)
+
+        distance = fast_marching.Execute(speed)
+        dist_array = sitk.GetArrayFromImage(distance)
+
+        # Threshold at radius
+        mask = (dist_array < 15.0).astype(np.uint8)
+
+        # Should segment a region
+        self.assertGreater(np.sum(mask), 100)
+
+    @requires_sitk
+    def test_geodesic_stops_at_edge(self):
+        """Geodesic distance should slow down at intensity boundaries."""
+        image, ground_truth = create_bimodal_image(
+            size=(100, 100, 10), mean1=100.0, mean2=200.0, std1=5.0, std2=5.0
+        )
+        seed_point = (25, 50, 5)  # In low region
+
+        sitk_image = sitk.GetImageFromArray(image.astype(np.float32))
+
+        # Compute gradient
+        gradient = sitk.GradientMagnitude(sitk_image)
+        grad_array = sitk.GetArrayFromImage(gradient)
+
+        # Create speed with high edge weight
+        grad_max = np.percentile(grad_array, 99) + 1e-8
+        edge_weight = 4.0  # High edge sensitivity
+        speed_array = 1.0 / (1.0 + (grad_array / grad_max) * edge_weight)
+        speed = sitk.GetImageFromArray(speed_array.astype(np.float32))
+
+        # Run fast marching
+        fast_marching = sitk.FastMarchingImageFilter()
+        fast_marching.SetStoppingValue(100.0)
+        fast_marching.AddTrialPoint(seed_point)
+
+        distance = fast_marching.Execute(speed)
+        dist_array = sitk.GetArrayFromImage(distance)
+
+        # The distance should be higher in the high intensity region
+        # because speed is lower at the boundary
+        low_region = ground_truth == 1
+        high_region = ground_truth == 2
+
+        # Average distance in each region
+        avg_dist_low = np.mean(dist_array[low_region])
+        avg_dist_high = np.mean(dist_array[high_region])
+
+        # Distance should be lower in the region containing the seed
+        self.assertLess(avg_dist_low, avg_dist_high)
+
+
+class TestRandomWalkerAlgorithm(unittest.TestCase):
+    """Tests for random walker segmentation."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        np.random.seed(42)
+
+    def test_random_walker_uniform_region(self):
+        """Random walker should propagate through uniform region."""
+        image = create_uniform_image(size=(30, 30, 5), intensity=100.0, noise_std=5.0)
+        seed = (15, 15, 2)  # (x, y, z)
+
+        # Simplified random walker (label propagation)
+        seed_intensity = image[seed[2], seed[1], seed[0]]
+
+        # Intensity similarity
+        intensity_diff = np.abs(image.astype(np.float32) - seed_intensity)
+        intensity_sim = 1.0 - np.clip(intensity_diff / 50.0, 0, 1)
+
+        # Spatial distance
+        shape = image.shape
+        z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+        spatial_dist = np.sqrt((x - seed[0]) ** 2 + (y - seed[1]) ** 2 + (z - seed[2]) ** 2)
+        spatial_prob = np.exp(-spatial_dist / 10.0)
+
+        # Combine
+        prob = spatial_prob * intensity_sim
+
+        # Should have high probability near seed
+        center_prob = prob[seed[2], seed[1], seed[0]]
+        edge_prob = prob[0, 0, 0]
+        self.assertGreater(center_prob, edge_prob)
+
+    def test_random_walker_respects_boundaries(self):
+        """Random walker probability should be lower across boundaries."""
+        image, ground_truth = create_bimodal_image(
+            size=(60, 60, 5), mean1=100.0, mean2=200.0, std1=5.0, std2=5.0
+        )
+        seed = (15, 30, 2)  # In low region (x < 30)
+
+        seed_intensity = image[seed[2], seed[1], seed[0]]
+
+        # Compute gradient for edge detection
+        if HAS_SIMPLEITK:
+            sitk_image = sitk.GetImageFromArray(image.astype(np.float32))
+            gradient = sitk.GradientMagnitude(sitk_image)
+            grad_array = sitk.GetArrayFromImage(gradient)
+
+            # Edge weight
+            grad_max = np.percentile(grad_array, 99) + 1e-8
+            weights = np.exp(-50.0 * (grad_array / grad_max) ** 2)
+
+            # Intensity similarity
+            intensity_diff = np.abs(image.astype(np.float32) - seed_intensity)
+            intensity_sim = 1.0 - np.clip(intensity_diff / 100.0, 0, 1)
+
+            # Probability combines edge weights and intensity similarity
+            prob = weights * intensity_sim
+
+            # Probability should be higher in low region (seed region)
+            low_region = ground_truth == 1
+            high_region = ground_truth == 2
+
+            avg_prob_low = np.mean(prob[low_region])
+            avg_prob_high = np.mean(prob[high_region])
+
+            self.assertGreater(avg_prob_low, avg_prob_high)
+
+
 class TestBrushMaskApplication(unittest.TestCase):
     """Tests for brush radius mask application."""
 
@@ -395,9 +543,7 @@ class TestBrushMaskApplication(unittest.TestCase):
 
         # Create brush mask (spherical)
         z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
-        distance = np.sqrt(
-            (x - center[2]) ** 2 + (y - center[1]) ** 2 + (z - center[0]) ** 2
-        )
+        distance = np.sqrt((x - center[2]) ** 2 + (y - center[1]) ** 2 + (z - center[0]) ** 2)
         brush_mask = distance <= radius
 
         # Apply brush mask
@@ -423,9 +569,7 @@ class TestBrushMaskApplication(unittest.TestCase):
 
         # Brush radius mask
         z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
-        distance = np.sqrt(
-            (x - center[2]) ** 2 + (y - center[1]) ** 2 + (z - center[0]) ** 2
-        )
+        distance = np.sqrt((x - center[2]) ** 2 + (y - center[1]) ** 2 + (z - center[0]) ** 2)
         brush_mask = distance <= radius
 
         # Apply brush constraint
@@ -470,6 +614,20 @@ class TestAlgorithmComparison(unittest.TestCase):
         # Threshold (simple)
         thresh_mask = ((image >= 80) & (image <= 120)).astype(np.uint8)
         self.assertGreater(np.sum(thresh_mask), 0, "Threshold should produce result")
+
+        # Geodesic distance (Fast Marching)
+        gradient = sitk.GradientMagnitude(sitk_image)
+        grad_array = sitk.GetArrayFromImage(gradient)
+        speed_array = 1.0 / (1.0 + grad_array / (np.max(grad_array) + 1e-8))
+        speed = sitk.GetImageFromArray(speed_array.astype(np.float32))
+
+        fm = sitk.FastMarchingImageFilter()
+        fm.SetStoppingValue(100.0)
+        fm.AddTrialPoint(seed_point)
+        distance = fm.Execute(speed)
+        dist_array = sitk.GetArrayFromImage(distance)
+        geodesic_mask = (dist_array < 15.0).astype(np.uint8)
+        self.assertGreater(np.sum(geodesic_mask), 0, "Geodesic distance should produce result")
 
     @requires_sitk
     def test_connected_threshold_faster_than_watershed(self):

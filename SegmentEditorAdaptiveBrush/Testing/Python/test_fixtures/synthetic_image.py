@@ -4,7 +4,6 @@ These generators create images with known ground truth for validating
 segmentation accuracy.
 """
 
-
 import numpy as np
 
 
@@ -162,20 +161,18 @@ def create_noisy_sphere(
     z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
 
     # Calculate distance from center
-    distance = np.sqrt(
-        (x - center[0]) ** 2 + (y - center[1]) ** 2 + (z - center[2]) ** 2
-    )
+    distance = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2 + (z - center[2]) ** 2)
 
     # Create mask
     mask = (distance <= radius).astype(np.uint8)
 
     # Fill with noisy intensities
-    image[mask == 1] = np.random.normal(
-        inside_mean, inside_std, np.sum(mask == 1)
-    ).astype(np.float32)
-    image[mask == 0] = np.random.normal(
-        outside_mean, outside_std, np.sum(mask == 0)
-    ).astype(np.float32)
+    image[mask == 1] = np.random.normal(inside_mean, inside_std, np.sum(mask == 1)).astype(
+        np.float32
+    )
+    image[mask == 0] = np.random.normal(outside_mean, outside_std, np.sum(mask == 0)).astype(
+        np.float32
+    )
 
     return image, mask
 
@@ -213,9 +210,7 @@ def create_concentric_spheres(
     mask = np.zeros(shape, dtype=np.uint8)
 
     z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
-    distance = np.sqrt(
-        (x - center[0]) ** 2 + (y - center[1]) ** 2 + (z - center[2]) ** 2
-    )
+    distance = np.sqrt((x - center[0]) ** 2 + (y - center[1]) ** 2 + (z - center[2]) ** 2)
 
     # Fill from outer to inner
     for i, r in enumerate(reversed(radii)):

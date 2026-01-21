@@ -150,9 +150,7 @@ class TestAutoThresholdComputation(unittest.TestCase):
                 self.assertGreaterEqual(
                     threshold, data_min, f"{method_name} threshold below data min"
                 )
-                self.assertLessEqual(
-                    threshold, data_max, f"{method_name} threshold above data max"
-                )
+                self.assertLessEqual(threshold, data_max, f"{method_name} threshold above data max")
 
     @requires_sitk
     def test_threshold_methods_differ_on_skewed_distribution(self):
@@ -281,17 +279,13 @@ class TestThresholdBrushAlgorithm(unittest.TestCase):
 
         # Verify mask is 1 where gradient is in range
         for x in expected_x_indices:
-            self.assertEqual(
-                mask[0, 0, x], 1, f"Expected mask=1 at x={x}, gradient={gradient[x]}"
-            )
+            self.assertEqual(mask[0, 0, x], 1, f"Expected mask=1 at x={x}, gradient={gradient[x]}")
 
         # Verify mask is 0 where gradient is outside range
         out_of_range = ~in_range
         out_of_range_indices = np.where(out_of_range)[0]
         for x in out_of_range_indices:
-            self.assertEqual(
-                mask[0, 0, x], 0, f"Expected mask=0 at x={x}, gradient={gradient[x]}"
-            )
+            self.assertEqual(mask[0, 0, x], 0, f"Expected mask=0 at x={x}, gradient={gradient[x]}")
 
         # Should have some voxels in range
         self.assertGreater(np.sum(mask), 0)

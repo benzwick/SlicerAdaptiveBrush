@@ -159,7 +159,7 @@ class SegmentEditorEffect:
         # Default parameters
         self.radiusMm = 5.0
         self.edgeSensitivity = 50
-        self.algorithm = "watershed"
+        self.algorithm = "geodesic_distance"
         self.backend = "auto"
         self.sphereMode = False
         self.useThresholdCaching = False  # Disabled by default for accuracy
@@ -283,7 +283,9 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Algorithm dropdown
         self.algorithmCombo = qt.QComboBox()
-        self.algorithmCombo.addItem(_("Watershed (Recommended)"), "watershed")
+        self.algorithmCombo.addItem(_("Geodesic Distance (Recommended)"), "geodesic_distance")
+        self.algorithmCombo.addItem(_("Watershed"), "watershed")
+        self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
         self.algorithmCombo.addItem(_("Level Set (GPU)"), "level_set_gpu")
         self.algorithmCombo.addItem(_("Level Set (CPU)"), "level_set_cpu")
         self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
@@ -468,6 +470,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         """Called when the effect is selected."""
         self.cache.clear()
         self._createOutlinePipelines()
+        self._updateThresholdRanges()
 
     def deactivate(self):
         """Called when the effect is deselected."""
@@ -556,6 +559,53 @@ intensity similarity, stopping at edges and boundaries.</p>
         """Hide brush outline in all views."""
         for pipeline in self.outlinePipelines.values():
             pipeline.hide()
+
+    def _updateThresholdRanges(self):
+        """Update threshold slider ranges based on source volume intensity.
+
+        Sets slider min/max to the 1st-99th percentile of image intensities
+        for a more meaningful range than hardcoded values.
+        """
+        try:
+            parameterSetNode = self.scriptedEffect.parameterSetNode()
+            if parameterSetNode is None:
+                return
+
+            sourceVolumeNode = parameterSetNode.GetSourceVolumeNode()
+            if sourceVolumeNode is None:
+                return
+
+            volumeArray = slicer.util.arrayFromVolume(sourceVolumeNode)
+            if volumeArray is None or volumeArray.size == 0:
+                return
+
+            # Compute percentiles for robust range estimation
+            # Use 1st and 99th percentile to exclude outliers
+            p1, p99 = np.percentile(volumeArray, [1, 99])
+
+            # Add small margin for slider usability
+            margin = (p99 - p1) * 0.05
+            range_min = p1 - margin
+            range_max = p99 + margin
+
+            # Update slider ranges
+            self.lowerThresholdSlider.minimum = range_min
+            self.lowerThresholdSlider.maximum = range_max
+            self.upperThresholdSlider.minimum = range_min
+            self.upperThresholdSlider.maximum = range_max
+
+            # Set reasonable default values (near middle of range)
+            mid = (p1 + p99) / 2
+            quarter = (p99 - p1) / 4
+            self.lowerThresholdSlider.value = mid - quarter
+            self.upperThresholdSlider.value = mid + quarter
+
+            logging.debug(
+                f"Updated threshold ranges: [{range_min:.1f}, {range_max:.1f}], "
+                f"defaults: [{mid - quarter:.1f}, {mid + quarter:.1f}]"
+            )
+        except Exception as e:
+            logging.warning(f"Could not update threshold ranges: {e}")
 
     def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
         """Handle mouse interaction events.
@@ -763,11 +813,18 @@ intensity similarity, stopping at edges and boundaries.</p>
             mask = self._regionGrowing(roi, localSeed, thresholds, params)
         elif algorithm == "threshold_brush":
             mask = self._thresholdBrush(roi, localSeed, params)
+        elif algorithm == "geodesic_distance":
+            mask = self._geodesicDistance(roi, localSeed, thresholds, params)
+        elif algorithm == "random_walker":
+            mask = self._randomWalker(roi, localSeed, thresholds, params)
         else:  # Default: watershed
             mask = self._watershed(roi, localSeed, thresholds, params)
 
-        # Apply brush radius mask
-        mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
+        # Apply circular brush mask ONLY for Threshold Brush
+        # Other algorithms use their natural boundary detection (edges, gradients)
+        # and are already constrained by the ROI extraction (1.2x radius margin)
+        if algorithm == "threshold_brush":
+            mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
 
         # Expand back to full volume size
         fullMask = np.zeros_like(volumeArray, dtype=np.uint8)
@@ -862,35 +919,45 @@ intensity similarity, stopping at edges and boundaries.</p>
         """
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
 
-        # First get initial region with connected threshold
-        initialMask = self._connectedThreshold(roi, localSeed, thresholds)
-
-        if np.sum(initialMask) == 0:
-            return initialMask
+        # Smooth the image slightly to reduce noise
+        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
 
         # Compute gradient magnitude for watershed
-        gradient = sitk.GradientMagnitude(sitkRoi)
-
-        # Scale gradient by edge sensitivity
+        gradient = sitk.GradientMagnitude(smoothed)
         gradArray = sitk.GetArrayFromImage(gradient)
-        sensitivity = params.get("edge_sensitivity", 0.5)
-        gradMax = np.percentile(gradArray, 95)
-        if gradMax > 0:
-            gradArray = (gradArray / gradMax * 255 * sensitivity).astype(np.float32)
+
+        # Normalize gradient to 0-255 range
+        # Edge sensitivity controls how much gradient affects the watershed
+        # High sensitivity = edges are more important = smoother boundaries
+        # Low sensitivity = edges less important = more permissive
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        gradMax = np.percentile(gradArray, 98) + 1e-8
+
+        # Linear scaling that works: sensitivity 0->0.5, 1.0->2.0
+        gradient_scale = 0.5 + 1.5 * edge_sensitivity
+        gradArray = np.clip(gradArray / gradMax * 255 * gradient_scale, 0, 255).astype(np.float32)
 
         gradient = sitk.GetImageFromArray(gradArray)
 
-        # Create markers from initial mask
-        # Foreground marker: eroded initial mask
-        initialSitk = sitk.GetImageFromArray(initialMask)
-        foreground = sitk.BinaryErode(initialSitk, [2, 2, 2])
+        # Create foreground marker at seed point (small sphere)
+        fgMarker = np.zeros_like(roi, dtype=np.uint8)
+        fgMarker[localSeed[2], localSeed[1], localSeed[0]] = 1
+        # Dilate slightly to make it more robust
+        fgSitk = sitk.GetImageFromArray(fgMarker)
+        fgSitk = sitk.BinaryDilate(fgSitk, [1, 1, 1])
 
-        # Background marker: dilated then subtracted
-        dilated = sitk.BinaryDilate(initialSitk, [3, 3, 3])
-        background = sitk.Subtract(dilated, sitk.BinaryDilate(initialSitk, [1, 1, 1]))
+        # Create background marker at ROI boundary
+        bgMarker = np.zeros_like(roi, dtype=np.uint8)
+        bgMarker[0, :, :] = 1
+        bgMarker[-1, :, :] = 1
+        bgMarker[:, 0, :] = 1
+        bgMarker[:, -1, :] = 1
+        bgMarker[:, :, 0] = 1
+        bgMarker[:, :, -1] = 1
+        bgSitk = sitk.GetImageFromArray(bgMarker)
 
         # Combine markers (foreground=1, background=2)
-        markers = sitk.Add(foreground, sitk.Multiply(background, 2))
+        markers = sitk.Add(fgSitk, sitk.Multiply(bgSitk, 2))
         markers = sitk.Cast(markers, sitk.sitkUInt8)
 
         # Run watershed
@@ -900,13 +967,19 @@ intensity similarity, stopping at edges and boundaries.</p>
             )
             # Extract foreground (label 1)
             result = sitk.BinaryThreshold(watershed, 1, 1, 1, 0)
-            return sitk.GetArrayFromImage(result).astype(np.uint8)
+            mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+
+            # Also constrain by intensity thresholds for safety
+            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+            mask = mask & intensity_mask.astype(np.uint8)
+
+            return mask
         except Exception as e:
             logging.error(f"Watershed failed: {e}")
-            return initialMask
+            return self._connectedThreshold(roi, localSeed, thresholds)
 
     def _levelSet(self, roi, localSeed, thresholds, params):
-        """Level set segmentation.
+        """Level set segmentation using threshold-based approach.
 
         Args:
             roi: ROI array.
@@ -917,46 +990,56 @@ intensity similarity, stopping at edges and boundaries.</p>
         Returns:
             Binary mask array.
         """
-        # Get initial segmentation
-        initialMask = self._connectedThreshold(roi, localSeed, thresholds)
-
-        if np.sum(initialMask) == 0:
-            return initialMask
-
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
-        initialSitk = sitk.GetImageFromArray(initialMask)
 
-        # Create signed distance map for level set initialization
-        distanceMap = sitk.SignedMaurerDistanceMap(
-            initialSitk, insideIsPositive=True, squaredDistance=False, useImageSpacing=False
-        )
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
 
-        # Compute speed image from gradient (high speed where gradient is low)
-        gradient = sitk.GradientMagnitude(sitkRoi)
-        gradArray = sitk.GetArrayFromImage(gradient)
-        gradMax = np.max(gradArray) + 1e-8
-        speedArray = 1.0 - (gradArray / gradMax)
-        speed = sitk.GetImageFromArray(speedArray.astype(np.float32))
-
-        # Run geodesic active contour
+        # Use ThresholdSegmentationLevelSetImageFilter which is more reliable
+        # It grows/shrinks based on whether pixels are in threshold range
         try:
-            gac = sitk.GeodesicActiveContourLevelSetImageFilter()
-            gac.SetPropagationScaling(1.0)
-            gac.SetCurvatureScaling(0.5)
-            gac.SetAdvectionScaling(1.0)
-            gac.SetMaximumRMSError(0.01)
-            gac.SetNumberOfIterations(100)
+            # Smooth input slightly
+            smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
 
-            levelSet = gac.Execute(
-                sitk.Cast(distanceMap, sitk.sitkFloat32), sitk.Cast(speed, sitk.sitkFloat32)
+            # Create seed image with signed distance from seed point
+            radius_voxels = params.get("radius_voxels", [5, 5, 5])
+            init_radius = max(2, min(radius_voxels) / 3)
+
+            # Create distance from seed
+            shape = roi.shape
+            z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+            dist_from_seed = np.sqrt(
+                (x - localSeed[0]) ** 2 + (y - localSeed[1]) ** 2 + (z - localSeed[2]) ** 2
             )
+            # Signed distance: negative inside, positive outside
+            init_levelset = dist_from_seed - init_radius
+            seedImage = sitk.GetImageFromArray(init_levelset.astype(np.float32))
 
-            # Threshold level set to get binary mask
-            result = sitk.BinaryThreshold(levelSet, lowerThreshold=0)
+            # Configure level set filter
+            lsFilter = sitk.ThresholdSegmentationLevelSetImageFilter()
+            lsFilter.SetLowerThreshold(float(thresholds["lower"]))
+            lsFilter.SetUpperThreshold(float(thresholds["upper"]))
+
+            # Propagation: positive = grow into threshold region
+            # Curvature: smooths the boundary
+            # Higher edge sensitivity = more curvature smoothing, less propagation
+            prop_scale = 1.0 + 1.0 * (1.0 - edge_sensitivity)  # 1.0-2.0
+            curv_scale = 0.5 + 1.5 * edge_sensitivity  # 0.5-2.0
+
+            lsFilter.SetPropagationScaling(prop_scale)
+            lsFilter.SetCurvatureScaling(curv_scale)
+            lsFilter.SetMaximumRMSError(0.02)
+            lsFilter.SetNumberOfIterations(50)
+
+            levelSet = lsFilter.Execute(seedImage, smoothed)
+
+            # Threshold: inside is negative in level set convention
+            result = sitk.BinaryThreshold(levelSet, upperThreshold=0)
             return sitk.GetArrayFromImage(result).astype(np.uint8)
+
         except Exception as e:
             logging.error(f"Level set failed: {e}")
-            return initialMask
+            # Fall back to connected threshold
+            return self._connectedThreshold(roi, localSeed, thresholds)
 
     def _regionGrowing(self, roi, localSeed, thresholds, params):
         """Region growing segmentation.
@@ -975,22 +1058,28 @@ intensity similarity, stopping at edges and boundaries.</p>
         sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
 
         # Scale multiplier with edge sensitivity
-        # sensitivity=0.0 -> multiplier=3.5 (permissive)
-        # sensitivity=0.5 -> multiplier=2.5 (default)
-        # sensitivity=1.0 -> multiplier=1.0 (strict)
+        # sensitivity=0.0 -> multiplier=3.0 (permissive, grows more)
+        # sensitivity=0.5 -> multiplier=2.0 (moderate)
+        # sensitivity=1.0 -> multiplier=1.0 (strict, grows less)
         edge_sensitivity = params.get("edge_sensitivity", 0.5)
-        multiplier = 3.5 - (2.5 * edge_sensitivity)
+        multiplier = 3.0 - 2.0 * edge_sensitivity  # Linear: 3.0 to 1.0
 
         try:
             result = sitk.ConfidenceConnected(
                 sitkRoi,
                 seedList=[sitkSeed],
-                numberOfIterations=3,
+                numberOfIterations=4,
                 multiplier=multiplier,
                 initialNeighborhoodRadius=2,
                 replaceValue=1,
             )
-            return sitk.GetArrayFromImage(result).astype(np.uint8)
+            mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+
+            # Also constrain by intensity thresholds
+            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+            mask = mask & intensity_mask.astype(np.uint8)
+
+            return mask
         except Exception as e:
             logging.error(f"Region growing failed: {e}")
             return np.zeros_like(roi, dtype=np.uint8)
@@ -1000,6 +1089,9 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         Auto mode uses Otsu/Huang/etc to compute threshold, then auto-detects
         whether seed is in lighter or darker region to decide which side to segment.
+
+        Edge sensitivity controls connectivity: at high sensitivity, only the
+        connected component containing the seed is kept.
 
         Args:
             roi: ROI array.
@@ -1020,7 +1112,192 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Simple threshold - no connectivity, just intensity range
         mask = ((roi >= lower) & (roi <= upper)).astype(np.uint8)
 
+        # At high edge sensitivity, use connected components to keep only
+        # the region connected to the seed
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        if edge_sensitivity > 0.3:
+            sitkMask = sitk.GetImageFromArray(mask)
+            sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
+
+            # Use connected threshold on the binary mask to get only connected region
+            try:
+                connected = sitk.ConnectedThreshold(
+                    sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
+                )
+                mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
+            except Exception:
+                pass  # Keep original mask if connectivity fails
+
         return mask
+
+    def _geodesicDistance(self, roi, localSeed, thresholds, params):
+        """Geodesic distance-based segmentation.
+
+        Combines spatial distance from seed with intensity gradient penalty.
+        Fast and produces natural-looking boundaries that follow image edges.
+
+        Args:
+            roi: ROI array.
+            localSeed: Seed point in local coordinates (i, j, k).
+            thresholds: Intensity thresholds (used for initial mask).
+            params: Algorithm parameters.
+
+        Returns:
+            Binary mask array.
+        """
+        sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
+        sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
+
+        # Get parameters
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        radius_voxels = params.get("radius_voxels", [10, 10, 10])
+        avg_radius = np.mean(radius_voxels)
+
+        # Smooth slightly to reduce noise
+        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
+
+        # Compute gradient magnitude
+        gradient = sitk.GradientMagnitude(smoothed)
+        gradArray = sitk.GetArrayFromImage(gradient)
+
+        # Normalize gradient
+        gradMax = np.percentile(gradArray, 95) + 1e-8
+        gradNorm = gradArray / gradMax
+
+        # Create speed image: high speed in homogeneous regions, low at edges
+        # Edge weight controls how much edges slow down propagation
+        # Higher sensitivity = edges matter more = slower at edges
+        edge_weight = 1.0 + 9.0 * edge_sensitivity  # 1-10
+        speedArray = 1.0 / (1.0 + gradNorm * edge_weight)
+
+        # Ensure minimum speed to prevent infinite distances
+        speedArray = np.maximum(speedArray, 0.01)
+        speed = sitk.GetImageFromArray(speedArray.astype(np.float32))
+
+        # Run Fast Marching to compute geodesic distance from seed
+        try:
+            # FastMarching computes arrival times (geodesic distances)
+            fastMarching = sitk.FastMarchingImageFilter()
+            fastMarching.SetStoppingValue(avg_radius * 3)  # Stop at 3x radius
+
+            # Set trial points (seeds)
+            fastMarching.AddTrialPoint(sitkSeed)
+
+            distance = fastMarching.Execute(speed)
+            distArray = sitk.GetArrayFromImage(distance)
+
+            # Threshold at radius to get mask
+            # Scale threshold by edge sensitivity - higher sensitivity = tighter
+            dist_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)  # 1.0-1.5x radius
+            mask = (distArray < dist_threshold).astype(np.uint8)
+
+            # Clean up with morphological operations
+            maskSitk = sitk.GetImageFromArray(mask)
+            maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
+            mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
+
+            # Also apply intensity threshold for additional safety
+            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+            mask = mask & intensity_mask.astype(np.uint8)
+
+            return mask
+
+        except Exception as e:
+            logging.error(f"Geodesic distance failed: {e}")
+            # Fall back to connected threshold
+            return self._connectedThreshold(roi, localSeed, thresholds)
+
+    def _randomWalker(self, roi, localSeed, thresholds, params):
+        """Random Walker-inspired segmentation.
+
+        Uses iterative region growing with gradient-weighted expansion.
+        Simulates random walk behavior by iteratively growing the region
+        while respecting edge boundaries.
+
+        Args:
+            roi: ROI array.
+            localSeed: Seed point in local coordinates (i, j, k).
+            thresholds: Intensity thresholds.
+            params: Algorithm parameters.
+
+        Returns:
+            Binary mask array.
+        """
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        radius_voxels = params.get("radius_voxels", [10, 10, 10])
+
+        sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
+        sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
+
+        # Get seed intensity
+        seed_intensity = roi[localSeed[2], localSeed[1], localSeed[0]]
+
+        # Smooth the image based on edge sensitivity
+        # Low sensitivity = more smoothing = more permissive
+        sigma = 0.5 + 1.5 * (1.0 - edge_sensitivity)  # 0.5-2.0
+        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=sigma)
+
+        # Compute gradient on smoothed image
+        gradient = sitk.GradientMagnitude(smoothed)
+        gradArray = sitk.GetArrayFromImage(gradient)
+
+        # Normalize gradient
+        gradMax = np.percentile(gradArray, 95) + 1e-8
+        gradNorm = gradArray / gradMax
+
+        # Create edge-aware speed image
+        # Beta controls edge importance
+        beta = 5.0 + 15.0 * edge_sensitivity  # 5-20
+        edgeWeight = np.exp(-beta * gradNorm)
+
+        # Create intensity similarity weight
+        smoothedArray = sitk.GetArrayFromImage(smoothed)
+        intensity_diff = np.abs(smoothedArray - seed_intensity)
+        intensity_std = max(np.std(smoothedArray), 1.0)
+        intensity_weight = np.exp(-intensity_diff / (intensity_std * 2))
+
+        # Combined weight
+        weight = edgeWeight * intensity_weight
+
+        # Use connected threshold on weighted image
+        # This effectively does gradient-weighted region growing
+        weighted_roi = (roi * weight).astype(np.float32)
+        sitkWeighted = sitk.GetImageFromArray(weighted_roi)
+
+        # Adjust thresholds for weighted image
+        weighted_seed = weighted_roi[localSeed[2], localSeed[1], localSeed[0]]
+        weight_at_seed = weight[localSeed[2], localSeed[1], localSeed[0]]
+
+        if weight_at_seed > 0.1:
+            # Compute thresholds on weighted image
+            weighted_lower = thresholds["lower"] * weight_at_seed * 0.5
+            weighted_upper = thresholds["upper"] * weight_at_seed * 1.5
+
+            try:
+                result = sitk.ConnectedThreshold(
+                    sitkWeighted,
+                    seedList=[sitkSeed],
+                    lower=float(weighted_lower),
+                    upper=float(weighted_upper),
+                    replaceValue=1,
+                )
+                mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+
+                # Morphological cleanup
+                maskSitk = sitk.GetImageFromArray(mask)
+                maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
+                mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
+
+                # Also constrain by original intensity thresholds
+                intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+                mask = mask & intensity_mask.astype(np.uint8)
+
+                return mask
+            except Exception as e:
+                logging.error(f"Random walker connected threshold failed: {e}")
+
+        # Fallback to standard connected threshold
+        return self._connectedThreshold(roi, localSeed, thresholds)
 
     def _applyBrushMask(self, mask, localSeed, radiusVoxels):
         """Apply circular/spherical brush constraint.

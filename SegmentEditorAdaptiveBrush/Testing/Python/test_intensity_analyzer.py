@@ -289,9 +289,7 @@ class TestIntensityAnalyzerGMM(unittest.TestCase):
         )
 
         # Seed in low region
-        result_low = self.analyzer.analyze(
-            image, seed_point=(25, 50, 5), radius_voxels=(40, 40, 5)
-        )
+        result_low = self.analyzer.analyze(image, seed_point=(25, 50, 5), radius_voxels=(40, 40, 5))
 
         # Seed in high region
         result_high = self.analyzer.analyze(
