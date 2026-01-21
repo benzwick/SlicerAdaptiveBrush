@@ -256,6 +256,126 @@ class SegmentEditorEffect:
         # Track source volume for detecting changes
         self._lastSourceVolumeId = None
 
+        # Parameter presets for common tissue types
+        # Each preset defines optimal parameters for that tissue
+        self._presets = {
+            "default": {
+                "name": "Default",
+                "description": "Balanced settings for general use",
+                "algorithm": "geodesic_distance",
+                "edge_sensitivity": 50,
+                "threshold_zone": 50,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "geodesic_edge_weight": 8.0,
+                "geodesic_smoothing": 0.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "bone_ct": {
+                "name": "Bone (CT)",
+                "description": "High contrast bone segmentation in CT",
+                "algorithm": "geodesic_distance",
+                "edge_sensitivity": 70,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 1.5,
+                "geodesic_edge_weight": 12.0,
+                "geodesic_smoothing": 0.3,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "soft_tissue_ct": {
+                "name": "Soft Tissue (CT)",
+                "description": "Organs and soft tissue in CT (liver, muscle, etc.)",
+                "algorithm": "watershed",
+                "edge_sensitivity": 50,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.5,
+                "watershed_gradient_scale": 1.5,
+                "watershed_smoothing": 0.7,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "lung_ct": {
+                "name": "Lung (CT)",
+                "description": "Lung parenchyma and airways in CT",
+                "algorithm": "geodesic_distance",
+                "edge_sensitivity": 60,
+                "threshold_zone": 50,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 2.0,
+                "geodesic_edge_weight": 10.0,
+                "geodesic_smoothing": 0.5,
+                "fill_holes": False,  # Preserve airways
+                "closing_radius": 0,
+            },
+            "brain_mri": {
+                "name": "Brain (MRI)",
+                "description": "Brain tissue segmentation in MRI",
+                "algorithm": "level_set_cpu",
+                "edge_sensitivity": 55,
+                "threshold_zone": 50,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "level_set_propagation": 1.0,
+                "level_set_curvature": 1.2,
+                "level_set_iterations": 60,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "tumor_lesion": {
+                "name": "Tumor / Lesion",
+                "description": "Tumors and lesions with irregular boundaries",
+                "algorithm": "region_growing",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.6,
+                "std_multiplier": 2.5,
+                "region_growing_multiplier": 2.5,
+                "region_growing_iterations": 5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "vessel": {
+                "name": "Vessels",
+                "description": "Blood vessels and tubular structures",
+                "algorithm": "geodesic_distance",
+                "edge_sensitivity": 65,
+                "threshold_zone": 35,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 1.5,
+                "geodesic_edge_weight": 10.0,
+                "geodesic_distance_scale": 1.2,
+                "geodesic_smoothing": 0.3,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "fat": {
+                "name": "Fat",
+                "description": "Adipose tissue (bright in T1 MRI, dark in CT)",
+                "algorithm": "watershed",
+                "edge_sensitivity": 40,
+                "threshold_zone": 70,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.6,
+                "std_multiplier": 2.5,
+                "watershed_gradient_scale": 1.0,
+                "watershed_smoothing": 0.8,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+        }
+        self._currentPreset = "default"
+
     def clone(self):
         """Create a copy of this effect.
 
@@ -339,6 +459,27 @@ intensity similarity, stopping at edges and boundaries.</p>
         brushCollapsible.text = _("Brush Settings")
         self.scriptedEffect.addOptionsWidget(brushCollapsible)
         brushLayout = qt.QFormLayout(brushCollapsible)
+
+        # Preset selector
+        presetLayout = qt.QHBoxLayout()
+        self.presetCombo = qt.QComboBox()
+        for preset_id, preset_data in self._presets.items():
+            self.presetCombo.addItem(preset_data["name"], preset_id)
+        self.presetCombo.setToolTip(
+            _(
+                "Quick parameter presets optimized for different tissue types.\n\n"
+                "Select a preset to automatically configure all parameters\n"
+                "for that specific segmentation task."
+            )
+        )
+        presetLayout.addWidget(self.presetCombo, 1)
+
+        self.resetPresetButton = qt.QPushButton(_("Reset"))
+        self.resetPresetButton.setToolTip(_("Reset all parameters to the selected preset"))
+        self.resetPresetButton.setMaximumWidth(60)
+        presetLayout.addWidget(self.resetPresetButton)
+
+        brushLayout.addRow(_("Preset:"), presetLayout)
 
         # Radius slider
         self.radiusSlider = ctk.ctkSliderWidget()
@@ -881,6 +1022,8 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(_("Closing Radius:"), self.closingRadiusSlider)
 
         # Connect signals
+        self.presetCombo.currentIndexChanged.connect(self.onPresetChanged)
+        self.resetPresetButton.clicked.connect(self.onResetPreset)
         self.radiusSlider.valueChanged.connect(self.onRadiusChanged)
         self.sensitivitySlider.valueChanged.connect(self.onSensitivityChanged)
         self.zoneSlider.valueChanged.connect(self.onZoneChanged)
@@ -914,6 +1057,150 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.regionGrowingIterationsSlider.valueChanged.connect(self.onAdvancedParamChanged)
         self.fillHolesCheckbox.toggled.connect(self.onAdvancedParamChanged)
         self.closingRadiusSlider.valueChanged.connect(self.onAdvancedParamChanged)
+
+    def onPresetChanged(self, index):
+        """Handle preset selection change."""
+        preset_id = self.presetCombo.currentData
+        if preset_id and preset_id in self._presets:
+            self._applyPreset(preset_id)
+
+    def onResetPreset(self):
+        """Reset all parameters to the currently selected preset."""
+        preset_id = self.presetCombo.currentData
+        if preset_id and preset_id in self._presets:
+            self._applyPreset(preset_id)
+
+    def _applyPreset(self, preset_id):
+        """Apply a parameter preset.
+
+        Args:
+            preset_id: The preset identifier (key in self._presets).
+        """
+        if preset_id not in self._presets:
+            return
+
+        preset = self._presets[preset_id]
+        self._currentPreset = preset_id
+
+        # Block signals to prevent multiple cache invalidations
+        widgets_to_block = [
+            self.sensitivitySlider,
+            self.zoneSlider,
+            self.samplingMethodCombo,
+            self.algorithmCombo,
+            self.gaussianSigmaSlider,
+            self.stdMultiplierSlider,
+            self.geodesicEdgeWeightSlider,
+            self.geodesicDistanceScaleSlider,
+            self.geodesicSmoothingSlider,
+            self.watershedGradientScaleSlider,
+            self.watershedSmoothingSlider,
+            self.levelSetPropagationSlider,
+            self.levelSetCurvatureSlider,
+            self.levelSetIterationsSlider,
+            self.regionGrowingMultiplierSlider,
+            self.regionGrowingIterationsSlider,
+            self.fillHolesCheckbox,
+            self.closingRadiusSlider,
+        ]
+
+        # Block signals
+        for widget in widgets_to_block:
+            widget.blockSignals(True)
+
+        try:
+            # Apply basic parameters
+            if "edge_sensitivity" in preset:
+                self.edgeSensitivity = preset["edge_sensitivity"]
+                self.sensitivitySlider.value = preset["edge_sensitivity"]
+
+            if "threshold_zone" in preset:
+                self.thresholdZone = preset["threshold_zone"]
+                self.zoneSlider.value = preset["threshold_zone"]
+
+            if "sampling_method" in preset:
+                self.samplingMethod = preset["sampling_method"]
+                idx = self.samplingMethodCombo.findData(preset["sampling_method"])
+                if idx >= 0:
+                    self.samplingMethodCombo.setCurrentIndex(idx)
+
+            if "algorithm" in preset:
+                self.algorithm = preset["algorithm"]
+                idx = self.algorithmCombo.findData(preset["algorithm"])
+                if idx >= 0:
+                    self.algorithmCombo.setCurrentIndex(idx)
+
+            # Apply sampling parameters
+            if "gaussian_sigma" in preset:
+                self.gaussianSigma = preset["gaussian_sigma"]
+                self.gaussianSigmaSlider.value = preset["gaussian_sigma"]
+
+            if "std_multiplier" in preset:
+                self.stdMultiplier = preset["std_multiplier"]
+                self.stdMultiplierSlider.value = preset["std_multiplier"]
+
+            # Apply geodesic parameters
+            if "geodesic_edge_weight" in preset:
+                self.geodesicEdgeWeight = preset["geodesic_edge_weight"]
+                self.geodesicEdgeWeightSlider.value = preset["geodesic_edge_weight"]
+
+            if "geodesic_distance_scale" in preset:
+                self.geodesicDistanceScale = preset["geodesic_distance_scale"]
+                self.geodesicDistanceScaleSlider.value = preset["geodesic_distance_scale"]
+
+            if "geodesic_smoothing" in preset:
+                self.geodesicSmoothing = preset["geodesic_smoothing"]
+                self.geodesicSmoothingSlider.value = preset["geodesic_smoothing"]
+
+            # Apply watershed parameters
+            if "watershed_gradient_scale" in preset:
+                self.watershedGradientScale = preset["watershed_gradient_scale"]
+                self.watershedGradientScaleSlider.value = preset["watershed_gradient_scale"]
+
+            if "watershed_smoothing" in preset:
+                self.watershedSmoothing = preset["watershed_smoothing"]
+                self.watershedSmoothingSlider.value = preset["watershed_smoothing"]
+
+            # Apply level set parameters
+            if "level_set_propagation" in preset:
+                self.levelSetPropagation = preset["level_set_propagation"]
+                self.levelSetPropagationSlider.value = preset["level_set_propagation"]
+
+            if "level_set_curvature" in preset:
+                self.levelSetCurvature = preset["level_set_curvature"]
+                self.levelSetCurvatureSlider.value = preset["level_set_curvature"]
+
+            if "level_set_iterations" in preset:
+                self.levelSetIterations = preset["level_set_iterations"]
+                self.levelSetIterationsSlider.value = preset["level_set_iterations"]
+
+            # Apply region growing parameters
+            if "region_growing_multiplier" in preset:
+                self.regionGrowingMultiplier = preset["region_growing_multiplier"]
+                self.regionGrowingMultiplierSlider.value = preset["region_growing_multiplier"]
+
+            if "region_growing_iterations" in preset:
+                self.regionGrowingIterations = preset["region_growing_iterations"]
+                self.regionGrowingIterationsSlider.value = preset["region_growing_iterations"]
+
+            # Apply morphology parameters
+            if "fill_holes" in preset:
+                self.fillHoles = preset["fill_holes"]
+                self.fillHolesCheckbox.checked = preset["fill_holes"]
+
+            if "closing_radius" in preset:
+                self.closingRadius = preset["closing_radius"]
+                self.closingRadiusSlider.value = preset["closing_radius"]
+
+        finally:
+            # Unblock signals
+            for widget in widgets_to_block:
+                widget.blockSignals(False)
+
+        # Invalidate cache once after all changes
+        self.cache.invalidate()
+
+        logging.debug(f"Applied preset: {preset['name']}")
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""
