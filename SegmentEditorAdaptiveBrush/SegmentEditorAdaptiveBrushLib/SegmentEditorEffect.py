@@ -253,6 +253,9 @@ class SegmentEditorEffect:
         self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
         self.activeViewWidget = None
 
+        # Track source volume for detecting changes
+        self._lastSourceVolumeId = None
+
     def clone(self):
         """Create a copy of this effect.
 
@@ -466,20 +469,34 @@ intensity similarity, stopping at edges and boundaries.</p>
         manualLayout.setContentsMargins(0, 0, 0, 0)
 
         self.lowerThresholdSlider = ctk.ctkSliderWidget()
-        self.lowerThresholdSlider.setToolTip(_("Lower intensity threshold"))
+        self.lowerThresholdSlider.setToolTip(
+            _(
+                "Lower intensity threshold for segmentation.\n\n"
+                "Range automatically adjusts to image intensity (1st-99th percentile).\n"
+                "Voxels with intensity below this value will not be included.\n\n"
+                "Use 'Set from seed' button to set based on clicked location."
+            )
+        )
         self.lowerThresholdSlider.minimum = -2000
         self.lowerThresholdSlider.maximum = 5000
         self.lowerThresholdSlider.value = -100
-        self.lowerThresholdSlider.singleStep = 10
+        self.lowerThresholdSlider.singleStep = 1
         self.lowerThresholdSlider.decimals = 0
         manualLayout.addRow(_("Lower:"), self.lowerThresholdSlider)
 
         self.upperThresholdSlider = ctk.ctkSliderWidget()
-        self.upperThresholdSlider.setToolTip(_("Upper intensity threshold"))
+        self.upperThresholdSlider.setToolTip(
+            _(
+                "Upper intensity threshold for segmentation.\n\n"
+                "Range automatically adjusts to image intensity (1st-99th percentile).\n"
+                "Voxels with intensity above this value will not be included.\n\n"
+                "Use 'Set from seed' button to set based on clicked location."
+            )
+        )
         self.upperThresholdSlider.minimum = -2000
         self.upperThresholdSlider.maximum = 5000
         self.upperThresholdSlider.value = 300
-        self.upperThresholdSlider.singleStep = 10
+        self.upperThresholdSlider.singleStep = 1
         self.upperThresholdSlider.decimals = 0
         manualLayout.addRow(_("Upper:"), self.upperThresholdSlider)
 
@@ -1002,12 +1019,37 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.cache.clear()
         self._createOutlinePipelines()
         self._updateThresholdRanges()
+        # Track current source volume for change detection
+        self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
 
     def deactivate(self):
         """Called when the effect is deselected."""
         self.cache.clear()
         self.isDrawing = False
         self._cleanupOutlinePipelines()
+        self._lastSourceVolumeId = None
+
+    def sourceVolumeNodeChanged(self):
+        """Called when the source volume node changes.
+
+        Updates threshold slider ranges to match the new volume's intensity range.
+        """
+        self._updateThresholdRanges()
+        self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
+        self.cache.invalidate()
+
+    def _getCurrentSourceVolumeId(self):
+        """Get the ID of the current source volume, or None."""
+        try:
+            parameterSetNode = self.scriptedEffect.parameterSetNode()
+            if parameterSetNode is None:
+                return None
+            sourceVolumeNode = parameterSetNode.GetSourceVolumeNode()
+            if sourceVolumeNode is None:
+                return None
+            return sourceVolumeNode.GetID()
+        except Exception:
+            return None
 
     def _createOutlinePipelines(self):
         """Create brush outline pipelines for all slice views."""
@@ -1098,7 +1140,8 @@ intensity similarity, stopping at edges and boundaries.</p>
         """Update threshold slider ranges based on source volume intensity.
 
         Sets slider min/max to the 1st-99th percentile of image intensities
-        for a more meaningful range than hardcoded values.
+        for a more meaningful range than hardcoded values. Also sets
+        appropriate step size and sensible default values.
         """
         try:
             parameterSetNode = self.scriptedEffect.parameterSetNode()
@@ -1114,13 +1157,14 @@ intensity similarity, stopping at edges and boundaries.</p>
                 return
 
             # Compute percentiles for robust range estimation
-            # Use 1st and 99th percentile to exclude outliers
-            p1, p99 = np.percentile(volumeArray, [1, 99])
+            # p1/p99 for slider range, p25/p75 for default values
+            p1, p25, p50, p75, p99 = np.percentile(volumeArray, [1, 25, 50, 75, 99])
 
             # Add small margin for slider usability
             margin = (p99 - p1) * 0.05
             range_min = p1 - margin
             range_max = p99 + margin
+            total_range = range_max - range_min
 
             # Update slider ranges
             self.lowerThresholdSlider.minimum = range_min
@@ -1128,15 +1172,28 @@ intensity similarity, stopping at edges and boundaries.</p>
             self.upperThresholdSlider.minimum = range_min
             self.upperThresholdSlider.maximum = range_max
 
-            # Set reasonable default values (near middle of range)
-            mid = (p1 + p99) / 2
-            quarter = (p99 - p1) / 4
-            self.lowerThresholdSlider.value = mid - quarter
-            self.upperThresholdSlider.value = mid + quarter
+            # Set appropriate step size based on range
+            # Aim for ~200-500 steps across the range
+            step = max(1, total_range / 300)
+            # Round to nice values
+            if step >= 10:
+                step = round(step / 10) * 10
+            elif step >= 1:
+                step = round(step)
+            else:
+                step = round(step, 1)
+
+            self.lowerThresholdSlider.singleStep = step
+            self.upperThresholdSlider.singleStep = step
+
+            # Set default values to interquartile range (25th to 75th percentile)
+            # This captures the "middle 50%" of intensities - a sensible starting point
+            self.lowerThresholdSlider.value = p25
+            self.upperThresholdSlider.value = p75
 
             logging.debug(
                 f"Updated threshold ranges: [{range_min:.1f}, {range_max:.1f}], "
-                f"defaults: [{mid - quarter:.1f}, {mid + quarter:.1f}]"
+                f"step: {step}, defaults (IQR): [{p25:.1f}, {p75:.1f}]"
             )
         except Exception as e:
             logging.warning(f"Could not update threshold ranges: {e}")
