@@ -301,10 +301,34 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backendCombo.setToolTip(_("Computation backend"))
         algorithmLayout.addRow(_("Backend:"), self.backendCombo)
 
-        # Manual threshold controls (for Threshold Brush)
+        # ----- Threshold Brush Settings -----
         self.thresholdGroup = qt.QWidget()
         thresholdLayout = qt.QFormLayout(self.thresholdGroup)
         thresholdLayout.setContentsMargins(0, 0, 0, 0)
+
+        # Auto threshold checkbox
+        self.autoThresholdCheckbox = qt.QCheckBox(_("Auto threshold"))
+        self.autoThresholdCheckbox.setToolTip(
+            _("Automatically compute thresholds using selected method")
+        )
+        self.autoThresholdCheckbox.checked = True
+        thresholdLayout.addRow(self.autoThresholdCheckbox)
+
+        # Threshold method dropdown (visible when auto is checked)
+        self.thresholdMethodCombo = qt.QComboBox()
+        self.thresholdMethodCombo.addItem(_("Otsu"), "otsu")
+        self.thresholdMethodCombo.addItem(_("Huang"), "huang")
+        self.thresholdMethodCombo.addItem(_("Triangle"), "triangle")
+        self.thresholdMethodCombo.addItem(_("Maximum Entropy"), "max_entropy")
+        self.thresholdMethodCombo.addItem(_("IsoData (Intermeans)"), "isodata")
+        self.thresholdMethodCombo.addItem(_("Li"), "li")
+        self.thresholdMethodCombo.setToolTip(_("Automatic threshold computation method"))
+        thresholdLayout.addRow(_("Method:"), self.thresholdMethodCombo)
+
+        # Manual threshold group (visible when auto is unchecked)
+        self.manualThresholdGroup = qt.QWidget()
+        manualLayout = qt.QFormLayout(self.manualThresholdGroup)
+        manualLayout.setContentsMargins(0, 0, 0, 0)
 
         self.lowerThresholdSlider = ctk.ctkSliderWidget()
         self.lowerThresholdSlider.setToolTip(_("Lower intensity threshold"))
@@ -313,7 +337,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.lowerThresholdSlider.value = -100
         self.lowerThresholdSlider.singleStep = 10
         self.lowerThresholdSlider.decimals = 0
-        thresholdLayout.addRow(_("Lower:"), self.lowerThresholdSlider)
+        manualLayout.addRow(_("Lower:"), self.lowerThresholdSlider)
 
         self.upperThresholdSlider = ctk.ctkSliderWidget()
         self.upperThresholdSlider.setToolTip(_("Upper intensity threshold"))
@@ -322,7 +346,28 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.upperThresholdSlider.value = 300
         self.upperThresholdSlider.singleStep = 10
         self.upperThresholdSlider.decimals = 0
-        thresholdLayout.addRow(_("Upper:"), self.upperThresholdSlider)
+        manualLayout.addRow(_("Upper:"), self.upperThresholdSlider)
+
+        # Set from seed button
+        self.setFromSeedButton = qt.QPushButton(_("Set from seed intensity"))
+        self.setFromSeedButton.setToolTip(
+            _("Set thresholds based on intensity at last click location")
+        )
+        manualLayout.addRow(self.setFromSeedButton)
+
+        # Tolerance slider (for set from seed)
+        self.toleranceSlider = ctk.ctkSliderWidget()
+        self.toleranceSlider.setToolTip(_("Tolerance around seed intensity (% of local std dev)"))
+        self.toleranceSlider.minimum = 1
+        self.toleranceSlider.maximum = 100
+        self.toleranceSlider.value = 20
+        self.toleranceSlider.singleStep = 5
+        self.toleranceSlider.decimals = 0
+        self.toleranceSlider.suffix = "%"
+        manualLayout.addRow(_("Tolerance:"), self.toleranceSlider)
+
+        thresholdLayout.addRow(self.manualThresholdGroup)
+        self.manualThresholdGroup.setVisible(False)  # Hidden when auto is checked
 
         algorithmLayout.addRow(self.thresholdGroup)
         self.thresholdGroup.setVisible(False)  # Hidden unless Threshold Brush selected
@@ -335,6 +380,10 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backendCombo.currentIndexChanged.connect(self.onBackendChanged)
         self.lowerThresholdSlider.valueChanged.connect(self.onThresholdChanged)
         self.upperThresholdSlider.valueChanged.connect(self.onThresholdChanged)
+        self.autoThresholdCheckbox.toggled.connect(self.onAutoThresholdChanged)
+        self.thresholdMethodCombo.currentIndexChanged.connect(self.onThresholdMethodChanged)
+        self.setFromSeedButton.clicked.connect(self.onSetFromSeedClicked)
+        self.toleranceSlider.valueChanged.connect(self.onThresholdChanged)
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""
@@ -362,6 +411,32 @@ intensity similarity, stopping at edges and boundaries.</p>
     def onThresholdChanged(self, value):
         """Handle manual threshold slider change."""
         self.cache.invalidate()
+
+    def onAutoThresholdChanged(self, checked):
+        """Toggle between auto and manual threshold modes."""
+        self.thresholdMethodCombo.setVisible(checked)
+        self.manualThresholdGroup.setVisible(not checked)
+        self.cache.invalidate()
+
+    def onThresholdMethodChanged(self, index):
+        """Handle threshold method change."""
+        self.cache.invalidate()
+
+    def onSetFromSeedClicked(self):
+        """Handle set from seed button click."""
+        # Get source volume
+        sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
+        if sourceVolumeNode is None:
+            logging.warning("No source volume selected")
+            return
+
+        # Use last clicked IJK position
+        if self.lastIjk is None:
+            logging.info("Click on the image first to set seed position")
+            return
+
+        volumeArray = slicer.util.arrayFromVolume(sourceVolumeNode)
+        self._setThresholdsFromSeed(volumeArray, self.lastIjk, self.toleranceSlider.value)
 
     def onBackendChanged(self, index):
         """Handle backend selection change."""
@@ -623,6 +698,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             "slice_index": sliceIndex,
             "manual_lower": self.lowerThresholdSlider.value,
             "manual_upper": self.upperThresholdSlider.value,
+            "auto_threshold": self.autoThresholdCheckbox.checked,
+            "threshold_method": self.thresholdMethodCombo.currentData,
         }
 
         # Use cache for drag operations
@@ -898,18 +975,26 @@ intensity similarity, stopping at edges and boundaries.</p>
             return np.zeros_like(roi, dtype=np.uint8)
 
     def _thresholdBrush(self, roi, localSeed, params):
-        """Simple threshold brush using user-defined thresholds.
+        """Threshold brush with auto or manual thresholds.
+
+        Auto mode uses Otsu/Huang/etc to compute threshold, then auto-detects
+        whether seed is in lighter or darker region to decide which side to segment.
 
         Args:
             roi: ROI array.
-            localSeed: Seed point in local coordinates.
-            params: Algorithm parameters including manual_lower and manual_upper.
+            localSeed: Seed point in local coordinates (i, j, k).
+            params: Algorithm parameters including auto_threshold, threshold_method,
+                    manual_lower, and manual_upper.
 
         Returns:
             Binary mask array.
         """
-        lower = params.get("manual_lower", -100)
-        upper = params.get("manual_upper", 300)
+        if params.get("auto_threshold", True):
+            method = params.get("threshold_method", "otsu")
+            lower, upper = self._computeAutoThreshold(roi, localSeed, method)
+        else:
+            lower = params.get("manual_lower", -100)
+            upper = params.get("manual_upper", 300)
 
         # Simple threshold - no connectivity, just intensity range
         mask = ((roi >= lower) & (roi <= upper)).astype(np.uint8)
@@ -941,6 +1026,93 @@ intensity similarity, stopping at edges and boundaries.</p>
         brushMask = distance <= 1.0
 
         return (mask & brushMask).astype(np.uint8)
+
+    def _computeAutoThreshold(self, roi, localSeed, method="otsu"):
+        """Compute automatic threshold using specified method.
+
+        Auto-detects whether to segment above or below threshold based on
+        whether the seed point is in the lighter or darker region.
+
+        Args:
+            roi: ROI array (will use histogram from this region).
+            localSeed: Seed point in local ROI coordinates (i, j, k).
+            method: One of "otsu", "huang", "triangle", "max_entropy", "isodata", "li".
+
+        Returns:
+            Tuple of (lower, upper) thresholds.
+        """
+        sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
+
+        if method == "otsu":
+            filterObj = sitk.OtsuThresholdImageFilter()
+        elif method == "huang":
+            filterObj = sitk.HuangThresholdImageFilter()
+        elif method == "triangle":
+            filterObj = sitk.TriangleThresholdImageFilter()
+        elif method == "max_entropy":
+            filterObj = sitk.MaximumEntropyThresholdImageFilter()
+        elif method == "isodata":
+            filterObj = sitk.IsoDataThresholdImageFilter()
+        elif method == "li":
+            filterObj = sitk.LiThresholdImageFilter()
+        else:
+            filterObj = sitk.OtsuThresholdImageFilter()
+
+        filterObj.SetInsideValue(1)
+        filterObj.SetOutsideValue(0)
+        filterObj.Execute(sitkRoi)
+
+        threshold = filterObj.GetThreshold()
+        data_min, data_max = float(roi.min()), float(roi.max())
+
+        # Auto-detect: check if seed is above or below threshold
+        # localSeed is (i, j, k) = (x, y, z), roi is (z, y, x)
+        seed_intensity = roi[localSeed[2], localSeed[1], localSeed[0]]
+
+        if seed_intensity >= threshold:
+            # Seed is in brighter region - segment above threshold
+            return (threshold, data_max)
+        else:
+            # Seed is in darker region - segment below threshold
+            return (data_min, threshold)
+
+    def _setThresholdsFromSeed(self, volumeArray, seedIjk, tolerancePercent):
+        """Set threshold sliders based on intensity at seed point.
+
+        Args:
+            volumeArray: Full volume array (z, y, x ordering).
+            seedIjk: Seed point (i, j, k).
+            tolerancePercent: Tolerance as percentage of local std dev.
+        """
+        # Get seed intensity (array is z,y,x but seedIjk is i,j,k = x,y,z)
+        seed_intensity = volumeArray[seedIjk[2], seedIjk[1], seedIjk[0]]
+
+        # Compute local statistics in small ROI
+        shape = volumeArray.shape
+        radius = 10  # voxels
+        startZ = max(0, seedIjk[2] - radius)
+        startY = max(0, seedIjk[1] - radius)
+        startX = max(0, seedIjk[0] - radius)
+        endZ = min(shape[0], seedIjk[2] + radius + 1)
+        endY = min(shape[1], seedIjk[1] + radius + 1)
+        endX = min(shape[2], seedIjk[0] + radius + 1)
+
+        roi = volumeArray[startZ:endZ, startY:endY, startX:endX]
+        local_std = np.std(roi)
+
+        # Compute tolerance
+        # Scale factor 2.5 makes 20% tolerance ≈ 0.5 std dev, 100% ≈ 2.5 std dev
+        tolerance = local_std * (tolerancePercent / 100.0) * 2.5
+
+        # Update sliders
+        self.lowerThresholdSlider.value = seed_intensity - tolerance
+        self.upperThresholdSlider.value = seed_intensity + tolerance
+
+        logging.info(
+            f"Set thresholds from seed: intensity={seed_intensity:.1f}, "
+            f"tolerance={tolerance:.1f}, range=[{seed_intensity - tolerance:.1f}, "
+            f"{seed_intensity + tolerance:.1f}]"
+        )
 
     def applyMaskToSegment(self, mask):
         """Apply the computed mask to the current segment.
