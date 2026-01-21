@@ -1,0 +1,20 @@
+# Dependencies for installing into 3D Slicer's Python environment
+# Usage (in Slicer Python console):
+#   pip_install('package-name')
+#
+# For local development OUTSIDE Slicer, use uv instead:
+#   uv sync --dev
+#
+# Note: Core dependencies (numpy, SimpleITK, vtk, scipy) are bundled with Slicer
+
+# Testing (install into Slicer for running tests)
+pytest>=7.0.0
+
+# Optional: For GMM-based intensity analysis
+# Slicer 5.x typically bundles sklearn, check first:
+#   import sklearn  # if ImportError, then install:
+# scikit-learn>=1.0.0
+
+# Optional: GPU acceleration
+# pyopencl  # For OpenCL GPU backend
+# cupy      # For CUDA GPU backend (requires CUDA toolkit)
