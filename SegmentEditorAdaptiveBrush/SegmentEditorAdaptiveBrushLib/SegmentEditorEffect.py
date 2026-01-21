@@ -193,7 +193,7 @@ class SegmentEditorEffect:
         self.isDrawing = False
         self.lastIjk = None
 
-        # Default parameters
+        # Default parameters - Basic
         self.radiusMm = 5.0
         self.edgeSensitivity = 50
         self.thresholdZone = 50  # Inner zone is 50% of brush radius
@@ -202,6 +202,35 @@ class SegmentEditorEffect:
         self.backend = "auto"
         self.sphereMode = False
         self.useThresholdCaching = False  # Disabled by default for accuracy
+
+        # Advanced parameters - Sampling
+        self.gaussianSigma = 0.5  # Sigma for Gaussian distance weighting (0=uniform, 1=strong falloff)
+        self.percentileLow = 5  # Low percentile for percentile method
+        self.percentileHigh = 95  # High percentile for percentile method
+        self.stdMultiplier = 2.0  # Multiplier for mean±std method
+        self.includeZoneInResult = True  # Guarantee inner zone is included
+
+        # Advanced parameters - Geodesic Distance
+        self.geodesicEdgeWeight = 5.0  # Edge weight multiplier (1-20)
+        self.geodesicDistanceScale = 1.0  # Distance threshold scale (0.5-2.0)
+        self.geodesicSmoothing = 0.5  # Pre-smoothing sigma
+
+        # Advanced parameters - Watershed
+        self.watershedGradientScale = 1.0  # Gradient scaling (0.5-3.0)
+        self.watershedSmoothing = 0.5  # Pre-smoothing sigma
+
+        # Advanced parameters - Level Set
+        self.levelSetPropagation = 1.5  # Propagation scaling
+        self.levelSetCurvature = 1.0  # Curvature scaling
+        self.levelSetIterations = 50  # Max iterations
+
+        # Advanced parameters - Region Growing
+        self.regionGrowingMultiplier = 2.0  # Confidence multiplier
+        self.regionGrowingIterations = 4  # Number of iterations
+
+        # Advanced parameters - Morphology
+        self.fillHoles = True  # Fill holes in result
+        self.closingRadius = 1  # Morphological closing radius
 
         # Brush outline visualization - one pipeline per slice view
         self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
@@ -461,6 +490,204 @@ intensity similarity, stopping at edges and boundaries.</p>
         algorithmLayout.addRow(self.thresholdGroup)
         self.thresholdGroup.setVisible(False)  # Hidden unless Threshold Brush selected
 
+        # ----- Advanced Parameters -----
+        advancedCollapsible = ctk.ctkCollapsibleButton()
+        advancedCollapsible.text = _("Advanced Parameters")
+        advancedCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(advancedCollapsible)
+        advancedLayout = qt.QFormLayout(advancedCollapsible)
+
+        # --- Sampling Parameters ---
+        samplingLabel = qt.QLabel(_("<b>Sampling</b>"))
+        advancedLayout.addRow(samplingLabel)
+
+        # Gaussian sigma for distance weighting
+        self.gaussianSigmaSlider = ctk.ctkSliderWidget()
+        self.gaussianSigmaSlider.setToolTip(
+            _(
+                "Gaussian falloff for distance weighting (0=uniform, 1=strong center bias). "
+                "Higher values give more weight to pixels near the cursor."
+            )
+        )
+        self.gaussianSigmaSlider.minimum = 0.0
+        self.gaussianSigmaSlider.maximum = 2.0
+        self.gaussianSigmaSlider.value = self.gaussianSigma
+        self.gaussianSigmaSlider.singleStep = 0.1
+        self.gaussianSigmaSlider.decimals = 2
+        advancedLayout.addRow(_("Gaussian Sigma:"), self.gaussianSigmaSlider)
+
+        # Percentile low
+        self.percentileLowSlider = ctk.ctkSliderWidget()
+        self.percentileLowSlider.setToolTip(_("Low percentile for percentile sampling method"))
+        self.percentileLowSlider.minimum = 0
+        self.percentileLowSlider.maximum = 49
+        self.percentileLowSlider.value = self.percentileLow
+        self.percentileLowSlider.singleStep = 1
+        self.percentileLowSlider.decimals = 0
+        self.percentileLowSlider.suffix = "%"
+        advancedLayout.addRow(_("Percentile Low:"), self.percentileLowSlider)
+
+        # Percentile high
+        self.percentileHighSlider = ctk.ctkSliderWidget()
+        self.percentileHighSlider.setToolTip(_("High percentile for percentile sampling method"))
+        self.percentileHighSlider.minimum = 51
+        self.percentileHighSlider.maximum = 100
+        self.percentileHighSlider.value = self.percentileHigh
+        self.percentileHighSlider.singleStep = 1
+        self.percentileHighSlider.decimals = 0
+        self.percentileHighSlider.suffix = "%"
+        advancedLayout.addRow(_("Percentile High:"), self.percentileHighSlider)
+
+        # Std multiplier
+        self.stdMultiplierSlider = ctk.ctkSliderWidget()
+        self.stdMultiplierSlider.setToolTip(
+            _("Multiplier for mean±std method (higher = wider threshold range)")
+        )
+        self.stdMultiplierSlider.minimum = 0.5
+        self.stdMultiplierSlider.maximum = 5.0
+        self.stdMultiplierSlider.value = self.stdMultiplier
+        self.stdMultiplierSlider.singleStep = 0.1
+        self.stdMultiplierSlider.decimals = 1
+        advancedLayout.addRow(_("Std Multiplier:"), self.stdMultiplierSlider)
+
+        # Include zone checkbox
+        self.includeZoneCheckbox = qt.QCheckBox(_("Guarantee inner zone in result"))
+        self.includeZoneCheckbox.setToolTip(
+            _("Always include the inner threshold zone in the segmentation result")
+        )
+        self.includeZoneCheckbox.checked = self.includeZoneInResult
+        advancedLayout.addRow(self.includeZoneCheckbox)
+
+        # --- Geodesic Distance Parameters ---
+        geodesicLabel = qt.QLabel(_("<b>Geodesic Distance</b>"))
+        advancedLayout.addRow(geodesicLabel)
+
+        self.geodesicEdgeWeightSlider = ctk.ctkSliderWidget()
+        self.geodesicEdgeWeightSlider.setToolTip(
+            _("Edge weight (higher = edges slow propagation more)")
+        )
+        self.geodesicEdgeWeightSlider.minimum = 1.0
+        self.geodesicEdgeWeightSlider.maximum = 20.0
+        self.geodesicEdgeWeightSlider.value = self.geodesicEdgeWeight
+        self.geodesicEdgeWeightSlider.singleStep = 0.5
+        self.geodesicEdgeWeightSlider.decimals = 1
+        advancedLayout.addRow(_("Edge Weight:"), self.geodesicEdgeWeightSlider)
+
+        self.geodesicDistanceScaleSlider = ctk.ctkSliderWidget()
+        self.geodesicDistanceScaleSlider.setToolTip(
+            _("Distance threshold scale (higher = larger regions)")
+        )
+        self.geodesicDistanceScaleSlider.minimum = 0.5
+        self.geodesicDistanceScaleSlider.maximum = 3.0
+        self.geodesicDistanceScaleSlider.value = self.geodesicDistanceScale
+        self.geodesicDistanceScaleSlider.singleStep = 0.1
+        self.geodesicDistanceScaleSlider.decimals = 1
+        advancedLayout.addRow(_("Distance Scale:"), self.geodesicDistanceScaleSlider)
+
+        self.geodesicSmoothingSlider = ctk.ctkSliderWidget()
+        self.geodesicSmoothingSlider.setToolTip(_("Pre-smoothing sigma (0=none)"))
+        self.geodesicSmoothingSlider.minimum = 0.0
+        self.geodesicSmoothingSlider.maximum = 2.0
+        self.geodesicSmoothingSlider.value = self.geodesicSmoothing
+        self.geodesicSmoothingSlider.singleStep = 0.1
+        self.geodesicSmoothingSlider.decimals = 1
+        advancedLayout.addRow(_("Smoothing:"), self.geodesicSmoothingSlider)
+
+        # --- Watershed Parameters ---
+        watershedLabel = qt.QLabel(_("<b>Watershed</b>"))
+        advancedLayout.addRow(watershedLabel)
+
+        self.watershedGradientScaleSlider = ctk.ctkSliderWidget()
+        self.watershedGradientScaleSlider.setToolTip(_("Gradient scaling factor"))
+        self.watershedGradientScaleSlider.minimum = 0.5
+        self.watershedGradientScaleSlider.maximum = 3.0
+        self.watershedGradientScaleSlider.value = self.watershedGradientScale
+        self.watershedGradientScaleSlider.singleStep = 0.1
+        self.watershedGradientScaleSlider.decimals = 1
+        advancedLayout.addRow(_("Gradient Scale:"), self.watershedGradientScaleSlider)
+
+        self.watershedSmoothingSlider = ctk.ctkSliderWidget()
+        self.watershedSmoothingSlider.setToolTip(_("Pre-smoothing sigma"))
+        self.watershedSmoothingSlider.minimum = 0.0
+        self.watershedSmoothingSlider.maximum = 2.0
+        self.watershedSmoothingSlider.value = self.watershedSmoothing
+        self.watershedSmoothingSlider.singleStep = 0.1
+        self.watershedSmoothingSlider.decimals = 1
+        advancedLayout.addRow(_("Smoothing:"), self.watershedSmoothingSlider)
+
+        # --- Level Set Parameters ---
+        levelSetLabel = qt.QLabel(_("<b>Level Set</b>"))
+        advancedLayout.addRow(levelSetLabel)
+
+        self.levelSetPropagationSlider = ctk.ctkSliderWidget()
+        self.levelSetPropagationSlider.setToolTip(_("Propagation scaling (expansion force)"))
+        self.levelSetPropagationSlider.minimum = 0.5
+        self.levelSetPropagationSlider.maximum = 3.0
+        self.levelSetPropagationSlider.value = self.levelSetPropagation
+        self.levelSetPropagationSlider.singleStep = 0.1
+        self.levelSetPropagationSlider.decimals = 1
+        advancedLayout.addRow(_("Propagation:"), self.levelSetPropagationSlider)
+
+        self.levelSetCurvatureSlider = ctk.ctkSliderWidget()
+        self.levelSetCurvatureSlider.setToolTip(_("Curvature scaling (smoothness)"))
+        self.levelSetCurvatureSlider.minimum = 0.0
+        self.levelSetCurvatureSlider.maximum = 3.0
+        self.levelSetCurvatureSlider.value = self.levelSetCurvature
+        self.levelSetCurvatureSlider.singleStep = 0.1
+        self.levelSetCurvatureSlider.decimals = 1
+        advancedLayout.addRow(_("Curvature:"), self.levelSetCurvatureSlider)
+
+        self.levelSetIterationsSlider = ctk.ctkSliderWidget()
+        self.levelSetIterationsSlider.setToolTip(_("Maximum iterations"))
+        self.levelSetIterationsSlider.minimum = 10
+        self.levelSetIterationsSlider.maximum = 200
+        self.levelSetIterationsSlider.value = self.levelSetIterations
+        self.levelSetIterationsSlider.singleStep = 10
+        self.levelSetIterationsSlider.decimals = 0
+        advancedLayout.addRow(_("Iterations:"), self.levelSetIterationsSlider)
+
+        # --- Region Growing Parameters ---
+        regionGrowingLabel = qt.QLabel(_("<b>Region Growing</b>"))
+        advancedLayout.addRow(regionGrowingLabel)
+
+        self.regionGrowingMultiplierSlider = ctk.ctkSliderWidget()
+        self.regionGrowingMultiplierSlider.setToolTip(
+            _("Confidence multiplier (higher = grows more)")
+        )
+        self.regionGrowingMultiplierSlider.minimum = 0.5
+        self.regionGrowingMultiplierSlider.maximum = 5.0
+        self.regionGrowingMultiplierSlider.value = self.regionGrowingMultiplier
+        self.regionGrowingMultiplierSlider.singleStep = 0.1
+        self.regionGrowingMultiplierSlider.decimals = 1
+        advancedLayout.addRow(_("Multiplier:"), self.regionGrowingMultiplierSlider)
+
+        self.regionGrowingIterationsSlider = ctk.ctkSliderWidget()
+        self.regionGrowingIterationsSlider.setToolTip(_("Number of growing iterations"))
+        self.regionGrowingIterationsSlider.minimum = 1
+        self.regionGrowingIterationsSlider.maximum = 10
+        self.regionGrowingIterationsSlider.value = self.regionGrowingIterations
+        self.regionGrowingIterationsSlider.singleStep = 1
+        self.regionGrowingIterationsSlider.decimals = 0
+        advancedLayout.addRow(_("Iterations:"), self.regionGrowingIterationsSlider)
+
+        # --- Morphology Parameters ---
+        morphLabel = qt.QLabel(_("<b>Post-processing</b>"))
+        advancedLayout.addRow(morphLabel)
+
+        self.fillHolesCheckbox = qt.QCheckBox(_("Fill holes in result"))
+        self.fillHolesCheckbox.setToolTip(_("Apply hole filling to the segmentation"))
+        self.fillHolesCheckbox.checked = self.fillHoles
+        advancedLayout.addRow(self.fillHolesCheckbox)
+
+        self.closingRadiusSlider = ctk.ctkSliderWidget()
+        self.closingRadiusSlider.setToolTip(_("Morphological closing radius (0=disabled)"))
+        self.closingRadiusSlider.minimum = 0
+        self.closingRadiusSlider.maximum = 5
+        self.closingRadiusSlider.value = self.closingRadius
+        self.closingRadiusSlider.singleStep = 1
+        self.closingRadiusSlider.decimals = 0
+        advancedLayout.addRow(_("Closing Radius:"), self.closingRadiusSlider)
+
         # Connect signals
         self.radiusSlider.valueChanged.connect(self.onRadiusChanged)
         self.sensitivitySlider.valueChanged.connect(self.onSensitivityChanged)
@@ -476,6 +703,25 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.thresholdMethodCombo.currentIndexChanged.connect(self.onThresholdMethodChanged)
         self.setFromSeedButton.clicked.connect(self.onSetFromSeedClicked)
         self.toleranceSlider.valueChanged.connect(self.onThresholdChanged)
+
+        # Advanced parameter signals
+        self.gaussianSigmaSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.percentileLowSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.percentileHighSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.stdMultiplierSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.includeZoneCheckbox.toggled.connect(self.onAdvancedParamChanged)
+        self.geodesicEdgeWeightSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.geodesicDistanceScaleSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.geodesicSmoothingSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.watershedGradientScaleSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.watershedSmoothingSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.levelSetPropagationSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.levelSetCurvatureSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.levelSetIterationsSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.regionGrowingMultiplierSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.regionGrowingIterationsSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.fillHolesCheckbox.toggled.connect(self.onAdvancedParamChanged)
+        self.closingRadiusSlider.valueChanged.connect(self.onAdvancedParamChanged)
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""
@@ -495,6 +741,28 @@ intensity similarity, stopping at edges and boundaries.</p>
     def onSamplingMethodChanged(self, index):
         """Handle sampling method change."""
         self.samplingMethod = self.samplingMethodCombo.currentData
+        self.cache.invalidate()
+
+    def onAdvancedParamChanged(self, value=None):
+        """Handle any advanced parameter change."""
+        # Update all advanced parameters from UI
+        self.gaussianSigma = self.gaussianSigmaSlider.value
+        self.percentileLow = self.percentileLowSlider.value
+        self.percentileHigh = self.percentileHighSlider.value
+        self.stdMultiplier = self.stdMultiplierSlider.value
+        self.includeZoneInResult = self.includeZoneCheckbox.checked
+        self.geodesicEdgeWeight = self.geodesicEdgeWeightSlider.value
+        self.geodesicDistanceScale = self.geodesicDistanceScaleSlider.value
+        self.geodesicSmoothing = self.geodesicSmoothingSlider.value
+        self.watershedGradientScale = self.watershedGradientScaleSlider.value
+        self.watershedSmoothing = self.watershedSmoothingSlider.value
+        self.levelSetPropagation = self.levelSetPropagationSlider.value
+        self.levelSetCurvature = self.levelSetCurvatureSlider.value
+        self.levelSetIterations = int(self.levelSetIterationsSlider.value)
+        self.regionGrowingMultiplier = self.regionGrowingMultiplierSlider.value
+        self.regionGrowingIterations = int(self.regionGrowingIterationsSlider.value)
+        self.fillHoles = self.fillHolesCheckbox.checked
+        self.closingRadius = int(self.closingRadiusSlider.value)
         self.cache.invalidate()
 
     def onSphereModeChanged(self, checked):
@@ -851,10 +1119,11 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Build parameters
         params = {
+            # Basic
             "radius_mm": self.radiusMm,
             "radius_voxels": radiusVoxels,
             "edge_sensitivity": self.edgeSensitivity / 100.0,
-            "threshold_zone": self.thresholdZone / 100.0,  # Inner zone as fraction
+            "threshold_zone": self.thresholdZone / 100.0,
             "sampling_method": self.samplingMethod,
             "algorithm": self.algorithm,
             "backend": self.backend,
@@ -864,6 +1133,29 @@ intensity similarity, stopping at edges and boundaries.</p>
             "manual_upper": self.upperThresholdSlider.value,
             "auto_threshold": self.autoThresholdCheckbox.checked,
             "threshold_method": self.thresholdMethodCombo.currentData,
+            # Advanced - Sampling
+            "gaussian_sigma": self.gaussianSigma,
+            "percentile_low": self.percentileLow,
+            "percentile_high": self.percentileHigh,
+            "std_multiplier": self.stdMultiplier,
+            "include_zone_in_result": self.includeZoneInResult,
+            # Advanced - Geodesic
+            "geodesic_edge_weight": self.geodesicEdgeWeight,
+            "geodesic_distance_scale": self.geodesicDistanceScale,
+            "geodesic_smoothing": self.geodesicSmoothing,
+            # Advanced - Watershed
+            "watershed_gradient_scale": self.watershedGradientScale,
+            "watershed_smoothing": self.watershedSmoothing,
+            # Advanced - Level Set
+            "level_set_propagation": self.levelSetPropagation,
+            "level_set_curvature": self.levelSetCurvature,
+            "level_set_iterations": self.levelSetIterations,
+            # Advanced - Region Growing
+            "region_growing_multiplier": self.regionGrowingMultiplier,
+            "region_growing_iterations": self.regionGrowingIterations,
+            # Advanced - Morphology
+            "fill_holes": self.fillHoles,
+            "closing_radius": self.closingRadius,
         }
 
         # Use cache for drag operations
@@ -922,9 +1214,35 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Adaptive algorithms use edges to stop earlier, but should never exceed brush radius
         mask = self._applyBrushMask(mask, localSeed, params["radius_voxels"])
 
-        # Ensure inner zone (threshold zone) is included in result
-        inner_zone_mask = self._createInnerZoneMask(roi.shape, localSeed, params)
-        mask = mask | inner_zone_mask
+        # Apply morphological operations based on advanced parameters
+        fill_holes = params.get("fill_holes", True)
+        closing_radius = params.get("closing_radius", 1)
+
+        if np.any(mask) and (fill_holes or closing_radius > 0):
+            maskSitk = sitk.GetImageFromArray(mask)
+
+            # Fill holes inside the segmentation
+            if fill_holes:
+                try:
+                    maskSitk = sitk.BinaryFillhole(maskSitk)
+                except Exception:
+                    pass  # Skip if fillhole fails
+
+            # Close small gaps (morphological closing)
+            if closing_radius > 0:
+                try:
+                    kernel_size = [int(closing_radius)] * 3
+                    maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, kernel_size)
+                except Exception:
+                    pass  # Skip if closing fails
+
+            mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
+
+        # Ensure inner zone (threshold zone) is included in result if enabled
+        include_zone = params.get("include_zone_in_result", True)
+        if include_zone:
+            inner_zone_mask = self._createInnerZoneMask(roi.shape, localSeed, params)
+            mask = mask | inner_zone_mask
 
         # Expand back to full volume size
         fullMask = np.zeros_like(volumeArray, dtype=np.uint8)
@@ -1012,30 +1330,38 @@ intensity similarity, stopping at edges and boundaries.</p>
             roi: ROI array.
             localSeed: Seed point in local coordinates.
             thresholds: Intensity thresholds.
-            params: Algorithm parameters.
+            params: Algorithm parameters including watershed_gradient_scale
+                    and watershed_smoothing.
 
         Returns:
             Binary mask array.
         """
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
 
-        # Smooth the image slightly to reduce noise
-        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
+        # Advanced parameters
+        watershed_gradient_scale = params.get("watershed_gradient_scale", 1.0)
+        watershed_smoothing = params.get("watershed_smoothing", 0.5)
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+
+        # Smooth the image to reduce noise - user-controllable
+        if watershed_smoothing > 0.01:
+            smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=watershed_smoothing)
+        else:
+            smoothed = sitkRoi
 
         # Compute gradient magnitude for watershed
         gradient = sitk.GradientMagnitude(smoothed)
         gradArray = sitk.GetArrayFromImage(gradient)
 
         # Normalize gradient to 0-255 range
-        # Edge sensitivity controls how much gradient affects the watershed
-        # High sensitivity = edges are more important = smoother boundaries
-        # Low sensitivity = edges less important = more permissive
-        edge_sensitivity = params.get("edge_sensitivity", 0.5)
         gradMax = np.percentile(gradArray, 98) + 1e-8
 
-        # Linear scaling that works: sensitivity 0->0.5, 1.0->2.0
-        gradient_scale = 0.5 + 1.5 * edge_sensitivity
-        gradArray = np.clip(gradArray / gradMax * 255 * gradient_scale, 0, 255).astype(np.float32)
+        # Combine user-controllable gradient_scale with edge_sensitivity
+        # gradient_scale is a base multiplier, edge_sensitivity fine-tunes it
+        effective_scale = watershed_gradient_scale * (0.5 + 1.5 * edge_sensitivity)
+        gradArray = np.clip(gradArray / gradMax * 255 * effective_scale, 0, 255).astype(
+            np.float32
+        )
 
         gradient = sitk.GetImageFromArray(gradArray)
 
@@ -1085,7 +1411,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             roi: ROI array.
             localSeed: Seed point in local coordinates.
             thresholds: Intensity thresholds.
-            params: Algorithm parameters.
+            params: Algorithm parameters including level_set_propagation,
+                    level_set_curvature, and level_set_iterations.
 
         Returns:
             Binary mask array.
@@ -1093,6 +1420,11 @@ intensity similarity, stopping at edges and boundaries.</p>
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
 
         edge_sensitivity = params.get("edge_sensitivity", 0.5)
+
+        # Advanced parameters
+        level_set_propagation = params.get("level_set_propagation", 1.5)
+        level_set_curvature = params.get("level_set_curvature", 1.0)
+        level_set_iterations = params.get("level_set_iterations", 50)
 
         # Use ThresholdSegmentationLevelSetImageFilter which is more reliable
         # It grows/shrinks based on whether pixels are in threshold range
@@ -1121,14 +1453,15 @@ intensity similarity, stopping at edges and boundaries.</p>
 
             # Propagation: positive = grow into threshold region
             # Curvature: smooths the boundary
-            # Higher edge sensitivity = more curvature smoothing, less propagation
-            prop_scale = 1.0 + 1.0 * (1.0 - edge_sensitivity)  # 1.0-2.0
-            curv_scale = 0.5 + 1.5 * edge_sensitivity  # 0.5-2.0
+            # Combine user params with edge_sensitivity for fine control
+            # Higher edge sensitivity = more curvature, less propagation
+            effective_prop = level_set_propagation * (1.0 - 0.5 * edge_sensitivity)
+            effective_curv = level_set_curvature * (0.5 + edge_sensitivity)
 
-            lsFilter.SetPropagationScaling(prop_scale)
-            lsFilter.SetCurvatureScaling(curv_scale)
+            lsFilter.SetPropagationScaling(effective_prop)
+            lsFilter.SetCurvatureScaling(effective_curv)
             lsFilter.SetMaximumRMSError(0.02)
-            lsFilter.SetNumberOfIterations(50)
+            lsFilter.SetNumberOfIterations(int(level_set_iterations))
 
             levelSet = lsFilter.Execute(seedImage, smoothed)
 
@@ -1148,7 +1481,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             roi: ROI array.
             localSeed: Seed point in local coordinates.
             thresholds: Intensity thresholds.
-            params: Algorithm parameters.
+            params: Algorithm parameters including region_growing_multiplier
+                    and region_growing_iterations.
 
         Returns:
             Binary mask array.
@@ -1157,19 +1491,22 @@ intensity similarity, stopping at edges and boundaries.</p>
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
         sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
 
-        # Scale multiplier with edge sensitivity
-        # sensitivity=0.0 -> multiplier=3.0 (permissive, grows more)
-        # sensitivity=0.5 -> multiplier=2.0 (moderate)
-        # sensitivity=1.0 -> multiplier=1.0 (strict, grows less)
+        # Advanced parameters
+        region_growing_multiplier = params.get("region_growing_multiplier", 2.0)
+        region_growing_iterations = params.get("region_growing_iterations", 4)
         edge_sensitivity = params.get("edge_sensitivity", 0.5)
-        multiplier = 3.0 - 2.0 * edge_sensitivity  # Linear: 3.0 to 1.0
+
+        # Combine user multiplier with edge sensitivity
+        # Higher sensitivity = tighter bounds (smaller effective multiplier)
+        effective_multiplier = region_growing_multiplier * (1.0 - 0.5 * edge_sensitivity)
+        effective_multiplier = max(0.5, effective_multiplier)  # Keep minimum multiplier
 
         try:
             result = sitk.ConfidenceConnected(
                 sitkRoi,
                 seedList=[sitkSeed],
-                numberOfIterations=4,
-                multiplier=multiplier,
+                numberOfIterations=int(region_growing_iterations),
+                multiplier=effective_multiplier,
                 initialNeighborhoodRadius=2,
                 replaceValue=1,
             )
@@ -1233,14 +1570,16 @@ intensity similarity, stopping at edges and boundaries.</p>
     def _geodesicDistance(self, roi, localSeed, thresholds, params):
         """Geodesic distance-based segmentation.
 
-        Combines spatial distance from seed with intensity gradient penalty.
-        Fast and produces natural-looking boundaries that follow image edges.
+        Combines spatial distance from seed with intensity gradient penalty
+        and intensity similarity weighting. Works better for narrow segments
+        by incorporating intensity constraints into the speed function.
 
         Args:
             roi: ROI array.
             localSeed: Seed point in local coordinates (i, j, k).
             thresholds: Intensity thresholds (used for initial mask).
-            params: Algorithm parameters.
+            params: Algorithm parameters including geodesic_edge_weight,
+                    geodesic_distance_scale, and geodesic_smoothing.
 
         Returns:
             Binary mask array.
@@ -1253,8 +1592,21 @@ intensity similarity, stopping at edges and boundaries.</p>
         radius_voxels = params.get("radius_voxels", [10, 10, 10])
         avg_radius = np.mean(radius_voxels)
 
-        # Smooth slightly to reduce noise
-        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
+        # Advanced parameters
+        geodesic_edge_weight = params.get("geodesic_edge_weight", 5.0)
+        geodesic_distance_scale = params.get("geodesic_distance_scale", 1.0)
+        geodesic_smoothing = params.get("geodesic_smoothing", 0.5)
+
+        # Smooth to reduce noise - user-controllable smoothing
+        if geodesic_smoothing > 0.01:
+            smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=geodesic_smoothing)
+        else:
+            smoothed = sitkRoi
+
+        smoothedArray = sitk.GetArrayFromImage(smoothed)
+
+        # Get seed intensity for intensity similarity computation
+        seed_intensity = roi[localSeed[2], localSeed[1], localSeed[0]]
 
         # Compute gradient magnitude
         gradient = sitk.GradientMagnitude(smoothed)
@@ -1264,14 +1616,28 @@ intensity similarity, stopping at edges and boundaries.</p>
         gradMax = np.percentile(gradArray, 95) + 1e-8
         gradNorm = gradArray / gradMax
 
-        # Create speed image: high speed in homogeneous regions, low at edges
-        # Edge weight controls how much edges slow down propagation
-        # Higher sensitivity = edges matter more = slower at edges
-        edge_weight = 1.0 + 9.0 * edge_sensitivity  # 1-10
-        speedArray = 1.0 / (1.0 + gradNorm * edge_weight)
+        # Create gradient-based speed: high speed in homogeneous regions
+        effective_edge_weight = geodesic_edge_weight * (0.5 + edge_sensitivity)
+        gradientSpeed = 1.0 / (1.0 + gradNorm * effective_edge_weight)
 
-        # Ensure minimum speed to prevent infinite distances
-        speedArray = np.maximum(speedArray, 0.01)
+        # Create intensity similarity speed: high speed when similar to seed
+        # This helps narrow segments stay within intensity bounds
+        intensity_std = max(np.std(smoothedArray), 1.0)
+        intensity_diff = np.abs(smoothedArray - seed_intensity) / intensity_std
+        # Sigmoid-like falloff: high speed (1.0) when similar, low when different
+        intensity_weight = 2.0 + 3.0 * edge_sensitivity  # 2-5
+        intensitySpeed = 1.0 / (1.0 + intensity_diff * intensity_weight)
+
+        # Combine speeds: use geometric mean for balanced effect
+        # This ensures narrow segments don't leak into dissimilar intensities
+        speedArray = np.sqrt(gradientSpeed * intensitySpeed)
+
+        # Pre-mask by intensity threshold to prevent any propagation outside bounds
+        intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+        speedArray = speedArray * intensity_mask
+
+        # Ensure minimum speed in valid regions to prevent infinite distances
+        speedArray = np.where(intensity_mask, np.maximum(speedArray, 0.01), 0.0)
         speed = sitk.GetImageFromArray(speedArray.astype(np.float32))
 
         # Run Fast Marching to compute geodesic distance from seed
@@ -1287,21 +1653,26 @@ intensity similarity, stopping at edges and boundaries.</p>
             distArray = sitk.GetArrayFromImage(distance)
 
             # Threshold at radius to get mask
-            # Scale threshold by edge sensitivity - higher sensitivity = tighter
-            dist_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)  # 1.0-1.5x radius
+            # distance_scale allows user to expand/contract the result
+            # Higher sensitivity = tighter boundary
+            base_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)
+            dist_threshold = base_threshold * geodesic_distance_scale
             mask = (distArray < dist_threshold).astype(np.uint8)
 
-            # Clean up with morphological operations - fill holes and close gaps
-            maskSitk = sitk.GetImageFromArray(mask)
-            # Fill holes inside the segmentation
-            maskSitk = sitk.BinaryFillhole(maskSitk)
-            # Close small gaps
-            maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
-            mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
-
-            # Also apply intensity threshold for additional safety
-            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+            # Final intensity threshold (should already be satisfied but for safety)
             mask = mask & intensity_mask.astype(np.uint8)
+
+            # Ensure result is connected to seed using connected components
+            # This is crucial for narrow segments to avoid disconnected blobs
+            if np.any(mask):
+                sitkMask = sitk.GetImageFromArray(mask)
+                try:
+                    connected = sitk.ConnectedThreshold(
+                        sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
+                    )
+                    mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
+                except Exception:
+                    pass  # Keep original mask if connectivity check fails
 
             return mask
 
@@ -1327,7 +1698,6 @@ intensity similarity, stopping at edges and boundaries.</p>
             Binary mask array.
         """
         edge_sensitivity = params.get("edge_sensitivity", 0.5)
-        radius_voxels = params.get("radius_voxels", [10, 10, 10])
 
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
         sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
@@ -1368,7 +1738,6 @@ intensity similarity, stopping at edges and boundaries.</p>
         sitkWeighted = sitk.GetImageFromArray(weighted_roi)
 
         # Adjust thresholds for weighted image
-        weighted_seed = weighted_roi[localSeed[2], localSeed[1], localSeed[0]]
         weight_at_seed = weight[localSeed[2], localSeed[1], localSeed[0]]
 
         if weight_at_seed > 0.1:
@@ -1431,10 +1800,14 @@ intensity similarity, stopping at edges and boundaries.</p>
     def _computeZoneThresholds(self, roi, localSeed, params):
         """Compute intensity thresholds from the inner threshold zone.
 
+        Uses Gaussian distance weighting so points closer to the cursor have
+        more influence on the threshold computation than points further away.
+
         Args:
             roi: ROI array (z, y, x).
             localSeed: Seed point in local coordinates (i, j, k).
-            params: Parameters including threshold_zone and sampling_method.
+            params: Parameters including threshold_zone, sampling_method, and
+                    advanced parameters like gaussian_sigma, percentile_low, etc.
 
         Returns:
             Dict with 'lower' and 'upper' thresholds, or None to use default.
@@ -1442,52 +1815,96 @@ intensity similarity, stopping at edges and boundaries.</p>
         threshold_zone = params.get("threshold_zone", 0.5)
         sampling_method = params.get("sampling_method", "mean_std")
         radius_voxels = params.get("radius_voxels", [10, 10, 10])
-        edge_sensitivity = params.get("edge_sensitivity", 0.5)
 
-        # Create mask for inner zone
+        # Advanced parameters with defaults
+        gaussian_sigma = params.get("gaussian_sigma", 0.5)
+        percentile_low = params.get("percentile_low", 5)
+        percentile_high = params.get("percentile_high", 95)
+        std_multiplier = params.get("std_multiplier", 2.0)
+
+        # Create coordinate grids for the ROI
         shape = roi.shape
         z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
 
         # Zone radius is threshold_zone fraction of brush radius
         zone_radius = [r * threshold_zone for r in radius_voxels]
 
+        # Compute normalized distance from seed (0 at center, 1 at zone boundary)
         dx = (x - localSeed[0]) / max(zone_radius[0], 0.1)
         dy = (y - localSeed[1]) / max(zone_radius[1], 0.1)
         dz = (z - localSeed[2]) / max(zone_radius[2], 0.1)
         distance = np.sqrt(dx**2 + dy**2 + dz**2)
         zone_mask = distance <= 1.0
 
-        # Extract intensities from zone
+        # Compute Gaussian weights based on distance from seed
+        # sigma controls how quickly weight falls off with distance
+        # weight = exp(-distance^2 / (2 * sigma^2))
+        # At distance=0: weight=1.0, at distance=sigma: weight~0.61
+        weights = np.exp(-(distance**2) / (2 * gaussian_sigma**2))
+        weights = weights * zone_mask  # Zero outside zone
+
+        # Flatten for weighted computations
         zone_intensities = roi[zone_mask].astype(np.float64)
+        zone_weights = weights[zone_mask]
 
         if len(zone_intensities) < 5:
             return None  # Not enough samples, use default
 
+        # Normalize weights to sum to 1
+        weight_sum = np.sum(zone_weights)
+        if weight_sum < 1e-10:
+            return None
+        normalized_weights = zone_weights / weight_sum
+
         # Compute thresholds based on sampling method
         if sampling_method == "mean_std":
-            mean_val = np.mean(zone_intensities)
-            std_val = np.std(zone_intensities)
-            # Multiplier scales with inverse of edge sensitivity
-            # Low sensitivity = wide range, high sensitivity = narrow range
-            multiplier = 3.0 - 2.0 * edge_sensitivity  # 1.0 to 3.0
-            lower = mean_val - multiplier * std_val
-            upper = mean_val + multiplier * std_val
+            # Weighted mean and std
+            weighted_mean = np.sum(zone_intensities * normalized_weights)
+            weighted_variance = np.sum(
+                normalized_weights * (zone_intensities - weighted_mean) ** 2
+            )
+            weighted_std = np.sqrt(weighted_variance)
+
+            lower = weighted_mean - std_multiplier * weighted_std
+            upper = weighted_mean + std_multiplier * weighted_std
 
         elif sampling_method == "percentile":
-            # Use 5th to 95th percentile, narrowing with edge sensitivity
-            low_pct = 5 + 10 * edge_sensitivity  # 5% to 15%
-            high_pct = 95 - 10 * edge_sensitivity  # 85% to 95%
-            lower = np.percentile(zone_intensities, low_pct)
-            upper = np.percentile(zone_intensities, high_pct)
+            # For weighted percentile, we use the weighted quantile algorithm
+            # Sort by intensity
+            sorted_indices = np.argsort(zone_intensities)
+            sorted_intensities = zone_intensities[sorted_indices]
+            sorted_weights = normalized_weights[sorted_indices]
+
+            # Cumulative weights
+            cumulative_weights = np.cumsum(sorted_weights)
+
+            # Find intensities at specified percentiles
+            low_target = percentile_low / 100.0
+            high_target = percentile_high / 100.0
+
+            # Find where cumulative weight crosses the target
+            low_idx = np.searchsorted(cumulative_weights, low_target)
+            high_idx = np.searchsorted(cumulative_weights, high_target)
+
+            # Clamp indices
+            low_idx = min(low_idx, len(sorted_intensities) - 1)
+            high_idx = min(high_idx, len(sorted_intensities) - 1)
+
+            lower = sorted_intensities[low_idx]
+            upper = sorted_intensities[high_idx]
 
         elif sampling_method == "minmax":
-            lower = np.min(zone_intensities)
-            upper = np.max(zone_intensities)
-            # Optionally narrow the range slightly with edge sensitivity
-            range_val = upper - lower
-            margin = range_val * 0.1 * edge_sensitivity
-            lower += margin
-            upper -= margin
+            # For min/max, we use weighted extremes (values with significant weight)
+            # Filter to significant weights (>1% of max weight)
+            significant_mask = zone_weights > 0.01 * np.max(zone_weights)
+            significant_intensities = roi[zone_mask][significant_mask]
+
+            if len(significant_intensities) < 2:
+                lower = np.min(zone_intensities)
+                upper = np.max(zone_intensities)
+            else:
+                lower = np.min(significant_intensities)
+                upper = np.max(significant_intensities)
 
         else:
             return None
