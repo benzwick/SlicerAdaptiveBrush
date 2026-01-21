@@ -2,7 +2,32 @@
 
 ## Status
 
-Accepted
+Accepted (Infrastructure Complete, Optimization Pending)
+
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| PerformanceCache class | Complete | Structure and interface ready |
+| Gradient cache fields | Scaffolded | Fields exist, not actively used |
+| ROI cache fields | Scaffolded | Fields exist, not actively used |
+| Threshold cache | Partial | Computed fresh each time |
+| Preview mode | Not started | Full resolution always computed |
+| Cache statistics | Complete | Logging infrastructure ready |
+| Cache invalidation | Complete | Triggers on parameter changes |
+
+### Current Behavior
+
+The cache currently:
+- Times each brush computation (for performance monitoring)
+- Computes fresh thresholds for each point
+- Invalidates on parameter changes (radius, sensitivity, algorithm)
+- Clears state on mouse release
+
+The following optimizations are designed but not active:
+- Gradient magnitude caching across slice
+- ROI reuse when seed moves within cached region
+- Preview mode during drag operations
 
 ## Context
 
@@ -16,7 +41,7 @@ Key observations:
 
 ## Decision
 
-Implement a tiered caching strategy:
+Implement a tiered caching strategy with infrastructure ready for optimization:
 
 ### Tier 1: Gradient Cache (Long-lived)
 
@@ -105,21 +130,83 @@ Mouse Release:
 └── Keep Tier 1 cache
 ```
 
+## Current Implementation
+
+```python
+class PerformanceCache:
+    """Cache for brush computations during drag operations.
+
+    Current implementation provides the interface and invalidation logic.
+    Actual caching optimization is pending.
+    """
+
+    def __init__(self):
+        # Cache structures (ready for optimization)
+        self._gradient_cache = None
+        self._gradient_slice = None
+        self._roi_cache = None
+        self._roi_bounds = None
+        self._thresholds = None
+
+        # Statistics
+        self._compute_times = []
+
+    def computeOrGetCached(self, volumeArray, seedIjk, params,
+                           intensityAnalyzer, computeFunc):
+        """Compute result, using cache when valid.
+
+        Currently computes fresh each time. Caching logic is scaffolded
+        but not active.
+        """
+        start_time = time.time()
+
+        # Get thresholds (computed fresh currently)
+        thresholds = self._getOrComputeThresholds(
+            volumeArray, seedIjk, params, intensityAnalyzer
+        )
+
+        # Compute result (no caching currently)
+        result = computeFunc(volumeArray, seedIjk, params, thresholds)
+
+        elapsed = time.time() - start_time
+        self._compute_times.append(elapsed)
+
+        return result
+
+    def invalidate(self):
+        """Clear cache on parameter changes."""
+        self._thresholds = None
+        self._roi_cache = None
+
+    def onMouseRelease(self):
+        """Clear per-stroke cache."""
+        self._roi_cache = None
+        self._roi_bounds = None
+```
+
 ## Consequences
 
 ### Positive
 
-- **Smooth drag performance** (< 30ms per frame with caching)
-- **Memory-efficient** (only caches what's needed)
-- **Graceful degradation** (preview mode when cache misses)
-- **Seamless transitions** between cached and computed results
+- **Infrastructure ready**: Cache structure in place for optimization
+- **Clean interface**: `computeOrGetCached` abstracts caching details
+- **Invalidation working**: Parameters changes clear cache correctly
+- **Statistics collection**: Performance data available for analysis
 
 ### Negative
 
-- **Added complexity** for cache management
-- **Potential for stale cache bugs** if invalidation is wrong
-- **Memory pressure** on low-end systems with large volumes
-- **Preview may differ slightly** from final result
+- **Not optimized yet**: Full computation on every point
+- **Drag may lag**: No preview mode for fast feedback
+- **Memory not utilized**: Cache structures allocated but unused
+
+### Optimization Path
+
+When performance optimization is needed:
+
+1. **Enable gradient caching**: Reuse gradient between points on same slice
+2. **Enable ROI caching**: Reuse watershed results for nearby seeds
+3. **Add preview mode**: Downsample during drag, full resolution on release
+4. **Profile and tune**: Use collected statistics to identify bottlenecks
 
 ## Cache Statistics (Debug Mode)
 
@@ -146,31 +233,6 @@ class CacheStats:
 | ROI (100x100x10 region) | 4 MB | Until drag ends |
 | Preview mask | 0.5 MB | Single frame |
 | **Total (typical)** | **~12 MB** | |
-
-## Implementation
-
-```python
-class PerformanceCache:
-    def __init__(self):
-        self.gradient_cache = GradientCache()
-        self.roi_cache = ROICache()
-        self.stats = CacheStats()
-
-    def process_point(self, volume, seed_ijk, radius, is_dragging):
-        gradient = self.gradient_cache.get_or_compute(volume, seed_ijk[2])
-
-        if is_dragging and not self.roi_cache.is_valid_for(seed_ijk, radius):
-            # Use preview mode during drag when cache misses
-            return self.compute_preview(volume, seed_ijk, radius, gradient)
-        else:
-            # Full computation
-            return self.compute_full(volume, seed_ijk, radius, gradient)
-
-    def on_mouse_release(self):
-        # Compute full resolution if we were in preview mode
-        # Clear ROI cache for next stroke
-        self.roi_cache.clear()
-```
 
 ## References
 

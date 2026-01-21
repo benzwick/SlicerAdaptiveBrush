@@ -1,25 +1,25 @@
-# ADR-002: CPU and GPU Implementation Strategy
+# ADR-002: Implementation Strategy - CPU Foundation with GPU Roadmap
 
 ## Status
 
-Accepted
+Implemented (Phase 1 Complete)
 
 ## Context
 
 Performance is critical for interactive brush operations. Users expect smooth painting without noticeable lag. We need to support:
 
 - **CPU execution**: Works everywhere, no special hardware needed
-- **GPU execution**: Much faster for compute-intensive algorithms
+- **GPU execution**: Much faster for compute-intensive algorithms (future enhancement)
 - **User choice**: Let users select their preferred backend
 
 3D Slicer supports:
 - Python scripted modules (easy development)
-- C++ modules with VTK/ITK (fast CPU execution)
-- OpenCL/CUDA via VTK or custom code (GPU acceleration)
+- SimpleITK/ITK for optimized CPU operations
+- OpenCL/CUDA via VTK or custom code (GPU acceleration - Phase 2)
 
 ## Decision
 
-Implement a **dual-backend architecture** supporting both CPU and GPU from the start.
+Implement a **phased approach** starting with a complete CPU foundation, with GPU acceleration as a future enhancement.
 
 ### Architecture Overview
 
@@ -30,48 +30,111 @@ Implement a **dual-backend architecture** supporting both CPU and GPU from the s
 └─────────────────────┬───────────────────────────────────┘
                       │
 ┌─────────────────────▼───────────────────────────────────┐
-│              Algorithm Dispatcher                        │
-│         (selects CPU or GPU backend)                     │
-└───────────┬─────────────────────────────┬───────────────┘
-            │                             │
-┌───────────▼───────────┐   ┌─────────────▼───────────────┐
-│     CPU Backend       │   │       GPU Backend           │
-│  (Python/SimpleITK)   │   │   (OpenCL or CUDA)          │
-│                       │   │                             │
-│  - Watershed          │   │  - Level Set (sparse field) │
-│  - Level Set          │   │  - Gradient computation     │
-│  - Connected Thresh   │   │  - Distance transforms      │
-│  - Region Growing     │   │                             │
-└───────────────────────┘   └─────────────────────────────┘
+│              Algorithm Methods                           │
+│    (_watershed, _levelSet, _thresholdBrush, etc.)       │
+└───────────┬─────────────────────────────────────────────┘
+            │
+┌───────────▼───────────────────┐   ┌─────────────────────────────┐
+│       CPU Backend             │   │    GPU Backend (Phase 2)    │
+│    (Python/SimpleITK)         │   │    (Planned - Not Started)  │
+│         COMPLETE              │   │                             │
+│                               │   │  - Level Set (sparse field) │
+│  - Watershed                  │   │  - Gradient computation     │
+│  - Level Set (GAC)            │   │  - Distance transforms      │
+│  - Connected Threshold        │   │                             │
+│  - Region Growing             │   │                             │
+│  - Threshold Brush            │   │                             │
+└───────────────────────────────┘   └─────────────────────────────┘
 ```
 
-### CPU Implementation (Python/SimpleITK)
+### Implementation Phases
 
-| Component | Implementation | Notes |
-|-----------|---------------|-------|
-| Effect UI | Python/Qt | Standard Slicer pattern |
-| ROI extraction | NumPy slicing | Fast, simple |
-| Intensity analysis | NumPy/sklearn | GMM fitting |
-| Watershed | SimpleITK | ITK-optimized, multi-threaded |
-| Level Set | SimpleITK | Slower but accurate |
-| Connected Threshold | SimpleITK | Very fast |
-| Mask application | NumPy | Array operations |
+#### Phase 1: CPU Foundation ✓ COMPLETE
 
-### GPU Implementation
+All algorithms implemented in Python/SimpleITK:
+- Clean effect class with all algorithm methods
+- Full UI with algorithm and backend selectors
+- Intensity analysis with GMM and fallback
+- Performance cache structure (ready for optimization)
+- Test scaffolding complete
 
-| Component | Technology | Notes |
-|-----------|------------|-------|
-| Level Set solver | OpenCL or CUDA | Sparse field method |
-| Gradient magnitude | OpenCL/VTK | Parallel convolution |
-| Distance transform | OpenCL | Fast marching on GPU |
-| Threshold operations | OpenCL | Trivially parallel |
+| Component | Implementation | Status |
+|-----------|---------------|--------|
+| Effect UI | Python/Qt | Complete |
+| ROI extraction | NumPy slicing | Complete |
+| Intensity analysis | NumPy/sklearn GMM | Complete |
+| Watershed | SimpleITK MorphologicalWatershedFromMarkers | Complete |
+| Level Set | SimpleITK GeodesicActiveContourLevelSetImageFilter | Complete |
+| Connected Threshold | SimpleITK ConnectedThreshold | Complete |
+| Region Growing | SimpleITK ConfidenceConnected | Complete |
+| Threshold Brush | NumPy + SimpleITK threshold filters | Complete |
+| Brush visualization | VTK 2D pipeline | Complete |
+| 3D sphere mode | NumPy distance masking | Complete |
+| Mask application | NumPy array operations | Complete |
 
-### GPU Technology Selection
+#### Phase 2: GPU Level Set (Planned)
+
+- OpenCL sparse field level set solver
+- Significant speedup for level set algorithm
+- Fallback to CPU if GPU unavailable
+
+#### Phase 3: GPU Acceleration (Future)
+
+- GPU gradient computation
+- GPU distance transforms
+- GPU-accelerated watershed (if beneficial)
+
+### Current Backend Selection
+
+The Backend dropdown in the UI shows Auto/CPU/GPU options:
+
+```python
+# Current behavior (Phase 1)
+def get_backend():
+    # GPU options visible in UI but not implemented
+    # All algorithms currently use CPU/SimpleITK
+    return "CPU"
+```
+
+### Performance Targets
+
+| Operation | CPU Current | CPU Target | GPU Target (Phase 2) |
+|-----------|------------|-----------|---------------------|
+| 2D brush (10mm) | 30-100ms | < 50ms | < 10ms |
+| 3D brush (10mm) | 100-500ms | < 200ms | < 50ms |
+| 3D brush (50mm) | 500-2000ms | < 2000ms | < 200ms |
+| Drag operation | 30-100ms | < 30ms | < 10ms |
+
+## Consequences
+
+### Positive
+
+- **Universal compatibility**: CPU works everywhere, no setup required
+- **Rapid development**: Python/SimpleITK is productive
+- **Clean architecture**: Algorithm methods are well-organized
+- **Future-ready**: UI prepared for GPU backends
+- **Reliable**: SimpleITK is well-tested and maintained
+
+### Negative
+
+- **Performance ceiling**: CPU has limits for large 3D operations
+- **GPU not available**: Users with GPUs cannot leverage them yet
+- **Deferred optimization**: Caching structure exists but not fully utilized
+
+### Mitigation Strategies
+
+1. **ROI extraction**: Limits computation to brush region only
+2. **Algorithm choice**: Users can select faster algorithms (Connected Threshold)
+3. **Cache structure**: Ready for optimization when needed
+4. **GPU roadmap**: Clear path to GPU acceleration in Phase 2
+
+## Phase 2 Design Notes
+
+### GPU Technology Selection (Future)
 
 ```python
 def get_gpu_backend():
     """Detect available GPU compute capability."""
-    # Priority order
     if cuda_available():
         return CUDABackend()
     if opencl_available():
@@ -81,38 +144,11 @@ def get_gpu_backend():
     return None  # Fall back to CPU
 ```
 
-### Performance Targets
-
-| Operation | CPU Target | GPU Target |
-|-----------|-----------|------------|
-| 2D brush (10mm) | < 50ms | < 10ms |
-| 3D brush (10mm) | < 200ms | < 50ms |
-| 3D brush (50mm) | < 2000ms | < 200ms |
-| Drag operation | < 30ms | < 10ms |
-
-### Implementation Phases
-
-#### Phase 1: CPU Foundation
-- All algorithms in Python/SimpleITK
-- Clean interfaces for future GPU backends
-- Full test coverage
-
-#### Phase 2: GPU Level Set
-- OpenCL sparse field level set solver
-- Significant speedup for level set algorithm
-- Fallback to CPU if GPU unavailable
-
-#### Phase 3: GPU Acceleration
-- GPU gradient computation
-- GPU distance transforms
-- GPU-accelerated watershed (if beneficial)
-
-### Backend Selection Logic
+### Backend Selection Logic (Future)
 
 ```python
 class BackendSelector:
     def select(self, algorithm: str, roi_size: tuple, user_pref: str) -> Backend:
-        # User explicitly chose
         if user_pref == "CPU":
             return CPUBackend()
         if user_pref == "GPU":
@@ -129,36 +165,10 @@ class BackendSelector:
         if voxel_count > 1_000_000 and self.gpu_available():
             return GPUBackend()  # Large ROIs benefit from GPU
 
-        return CPUBackend()  # Default to CPU
+        return CPUBackend()
 ```
 
-## Consequences
-
-### Positive
-
-- **Universal compatibility**: CPU works everywhere
-- **Maximum performance**: GPU for users who have it
-- **User control**: Can force CPU or GPU as needed
-- **Clean architecture**: Backend abstraction enables testing
-- **Future-proof**: Can add Metal, Vulkan, etc.
-
-### Negative
-
-- **Development complexity**: Two codepaths to maintain
-- **Testing burden**: Must test CPU and GPU paths
-- **GPU setup complexity**: Users may need drivers
-- **Memory management**: GPU memory is limited
-
-### Mitigation Strategies
-
-1. **Shared test suite**: Same tests run against both backends
-2. **Automatic fallback**: GPU failures fall back to CPU gracefully
-3. **Clear error messages**: Help users with GPU setup
-4. **Memory monitoring**: Check GPU memory before large operations
-
-## GPU Implementation Notes
-
-### OpenCL Sparse Field Level Set
+### OpenCL Sparse Field Level Set (Future)
 
 ```c
 // Kernel for level set evolution
@@ -181,22 +191,6 @@ __kernel void evolve_level_set(
     // Update level set
     phi[voxel] += dt * (curvature + advection);
 }
-```
-
-### Memory Management
-
-```python
-class GPUMemoryManager:
-    def __init__(self, max_gpu_memory_mb=512):
-        self.max_memory = max_gpu_memory_mb * 1024 * 1024
-        self.allocated = 0
-
-    def can_allocate(self, size_bytes):
-        return self.allocated + size_bytes <= self.max_memory
-
-    def should_use_gpu(self, roi_size, dtype_size=4):
-        required = np.prod(roi_size) * dtype_size * 3  # phi, speed, gradient
-        return self.can_allocate(required)
 ```
 
 ## References

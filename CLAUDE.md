@@ -49,10 +49,9 @@ SlicerAdaptiveBrush/
     ├── SegmentEditorAdaptiveBrush.py      # Module entry point
     ├── SegmentEditorAdaptiveBrushLib/
     │   ├── __init__.py
-    │   ├── SegmentEditorEffect.py         # Main effect (AbstractScriptedSegmentEditorEffect)
-    │   ├── AdaptiveBrushAlgorithm.py      # Core multi-stage algorithm
+    │   ├── SegmentEditorEffect.py         # Main effect + all algorithm implementations
     │   ├── IntensityAnalyzer.py           # GMM-based threshold estimation
-    │   └── PerformanceCache.py            # Caching for drag operations
+    │   └── PerformanceCache.py            # Caching structure for drag operations
     ├── Resources/
     │   └── Icons/
     │       └── SegmentEditorAdaptiveBrush.png
@@ -67,30 +66,34 @@ SlicerAdaptiveBrush/
 
 ### Key Classes
 
-- **SegmentEditorEffect**: Main effect class inheriting from `AbstractScriptedSegmentEditorEffect`. Handles UI creation and mouse event processing.
-- **AdaptiveBrushAlgorithm**: Multi-stage segmentation algorithm combining connected threshold, watershed, and optional geodesic active contours.
-- **IntensityAnalyzer**: Automatic threshold estimation using Gaussian Mixture Model (GMM).
-- **PerformanceCache**: Caches intermediate computations during drag operations for smooth painting.
+- **SegmentEditorEffect**: Main effect class inheriting from `AbstractScriptedSegmentEditorEffect`. Contains UI creation, mouse event processing, and all algorithm implementations (`_watershed`, `_levelSet`, `_connectedThreshold`, `_regionGrowing`, `_thresholdBrush`).
+- **BrushOutlinePipeline**: VTK 2D pipeline for brush outline visualization in slice views.
+- **IntensityAnalyzer**: Automatic threshold estimation using Gaussian Mixture Model (GMM) with simple statistics fallback.
+- **PerformanceCache**: Cache structure for drag operations (infrastructure ready, optimization pending).
 
 ### Algorithm Overview
 
-The adaptive brush provides **multiple user-selectable algorithms** with both CPU and GPU backends:
+The adaptive brush provides **multiple user-selectable algorithms**, all implemented using CPU-based SimpleITK:
 
 **Available Algorithms:**
-| Algorithm | Backend | Speed | Precision | Best For |
-|-----------|---------|-------|-----------|----------|
-| Watershed | CPU | Medium | High | General use (default) |
-| Level Set | GPU | Fast | Very High | Users with GPU |
-| Level Set | CPU | Slow | Very High | Precision without GPU |
-| Connected Threshold | CPU | Very Fast | Low | Quick rough segmentation |
-| Region Growing | CPU | Fast | Medium | Homogeneous regions |
+| Algorithm | Speed | Precision | Best For |
+|-----------|-------|-----------|----------|
+| Watershed | Medium | High | General use (default) |
+| Level Set | Slow | Very High | High precision needs |
+| Connected Threshold | Very Fast | Low | Quick rough segmentation |
+| Region Growing | Fast | Medium | Homogeneous regions |
+| Threshold Brush | Very Fast | Variable | Simple threshold painting |
+
+**Threshold Brush Auto-Methods:**
+- Otsu, Huang, Triangle, Maximum Entropy, IsoData, Li
+- Auto-detects whether to segment above or below threshold based on seed intensity
 
 **Shared Pipeline (all algorithms):**
-1. ROI Extraction around cursor
+1. ROI Extraction around cursor (1.2x brush radius margin)
 2. Intensity Analysis (GMM-based threshold estimation)
 3. Algorithm-specific segmentation
-4. Post-processing (mask to brush radius)
-5. Apply to segment
+4. Post-processing (apply circular/spherical brush mask)
+5. Apply to segment via OR operation
 
 ## Development Guidelines
 
@@ -134,12 +137,18 @@ def processInteractionEvents(self, callerInteractor, eventId, viewWidget)  # Han
 ### Performance Considerations
 
 - Profile before optimizing
-- Cache expensive computations during drag operations
-- Use SimpleITK for CPU image processing (bundled with Slicer)
-- Use OpenCL/CUDA for GPU acceleration
-- Support both CPU and GPU backends with automatic fallback
+- Use SimpleITK for all image processing (bundled with Slicer)
+- ROI extraction limits computation to brush region
+- Cache structure ready for optimization when needed
+- GPU acceleration planned for Phase 2
 
-**Performance Targets:**
+**Current Performance (CPU):**
+| Operation | Typical Time |
+|-----------|-------------|
+| 2D brush (10mm) | 30-100ms |
+| 3D brush (10mm) | 100-500ms |
+
+**Target Performance (with GPU - Phase 2):**
 | Operation | CPU Target | GPU Target |
 |-----------|-----------|------------|
 | 2D brush (10mm) | < 50ms | < 10ms |
@@ -152,6 +161,7 @@ def processInteractionEvents(self, callerInteractor, eventId, viewWidget)  # Han
 - Provide meaningful error messages
 - Log errors with `logging.error()` or `logging.exception()`
 - Graceful degradation for optional features (e.g., sklearn GMM)
+- Algorithm methods catch exceptions and fall back to simpler algorithms
 
 ## Commit Message Format
 
@@ -188,21 +198,21 @@ Tests: test_intensity_analyzer.py
 
 Key decisions are documented in `docs/adr/`:
 
-- **ADR-001**: Algorithm selection (multi-stage hybrid)
-- **ADR-002**: Python vs C++ implementation boundaries
+- **ADR-001**: Algorithm selection (multiple user-selectable options)
+- **ADR-002**: Implementation strategy (CPU foundation with GPU roadmap)
 - **ADR-003**: Testing strategy
 - **ADR-004**: Caching strategy for performance
 
 ## Dependencies
 
 **Bundled with 3D Slicer 5.x (required):**
-- SimpleITK - Image processing
-- VTK - Visualization and data structures
+- SimpleITK - Image processing (all algorithms)
+- VTK - Visualization and brush outline
 - NumPy - Array operations
 - Qt/PythonQt - UI framework
 
 **Optional (for advanced features):**
-- scikit-learn - GMM fitting (fallback available without it)
+- scikit-learn - GMM fitting (fallback to simple statistics without it)
 
 ## Slicer API Quick Reference
 

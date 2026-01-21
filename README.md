@@ -8,13 +8,20 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 
 ## Features
 
-- **Multiple algorithm choices** - Watershed, Level Set, Connected Threshold, Region Growing
-- **CPU and GPU support** - Use GPU acceleration when available, automatic fallback to CPU
-- **Automatic intensity-based segmentation** - Brush adapts to image content
+- **Multiple algorithm choices** - Watershed, Level Set, Connected Threshold, Region Growing, Threshold Brush
+- **Auto-threshold methods** - Otsu, Huang, Triangle, Maximum Entropy, IsoData, Li
+- **Automatic intensity analysis** - GMM-based threshold estimation adapts to image content
 - **Edge-aware boundaries** - Respects anatomical boundaries automatically
-- **2D and 3D modes** - Works on single slices or volumetrically
+- **2D and 3D modes** - Works on single slices or volumetrically (sphere mode)
 - **Adjustable parameters** - Control brush radius, edge sensitivity, algorithm choice
-- **Real-time preview** - See segmentation results as you paint
+- **Visual brush outline** - See brush radius as you paint
+- **Undo support** - Full undo/redo integration with Slicer
+
+## Planned Features
+
+- GPU acceleration for Level Set algorithm (OpenCL/CUDA)
+- Performance caching optimization for smoother drag operations
+- Preview mode during drag (reduced resolution for speed)
 
 ## Installation
 
@@ -41,37 +48,56 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 4. Select the **Adaptive Brush** effect from the effects toolbar
 5. Adjust parameters:
    - **Radius**: Size of the brush in mm
-   - **Edge Sensitivity**: How strictly to follow intensity boundaries
+   - **Edge Sensitivity**: How strictly to follow intensity boundaries (0-100%)
    - **3D Mode**: Enable for volumetric painting
 6. Click and drag on the image to paint
+7. For **Threshold Brush** algorithm:
+   - Enable **Auto threshold** for automatic method selection
+   - Choose threshold method (Otsu, Huang, Triangle, etc.)
+   - Or disable auto and set manual thresholds with sliders
 
 ## Algorithms
 
-The adaptive brush offers multiple algorithm choices:
+| Algorithm | Speed | Precision | Best For |
+|-----------|-------|-----------|----------|
+| **Watershed** | Medium | High | General use (default) |
+| **Level Set** | Slow | Very High | High precision needs |
+| **Connected Threshold** | Very Fast | Low | Quick rough segmentation |
+| **Region Growing** | Fast | Medium | Homogeneous regions |
+| **Threshold Brush** | Very Fast | Variable | Simple threshold painting |
 
-| Algorithm | Backend | Speed | Precision | Best For |
-|-----------|---------|-------|-----------|----------|
-| **Watershed** | CPU | Medium | High | General use (default) |
-| **Level Set** | GPU | Fast | Very High | Users with GPU |
-| **Level Set** | CPU | Slow | Very High | Precision without GPU |
-| **Connected Threshold** | CPU | Very Fast | Low | Quick rough segmentation |
-| **Region Growing** | CPU | Fast | Medium | Homogeneous regions |
+### Algorithm Details
+
+- **Watershed**: Marker-based morphological watershed with gradient boundary detection
+- **Level Set**: Geodesic active contour for precise boundary following
+- **Connected Threshold**: Fast flood-fill within intensity range
+- **Region Growing**: Confidence-connected expansion from seed point
+- **Threshold Brush**: Direct threshold painting with auto-detection of foreground/background
+
+### Shared Pipeline
 
 All algorithms share a common pipeline:
-1. **Intensity Analysis** - Automatically estimates optimal thresholds using GMM
-2. **Algorithm-specific segmentation** - Your chosen algorithm
-3. **Post-processing** - Mask to brush radius, optional smoothing
+1. **ROI Extraction** - Extract region around cursor
+2. **Intensity Analysis** - Automatically estimate optimal thresholds using GMM
+3. **Algorithm-specific segmentation** - Your chosen algorithm
+4. **Post-processing** - Apply circular/spherical brush mask
 
 ## Requirements
 
 - 3D Slicer 5.10 or later
 - No additional dependencies (uses bundled SimpleITK, NumPy, VTK)
+- Optional: scikit-learn for GMM analysis (falls back to simple statistics if unavailable)
 
 ## Development
 
 This project follows Test-Driven Development (TDD). See [CLAUDE.md](CLAUDE.md) for development guidelines.
 
 ```bash
+# Local development with uv
+uv sync --dev
+uv run pytest -v
+uv run ruff check .
+
 # Run tests in Slicer Python console
 import SegmentEditorAdaptiveBrush
 SegmentEditorAdaptiveBrush.SegmentEditorAdaptiveBrushTest().runTest()
@@ -82,6 +108,7 @@ SegmentEditorAdaptiveBrush.SegmentEditorAdaptiveBrushTest().runTest()
 - [ITK-SNAP Adaptive Brush](https://www.itksnap.org/) - Original inspiration
 - [3D Slicer Segment Editor](https://slicer.readthedocs.io/en/latest/user_guide/modules/segmenteditor.html)
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
+- [SimpleITK Documentation](https://simpleitk.readthedocs.io/)
 
 ## License
 

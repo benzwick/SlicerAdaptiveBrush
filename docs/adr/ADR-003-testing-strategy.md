@@ -2,7 +2,34 @@
 
 ## Status
 
-Accepted
+Accepted (Infrastructure Complete, Test Implementations Pending)
+
+## Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Test infrastructure (pytest) | Complete | conftest.py, fixtures ready |
+| Synthetic image generators | Complete | test_fixtures/synthetic_image.py |
+| Test file scaffolding | Complete | All test files created |
+| IntensityAnalyzer tests | Scaffolded | Tests skip with "not yet implemented" |
+| Algorithm tests | Scaffolded | Tests skip with "not yet implemented" |
+| Cache tests | Scaffolded | Tests skip with "not yet implemented" |
+| Integration tests | Not started | Requires Slicer environment |
+
+### Current Test Output
+
+```
+$ uv run pytest -v
+21 tests collected
+21 skipped (all tests skip with "not yet implemented")
+```
+
+### Next Steps
+
+1. Implement IntensityAnalyzer unit tests (GMM analysis)
+2. Implement algorithm unit tests for each algorithm
+3. Implement cache behavior tests
+4. Add Slicer integration tests
 
 ## Context
 
@@ -88,9 +115,9 @@ Need comprehensive testing for medical imaging software where correctness is cri
 | Component | Target Coverage |
 |-----------|----------------|
 | IntensityAnalyzer | > 90% |
-| AdaptiveBrushAlgorithm | > 90% |
+| SegmentEditorEffect (algorithms) | > 90% |
 | PerformanceCache | > 85% |
-| SegmentEditorEffect | > 70% (integration) |
+| SegmentEditorEffect (UI/integration) | > 70% |
 | Overall | > 80% |
 
 ## Consequences
