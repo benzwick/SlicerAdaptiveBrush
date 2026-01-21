@@ -12,12 +12,9 @@ except ImportError:
     HAS_SIMPLEITK = False
 
 # Try to import sklearn for GMM tests
-try:
-    from sklearn.mixture import GaussianMixture
+import importlib.util
 
-    HAS_SKLEARN = True
-except ImportError:
-    HAS_SKLEARN = False
+HAS_SKLEARN = importlib.util.find_spec("sklearn") is not None
 
 
 def pytest_configure(config):

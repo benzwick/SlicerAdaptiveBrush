@@ -4,13 +4,12 @@ These generators create images with known ground truth for validating
 segmentation accuracy.
 """
 
-from typing import Tuple
 
 import numpy as np
 
 
 def create_uniform_image(
-    size: Tuple[int, int, int] = (100, 100, 10),
+    size: tuple[int, int, int] = (100, 100, 10),
     intensity: float = 100.0,
     noise_std: float = 0.0,
 ) -> np.ndarray:
@@ -37,14 +36,14 @@ def create_uniform_image(
 
 
 def create_bimodal_image(
-    size: Tuple[int, int, int] = (100, 100, 10),
+    size: tuple[int, int, int] = (100, 100, 10),
     mean1: float = 100.0,
     mean2: float = 200.0,
     std1: float = 10.0,
     std2: float = 10.0,
     split_axis: int = 0,
     split_ratio: float = 0.5,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create an image with two distinct intensity regions.
 
@@ -96,7 +95,7 @@ def create_bimodal_image(
 
 
 def create_gradient_image(
-    size: Tuple[int, int, int] = (100, 100, 10),
+    size: tuple[int, int, int] = (100, 100, 10),
     min_intensity: float = 0.0,
     max_intensity: float = 255.0,
     gradient_axis: int = 0,
@@ -130,14 +129,14 @@ def create_gradient_image(
 
 
 def create_noisy_sphere(
-    size: Tuple[int, int, int] = (50, 50, 50),
-    center: Tuple[int, int, int] = None,
+    size: tuple[int, int, int] = (50, 50, 50),
+    center: tuple[int, int, int] = None,
     radius: float = 15.0,
     inside_mean: float = 200.0,
     outside_mean: float = 50.0,
     inside_std: float = 10.0,
     outside_std: float = 10.0,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a spherical region with different intensity than background.
 
@@ -182,12 +181,12 @@ def create_noisy_sphere(
 
 
 def create_concentric_spheres(
-    size: Tuple[int, int, int] = (50, 50, 50),
-    center: Tuple[int, int, int] = None,
-    radii: Tuple[float, ...] = (5.0, 10.0, 15.0),
-    intensities: Tuple[float, ...] = (250.0, 150.0, 50.0),
+    size: tuple[int, int, int] = (50, 50, 50),
+    center: tuple[int, int, int] = None,
+    radii: tuple[float, ...] = (5.0, 10.0, 15.0),
+    intensities: tuple[float, ...] = (250.0, 150.0, 50.0),
     noise_std: float = 5.0,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create concentric spherical shells with different intensities.
 
@@ -234,12 +233,12 @@ def create_concentric_spheres(
 
 
 def create_checkerboard_image(
-    size: Tuple[int, int, int] = (100, 100, 10),
+    size: tuple[int, int, int] = (100, 100, 10),
     block_size: int = 10,
     intensity1: float = 50.0,
     intensity2: float = 200.0,
     noise_std: float = 5.0,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Create a 3D checkerboard pattern.
 
