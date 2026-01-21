@@ -204,33 +204,50 @@ class SegmentEditorEffect:
         self.useThresholdCaching = False  # Disabled by default for accuracy
 
         # Advanced parameters - Sampling
-        self.gaussianSigma = 0.5  # Sigma for Gaussian distance weighting (0=uniform, 1=strong falloff)
-        self.percentileLow = 5  # Low percentile for percentile method
-        self.percentileHigh = 95  # High percentile for percentile method
-        self.stdMultiplier = 2.0  # Multiplier for mean±std method
-        self.includeZoneInResult = True  # Guarantee inner zone is included
+        # Gaussian sigma: controls center-weighting of intensity sampling
+        # 0.5 gives moderate center bias - good balance of local accuracy vs noise robustness
+        self.gaussianSigma = 0.5
+        # Percentiles: 5-95 captures most of the tissue while excluding outliers
+        self.percentileLow = 5
+        self.percentileHigh = 95
+        # Std multiplier: 2.0 captures ~95% of Gaussian distribution
+        self.stdMultiplier = 2.0
+        # Include zone: OFF by default - let algorithm determine boundaries naturally
+        self.includeZoneInResult = False
 
         # Advanced parameters - Geodesic Distance
-        self.geodesicEdgeWeight = 5.0  # Edge weight multiplier (1-20)
-        self.geodesicDistanceScale = 1.0  # Distance threshold scale (0.5-2.0)
-        self.geodesicSmoothing = 0.5  # Pre-smoothing sigma
+        # Edge weight 8.0: strong edge stopping for accurate boundaries
+        self.geodesicEdgeWeight = 8.0
+        # Distance scale 1.0: no scaling, use radius directly
+        self.geodesicDistanceScale = 1.0
+        # Smoothing 0.5: light smoothing reduces noise while preserving edges
+        self.geodesicSmoothing = 0.5
 
         # Advanced parameters - Watershed
-        self.watershedGradientScale = 1.0  # Gradient scaling (0.5-3.0)
-        self.watershedSmoothing = 0.5  # Pre-smoothing sigma
+        # Gradient scale 1.5: moderate emphasis on edges
+        self.watershedGradientScale = 1.5
+        # Smoothing 0.5: light smoothing for noise reduction
+        self.watershedSmoothing = 0.5
 
         # Advanced parameters - Level Set
-        self.levelSetPropagation = 1.5  # Propagation scaling
-        self.levelSetCurvature = 1.0  # Curvature scaling
-        self.levelSetIterations = 50  # Max iterations
+        # Propagation 1.0: balanced expansion force
+        self.levelSetPropagation = 1.0
+        # Curvature 1.0: balanced smoothness constraint
+        self.levelSetCurvature = 1.0
+        # Iterations 50: sufficient for convergence in most cases
+        self.levelSetIterations = 50
 
         # Advanced parameters - Region Growing
-        self.regionGrowingMultiplier = 2.0  # Confidence multiplier
-        self.regionGrowingIterations = 4  # Number of iterations
+        # Multiplier 2.5: ~99% confidence interval for intensity matching
+        self.regionGrowingMultiplier = 2.5
+        # Iterations 4: enough passes for stable region
+        self.regionGrowingIterations = 4
 
         # Advanced parameters - Morphology
-        self.fillHoles = True  # Fill holes in result
-        self.closingRadius = 1  # Morphological closing radius
+        # Fill holes: ON for cleaner results
+        self.fillHoles = True
+        # Closing radius 0: OFF by default to preserve fine detail
+        self.closingRadius = 0
 
         # Brush outline visualization - one pipeline per slice view
         self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
@@ -505,8 +522,13 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.gaussianSigmaSlider = ctk.ctkSliderWidget()
         self.gaussianSigmaSlider.setToolTip(
             _(
-                "Gaussian falloff for distance weighting (0=uniform, 1=strong center bias). "
-                "Higher values give more weight to pixels near the cursor."
+                "Controls how much center pixels influence threshold computation.\n\n"
+                "• 0.0 = Uniform weighting (all pixels in zone weighted equally)\n"
+                "• 0.3-0.5 = Moderate center bias (recommended for most cases)\n"
+                "• 1.0+ = Strong center bias (only pixels very close to cursor matter)\n\n"
+                "Higher values make the brush more sensitive to the exact click location.\n"
+                "Lower values average over a larger area, reducing noise sensitivity.\n\n"
+                "Recommended: 0.5 (default)"
             )
         )
         self.gaussianSigmaSlider.minimum = 0.0
@@ -518,9 +540,19 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Percentile low
         self.percentileLowSlider = ctk.ctkSliderWidget()
-        self.percentileLowSlider.setToolTip(_("Low percentile for percentile sampling method"))
+        self.percentileLowSlider.setToolTip(
+            _(
+                "Lower bound percentile for 'Percentile' sampling method.\n\n"
+                "Intensities below this percentile are excluded from threshold range.\n"
+                "• 0% = Include minimum intensity\n"
+                "• 5% = Exclude darkest 5% (recommended - removes outliers)\n"
+                "• 10-20% = More aggressive outlier removal\n\n"
+                "Increase if dark noise/artifacts are being included.\n\n"
+                "Recommended: 5%"
+            )
+        )
         self.percentileLowSlider.minimum = 0
-        self.percentileLowSlider.maximum = 49
+        self.percentileLowSlider.maximum = 40
         self.percentileLowSlider.value = self.percentileLow
         self.percentileLowSlider.singleStep = 1
         self.percentileLowSlider.decimals = 0
@@ -529,8 +561,18 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Percentile high
         self.percentileHighSlider = ctk.ctkSliderWidget()
-        self.percentileHighSlider.setToolTip(_("High percentile for percentile sampling method"))
-        self.percentileHighSlider.minimum = 51
+        self.percentileHighSlider.setToolTip(
+            _(
+                "Upper bound percentile for 'Percentile' sampling method.\n\n"
+                "Intensities above this percentile are excluded from threshold range.\n"
+                "• 100% = Include maximum intensity\n"
+                "• 95% = Exclude brightest 5% (recommended - removes outliers)\n"
+                "• 80-90% = More aggressive outlier removal\n\n"
+                "Decrease if bright noise/artifacts are being included.\n\n"
+                "Recommended: 95%"
+            )
+        )
+        self.percentileHighSlider.minimum = 60
         self.percentileHighSlider.maximum = 100
         self.percentileHighSlider.value = self.percentileHigh
         self.percentileHighSlider.singleStep = 1
@@ -541,10 +583,19 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Std multiplier
         self.stdMultiplierSlider = ctk.ctkSliderWidget()
         self.stdMultiplierSlider.setToolTip(
-            _("Multiplier for mean±std method (higher = wider threshold range)")
+            _(
+                "Multiplier for standard deviation in 'Mean±Std' sampling method.\n\n"
+                "Threshold range = mean ± (multiplier × std deviation)\n"
+                "• 1.0 = ~68% of data (tight, may miss edges)\n"
+                "• 2.0 = ~95% of data (recommended for most tissues)\n"
+                "• 2.5 = ~99% of data (permissive)\n"
+                "• 3.0+ = Very wide range (may leak into adjacent structures)\n\n"
+                "Decrease for tighter boundaries, increase if segmentation has gaps.\n\n"
+                "Recommended: 2.0"
+            )
         )
         self.stdMultiplierSlider.minimum = 0.5
-        self.stdMultiplierSlider.maximum = 5.0
+        self.stdMultiplierSlider.maximum = 4.0
         self.stdMultiplierSlider.value = self.stdMultiplier
         self.stdMultiplierSlider.singleStep = 0.1
         self.stdMultiplierSlider.decimals = 1
@@ -553,7 +604,14 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Include zone checkbox
         self.includeZoneCheckbox = qt.QCheckBox(_("Guarantee inner zone in result"))
         self.includeZoneCheckbox.setToolTip(
-            _("Always include the inner threshold zone in the segmentation result")
+            _(
+                "When enabled, the inner threshold zone (cyan circle) is always\n"
+                "included in the segmentation result, regardless of algorithm output.\n\n"
+                "• OFF (recommended): Algorithm determines all boundaries naturally\n"
+                "• ON: Guarantees at least the inner zone is painted\n\n"
+                "Enable if the brush sometimes produces empty results when clicking\n"
+                "on valid tissue. Keep OFF for maximum boundary accuracy."
+            )
         )
         self.includeZoneCheckbox.checked = self.includeZoneInResult
         advancedLayout.addRow(self.includeZoneCheckbox)
@@ -564,7 +622,16 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         self.geodesicEdgeWeightSlider = ctk.ctkSliderWidget()
         self.geodesicEdgeWeightSlider.setToolTip(
-            _("Edge weight (higher = edges slow propagation more)")
+            _(
+                "Controls how strongly edges/boundaries stop propagation.\n\n"
+                "• 1-3 = Weak edge stopping (propagates through weak edges)\n"
+                "• 5-8 = Moderate stopping (recommended for most tissues)\n"
+                "• 10-15 = Strong stopping (stops at subtle intensity changes)\n"
+                "• 15-20 = Very strong (may fragment into disconnected regions)\n\n"
+                "Increase if brush leaks past boundaries.\n"
+                "Decrease if brush stops too early or creates fragmented results.\n\n"
+                "Recommended: 8.0"
+            )
         )
         self.geodesicEdgeWeightSlider.minimum = 1.0
         self.geodesicEdgeWeightSlider.maximum = 20.0
@@ -575,17 +642,35 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         self.geodesicDistanceScaleSlider = ctk.ctkSliderWidget()
         self.geodesicDistanceScaleSlider.setToolTip(
-            _("Distance threshold scale (higher = larger regions)")
+            _(
+                "Scales the distance threshold that determines region size.\n\n"
+                "• 0.5 = Half the brush radius (tighter segmentation)\n"
+                "• 1.0 = Match brush radius (recommended)\n"
+                "• 1.5-2.0 = Expand beyond brush radius\n\n"
+                "Increase to capture more of the structure.\n"
+                "Decrease for tighter, more conservative segmentation.\n\n"
+                "Recommended: 1.0"
+            )
         )
-        self.geodesicDistanceScaleSlider.minimum = 0.5
-        self.geodesicDistanceScaleSlider.maximum = 3.0
+        self.geodesicDistanceScaleSlider.minimum = 0.3
+        self.geodesicDistanceScaleSlider.maximum = 2.5
         self.geodesicDistanceScaleSlider.value = self.geodesicDistanceScale
         self.geodesicDistanceScaleSlider.singleStep = 0.1
         self.geodesicDistanceScaleSlider.decimals = 1
         advancedLayout.addRow(_("Distance Scale:"), self.geodesicDistanceScaleSlider)
 
         self.geodesicSmoothingSlider = ctk.ctkSliderWidget()
-        self.geodesicSmoothingSlider.setToolTip(_("Pre-smoothing sigma (0=none)"))
+        self.geodesicSmoothingSlider.setToolTip(
+            _(
+                "Gaussian smoothing applied before edge detection.\n\n"
+                "• 0.0 = No smoothing (sensitive to noise, sharp edges)\n"
+                "• 0.3-0.5 = Light smoothing (recommended - reduces noise)\n"
+                "• 1.0+ = Heavy smoothing (blurs fine edges)\n\n"
+                "Increase for noisy images or to ignore fine texture.\n"
+                "Decrease to preserve sharp, fine boundaries.\n\n"
+                "Recommended: 0.5"
+            )
+        )
         self.geodesicSmoothingSlider.minimum = 0.0
         self.geodesicSmoothingSlider.maximum = 2.0
         self.geodesicSmoothingSlider.value = self.geodesicSmoothing
@@ -598,16 +683,36 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(watershedLabel)
 
         self.watershedGradientScaleSlider = ctk.ctkSliderWidget()
-        self.watershedGradientScaleSlider.setToolTip(_("Gradient scaling factor"))
-        self.watershedGradientScaleSlider.minimum = 0.5
-        self.watershedGradientScaleSlider.maximum = 3.0
+        self.watershedGradientScaleSlider.setToolTip(
+            _(
+                "Amplification factor for image gradients in watershed.\n\n"
+                "• 0.5-1.0 = Weak gradient emphasis (may leak through edges)\n"
+                "• 1.5 = Moderate emphasis (recommended)\n"
+                "• 2.0-3.0 = Strong emphasis (sensitive to all edges)\n\n"
+                "Increase to make watershed respect weaker boundaries.\n"
+                "Decrease if getting over-segmented/blocky results.\n\n"
+                "Recommended: 1.5"
+            )
+        )
+        self.watershedGradientScaleSlider.minimum = 0.3
+        self.watershedGradientScaleSlider.maximum = 4.0
         self.watershedGradientScaleSlider.value = self.watershedGradientScale
         self.watershedGradientScaleSlider.singleStep = 0.1
         self.watershedGradientScaleSlider.decimals = 1
         advancedLayout.addRow(_("Gradient Scale:"), self.watershedGradientScaleSlider)
 
         self.watershedSmoothingSlider = ctk.ctkSliderWidget()
-        self.watershedSmoothingSlider.setToolTip(_("Pre-smoothing sigma"))
+        self.watershedSmoothingSlider.setToolTip(
+            _(
+                "Gaussian smoothing before computing watershed gradients.\n\n"
+                "• 0.0 = No smoothing (noisy gradients, over-segmentation)\n"
+                "• 0.5 = Light smoothing (recommended)\n"
+                "• 1.0+ = Heavy smoothing (merges small regions)\n\n"
+                "Increase if results are too blocky or fragmented.\n"
+                "Decrease to preserve fine boundary detail.\n\n"
+                "Recommended: 0.5"
+            )
+        )
         self.watershedSmoothingSlider.minimum = 0.0
         self.watershedSmoothingSlider.maximum = 2.0
         self.watershedSmoothingSlider.value = self.watershedSmoothing
@@ -620,8 +725,18 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(levelSetLabel)
 
         self.levelSetPropagationSlider = ctk.ctkSliderWidget()
-        self.levelSetPropagationSlider.setToolTip(_("Propagation scaling (expansion force)"))
-        self.levelSetPropagationSlider.minimum = 0.5
+        self.levelSetPropagationSlider.setToolTip(
+            _(
+                "Controls the expansion/contraction force of the level set.\n\n"
+                "• 0.5 = Weak expansion (conservative, may underestimate)\n"
+                "• 1.0 = Balanced expansion (recommended)\n"
+                "• 1.5-2.0 = Strong expansion (may overshoot boundaries)\n\n"
+                "Increase if segmentation doesn't fill the target region.\n"
+                "Decrease if segmentation leaks past boundaries.\n\n"
+                "Recommended: 1.0"
+            )
+        )
+        self.levelSetPropagationSlider.minimum = 0.2
         self.levelSetPropagationSlider.maximum = 3.0
         self.levelSetPropagationSlider.value = self.levelSetPropagation
         self.levelSetPropagationSlider.singleStep = 0.1
@@ -629,7 +744,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(_("Propagation:"), self.levelSetPropagationSlider)
 
         self.levelSetCurvatureSlider = ctk.ctkSliderWidget()
-        self.levelSetCurvatureSlider.setToolTip(_("Curvature scaling (smoothness)"))
+        self.levelSetCurvatureSlider.setToolTip(
+            _(
+                "Controls boundary smoothness constraint.\n\n"
+                "• 0.0-0.5 = Low smoothing (jagged boundaries, follows edges closely)\n"
+                "• 1.0 = Balanced smoothing (recommended)\n"
+                "• 2.0+ = Heavy smoothing (very smooth, may miss fine detail)\n\n"
+                "Increase for smoother boundaries and to reduce noise.\n"
+                "Decrease to preserve fine boundary detail.\n\n"
+                "Recommended: 1.0"
+            )
+        )
         self.levelSetCurvatureSlider.minimum = 0.0
         self.levelSetCurvatureSlider.maximum = 3.0
         self.levelSetCurvatureSlider.value = self.levelSetCurvature
@@ -638,7 +763,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(_("Curvature:"), self.levelSetCurvatureSlider)
 
         self.levelSetIterationsSlider = ctk.ctkSliderWidget()
-        self.levelSetIterationsSlider.setToolTip(_("Maximum iterations"))
+        self.levelSetIterationsSlider.setToolTip(
+            _(
+                "Maximum number of level set evolution iterations.\n\n"
+                "• 20-30 = Fast but may not converge fully\n"
+                "• 50 = Usually sufficient (recommended)\n"
+                "• 100+ = More accurate but slower\n\n"
+                "Increase if segmentation seems incomplete.\n"
+                "Decrease for faster (but less accurate) results.\n\n"
+                "Recommended: 50"
+            )
+        )
         self.levelSetIterationsSlider.minimum = 10
         self.levelSetIterationsSlider.maximum = 200
         self.levelSetIterationsSlider.value = self.levelSetIterations
@@ -652,7 +787,16 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         self.regionGrowingMultiplierSlider = ctk.ctkSliderWidget()
         self.regionGrowingMultiplierSlider.setToolTip(
-            _("Confidence multiplier (higher = grows more)")
+            _(
+                "Confidence interval multiplier for intensity matching.\n\n"
+                "Region grows to include voxels within mean ± (multiplier × std).\n"
+                "• 1.0 = Tight (~68% confidence, may miss parts of region)\n"
+                "• 2.0-2.5 = Moderate (~95-99% confidence, recommended)\n"
+                "• 3.0+ = Permissive (may leak into adjacent structures)\n\n"
+                "Increase if segmentation has holes or gaps.\n"
+                "Decrease if segmentation leaks into surrounding tissue.\n\n"
+                "Recommended: 2.5"
+            )
         )
         self.regionGrowingMultiplierSlider.minimum = 0.5
         self.regionGrowingMultiplierSlider.maximum = 5.0
@@ -662,7 +806,18 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(_("Multiplier:"), self.regionGrowingMultiplierSlider)
 
         self.regionGrowingIterationsSlider = ctk.ctkSliderWidget()
-        self.regionGrowingIterationsSlider.setToolTip(_("Number of growing iterations"))
+        self.regionGrowingIterationsSlider.setToolTip(
+            _(
+                "Number of region growing iterations.\n\n"
+                "Each iteration recomputes statistics from the current region.\n"
+                "• 1-2 = Fast but may not reach full extent\n"
+                "• 3-4 = Usually sufficient (recommended)\n"
+                "• 5+ = More iterations, slower but more complete\n\n"
+                "Increase if segmentation seems to stop too early.\n"
+                "Decrease for faster results.\n\n"
+                "Recommended: 4"
+            )
+        )
         self.regionGrowingIterationsSlider.minimum = 1
         self.regionGrowingIterationsSlider.maximum = 10
         self.regionGrowingIterationsSlider.value = self.regionGrowingIterations
@@ -675,12 +830,32 @@ intensity similarity, stopping at edges and boundaries.</p>
         advancedLayout.addRow(morphLabel)
 
         self.fillHolesCheckbox = qt.QCheckBox(_("Fill holes in result"))
-        self.fillHolesCheckbox.setToolTip(_("Apply hole filling to the segmentation"))
+        self.fillHolesCheckbox.setToolTip(
+            _(
+                "Fill enclosed holes inside the segmentation.\n\n"
+                "• ON (recommended): Removes internal holes/gaps\n"
+                "• OFF: Preserve holes (e.g., for hollow structures)\n\n"
+                "Enable for solid structures like organs or tumors.\n"
+                "Disable if segmenting structures with intentional holes."
+            )
+        )
         self.fillHolesCheckbox.checked = self.fillHoles
         advancedLayout.addRow(self.fillHolesCheckbox)
 
         self.closingRadiusSlider = ctk.ctkSliderWidget()
-        self.closingRadiusSlider.setToolTip(_("Morphological closing radius (0=disabled)"))
+        self.closingRadiusSlider.setToolTip(
+            _(
+                "Morphological closing to bridge small gaps in boundaries.\n\n"
+                "Closing = dilation followed by erosion.\n"
+                "• 0 = Disabled (recommended - preserves fine detail)\n"
+                "• 1 = Small closing (fills 1-voxel gaps)\n"
+                "• 2-3 = Moderate closing (fills small holes, smooths boundary)\n"
+                "• 4+ = Large closing (significantly smooths, may lose detail)\n\n"
+                "Increase if result has small gaps or rough boundaries.\n"
+                "Keep at 0 to preserve accurate boundary detail.\n\n"
+                "Recommended: 0"
+            )
+        )
         self.closingRadiusSlider.minimum = 0
         self.closingRadiusSlider.maximum = 5
         self.closingRadiusSlider.value = self.closingRadius
