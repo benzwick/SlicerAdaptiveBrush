@@ -288,6 +288,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.algorithmCombo.addItem(_("Level Set (CPU)"), "level_set_cpu")
         self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
         self.algorithmCombo.addItem(_("Region Growing"), "region_growing")
+        self.algorithmCombo.addItem(_("Threshold Brush (Simple)"), "threshold_brush")
         self.algorithmCombo.setToolTip(_("Segmentation algorithm to use"))
         algorithmLayout.addRow(_("Algorithm:"), self.algorithmCombo)
 
@@ -300,12 +301,40 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backendCombo.setToolTip(_("Computation backend"))
         algorithmLayout.addRow(_("Backend:"), self.backendCombo)
 
+        # Manual threshold controls (for Threshold Brush)
+        self.thresholdGroup = qt.QWidget()
+        thresholdLayout = qt.QFormLayout(self.thresholdGroup)
+        thresholdLayout.setContentsMargins(0, 0, 0, 0)
+
+        self.lowerThresholdSlider = ctk.ctkSliderWidget()
+        self.lowerThresholdSlider.setToolTip(_("Lower intensity threshold"))
+        self.lowerThresholdSlider.minimum = -2000
+        self.lowerThresholdSlider.maximum = 5000
+        self.lowerThresholdSlider.value = -100
+        self.lowerThresholdSlider.singleStep = 10
+        self.lowerThresholdSlider.decimals = 0
+        thresholdLayout.addRow(_("Lower:"), self.lowerThresholdSlider)
+
+        self.upperThresholdSlider = ctk.ctkSliderWidget()
+        self.upperThresholdSlider.setToolTip(_("Upper intensity threshold"))
+        self.upperThresholdSlider.minimum = -2000
+        self.upperThresholdSlider.maximum = 5000
+        self.upperThresholdSlider.value = 300
+        self.upperThresholdSlider.singleStep = 10
+        self.upperThresholdSlider.decimals = 0
+        thresholdLayout.addRow(_("Upper:"), self.upperThresholdSlider)
+
+        algorithmLayout.addRow(self.thresholdGroup)
+        self.thresholdGroup.setVisible(False)  # Hidden unless Threshold Brush selected
+
         # Connect signals
         self.radiusSlider.valueChanged.connect(self.onRadiusChanged)
         self.sensitivitySlider.valueChanged.connect(self.onSensitivityChanged)
         self.sphereModeCheckbox.toggled.connect(self.onSphereModeChanged)
         self.algorithmCombo.currentIndexChanged.connect(self.onAlgorithmChanged)
         self.backendCombo.currentIndexChanged.connect(self.onBackendChanged)
+        self.lowerThresholdSlider.valueChanged.connect(self.onThresholdChanged)
+        self.upperThresholdSlider.valueChanged.connect(self.onThresholdChanged)
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""
@@ -325,6 +354,13 @@ intensity similarity, stopping at edges and boundaries.</p>
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
         self.algorithm = self.algorithmCombo.currentData
+        self.cache.invalidate()
+        # Show/hide threshold controls based on algorithm
+        isThresholdBrush = self.algorithm == "threshold_brush"
+        self.thresholdGroup.setVisible(isThresholdBrush)
+
+    def onThresholdChanged(self, value):
+        """Handle manual threshold slider change."""
         self.cache.invalidate()
 
     def onBackendChanged(self, index):
@@ -585,6 +621,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             "backend": self.backend,
             "sphere_mode": self.sphereMode,
             "slice_index": sliceIndex,
+            "manual_lower": self.lowerThresholdSlider.value,
+            "manual_upper": self.upperThresholdSlider.value,
         }
 
         # Use cache for drag operations
@@ -624,7 +662,9 @@ intensity similarity, stopping at edges and boundaries.</p>
         elif algorithm in ("level_set_gpu", "level_set_cpu"):
             mask = self._levelSet(roi, localSeed, thresholds, params)
         elif algorithm == "region_growing":
-            mask = self._regionGrowing(roi, localSeed, thresholds)
+            mask = self._regionGrowing(roi, localSeed, thresholds, params)
+        elif algorithm == "threshold_brush":
+            mask = self._thresholdBrush(roi, localSeed, params)
         else:  # Default: watershed
             mask = self._watershed(roi, localSeed, thresholds, params)
 
@@ -820,13 +860,14 @@ intensity similarity, stopping at edges and boundaries.</p>
             logging.error(f"Level set failed: {e}")
             return initialMask
 
-    def _regionGrowing(self, roi, localSeed, thresholds):
+    def _regionGrowing(self, roi, localSeed, thresholds, params):
         """Region growing segmentation.
 
         Args:
             roi: ROI array.
             localSeed: Seed point in local coordinates.
             thresholds: Intensity thresholds.
+            params: Algorithm parameters.
 
         Returns:
             Binary mask array.
@@ -835,12 +876,19 @@ intensity similarity, stopping at edges and boundaries.</p>
         sitkRoi = sitk.GetImageFromArray(roi.astype(np.float32))
         sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
 
+        # Scale multiplier with edge sensitivity
+        # sensitivity=0.0 -> multiplier=3.5 (permissive)
+        # sensitivity=0.5 -> multiplier=2.5 (default)
+        # sensitivity=1.0 -> multiplier=1.0 (strict)
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        multiplier = 3.5 - (2.5 * edge_sensitivity)
+
         try:
             result = sitk.ConfidenceConnected(
                 sitkRoi,
                 seedList=[sitkSeed],
                 numberOfIterations=3,
-                multiplier=2.5,
+                multiplier=multiplier,
                 initialNeighborhoodRadius=2,
                 replaceValue=1,
             )
@@ -848,6 +896,25 @@ intensity similarity, stopping at edges and boundaries.</p>
         except Exception as e:
             logging.error(f"Region growing failed: {e}")
             return np.zeros_like(roi, dtype=np.uint8)
+
+    def _thresholdBrush(self, roi, localSeed, params):
+        """Simple threshold brush using user-defined thresholds.
+
+        Args:
+            roi: ROI array.
+            localSeed: Seed point in local coordinates.
+            params: Algorithm parameters including manual_lower and manual_upper.
+
+        Returns:
+            Binary mask array.
+        """
+        lower = params.get("manual_lower", -100)
+        upper = params.get("manual_upper", 300)
+
+        # Simple threshold - no connectivity, just intensity range
+        mask = ((roi >= lower) & (roi <= upper)).astype(np.uint8)
+
+        return mask
 
     def _applyBrushMask(self, mask, localSeed, radiusVoxels):
         """Apply circular/spherical brush constraint.

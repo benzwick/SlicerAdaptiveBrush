@@ -43,6 +43,7 @@ class IntensityAnalyzer:
         image: np.ndarray,
         seed_point: Tuple[int, int, int],
         radius_voxels: Optional[Tuple[float, float, float]] = None,
+        edge_sensitivity: float = 0.5,
     ) -> Dict:
         """Analyze intensity distribution around seed point.
 
@@ -51,6 +52,8 @@ class IntensityAnalyzer:
             seed_point: Seed point coordinates (x, y, z).
             radius_voxels: Optional ROI radius in voxels. If None, uses
                 a default radius of 20 voxels.
+            edge_sensitivity: How strictly to follow intensity boundaries.
+                0.0 = permissive (wide thresholds), 1.0 = strict (narrow thresholds).
 
         Returns:
             Dictionary with:
@@ -73,12 +76,12 @@ class IntensityAnalyzer:
         except IndexError:
             logging.warning(f"Seed point {seed_point} out of bounds")
             # Return conservative thresholds based on full image
-            return self._simple_statistics(image.flatten(), np.mean(image))
+            return self._simple_statistics(image.flatten(), np.mean(image), edge_sensitivity)
 
         if self.use_gmm:
-            return self._gmm_analysis(roi, seed_intensity)
+            return self._gmm_analysis(roi, seed_intensity, edge_sensitivity)
         else:
-            return self._simple_statistics(roi, seed_intensity)
+            return self._simple_statistics(roi, seed_intensity, edge_sensitivity)
 
     def _extract_roi(
         self,
@@ -114,19 +117,23 @@ class IntensityAnalyzer:
 
         return roi.flatten().astype(np.float64)
 
-    def _gmm_analysis(self, roi: np.ndarray, seed_intensity: float) -> Dict:
+    def _gmm_analysis(
+        self, roi: np.ndarray, seed_intensity: float, edge_sensitivity: float = 0.5
+    ) -> Dict:
         """Analyze using Gaussian Mixture Model.
 
         Args:
             roi: Flattened ROI intensities.
             seed_intensity: Intensity at seed point.
+            edge_sensitivity: How strictly to follow intensity boundaries.
+                0.0 = permissive (wide thresholds), 1.0 = strict (narrow thresholds).
 
         Returns:
             Analysis results dictionary.
         """
         if len(roi) < 100:
             # Too few samples for GMM
-            return self._simple_statistics(roi, seed_intensity)
+            return self._simple_statistics(roi, seed_intensity, edge_sensitivity)
 
         # Subsample if too large (for speed)
         if len(roi) > 10000:
@@ -167,8 +174,11 @@ class IntensityAnalyzer:
         component_mean = float(best_gmm.means_[seed_component][0])
         component_std = float(np.sqrt(best_gmm.covariances_[seed_component][0][0]))
 
-        # Compute thresholds (2.5 sigma range)
-        sigma_multiplier = 2.5
+        # Compute thresholds based on edge sensitivity
+        # sensitivity=0.0 -> sigma=3.5 (wide, permissive)
+        # sensitivity=0.5 -> sigma=2.5 (default)
+        # sensitivity=1.0 -> sigma=1.0 (narrow, strict)
+        sigma_multiplier = 3.5 - (2.5 * edge_sensitivity)
         data_min, data_max = float(roi.min()), float(roi.max())
 
         lower = max(data_min, component_mean - sigma_multiplier * component_std)
@@ -182,7 +192,9 @@ class IntensityAnalyzer:
             "n_components": best_gmm.n_components,
         }
 
-    def _simple_statistics(self, roi: np.ndarray, seed_intensity: float) -> Dict:
+    def _simple_statistics(
+        self, roi: np.ndarray, seed_intensity: float, edge_sensitivity: float = 0.5
+    ) -> Dict:
         """Fallback analysis using simple statistics.
 
         Uses intensities similar to the seed to estimate thresholds.
@@ -190,14 +202,18 @@ class IntensityAnalyzer:
         Args:
             roi: Flattened ROI intensities.
             seed_intensity: Intensity at seed point.
+            edge_sensitivity: How strictly to follow intensity boundaries.
+                0.0 = permissive (wide thresholds), 1.0 = strict (narrow thresholds).
 
         Returns:
             Analysis results dictionary.
         """
         if len(roi) == 0:
+            # Scale default tolerance based on sensitivity
+            base_tolerance = 50 * (1.5 - edge_sensitivity)
             return {
-                "lower": seed_intensity - 50,
-                "upper": seed_intensity + 50,
+                "lower": seed_intensity - base_tolerance,
+                "upper": seed_intensity + base_tolerance,
                 "mean": seed_intensity,
                 "std": 50.0,
                 "n_components": 1,
@@ -217,8 +233,14 @@ class IntensityAnalyzer:
                 "n_components": 1,
             }
 
-        # Find voxels with similar intensity to seed (within 2 std)
-        tolerance = max(global_std * 2, 20)  # At least 20 HU tolerance
+        # Find voxels with similar intensity to seed
+        # Scale tolerance based on sensitivity:
+        # sensitivity=0.0 -> base_tolerance=3.0 (permissive)
+        # sensitivity=0.5 -> base_tolerance=2.0 (default)
+        # sensitivity=1.0 -> base_tolerance=1.0 (strict)
+        base_tolerance = 3.0 - (2.0 * edge_sensitivity)
+        min_tolerance = 10 + 20 * (1 - edge_sensitivity)
+        tolerance = max(global_std * base_tolerance, min_tolerance)
         similar_mask = np.abs(roi - seed_intensity) < tolerance
         similar_values = roi[similar_mask]
 

@@ -95,9 +95,13 @@ class PerformanceCache:
         # For now, always recompute thresholds
         # Future: cache when seed is in similar intensity region
         radius_voxels = params.get("radius_voxels", (20, 20, 20))
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
 
         thresholds = intensityAnalyzer.analyze(
-            volumeArray, seedIjk, radius_voxels=tuple(radius_voxels)
+            volumeArray,
+            seedIjk,
+            radius_voxels=tuple(radius_voxels),
+            edge_sensitivity=edge_sensitivity,
         )
 
         self.threshold_cache = thresholds
