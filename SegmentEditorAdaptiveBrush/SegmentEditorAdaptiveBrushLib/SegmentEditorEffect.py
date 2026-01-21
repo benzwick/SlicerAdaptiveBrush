@@ -241,6 +241,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             return False
 
         if eventId == vtk.vtkCommand.LeftButtonPressEvent:
+            # Save undo state at the START of the stroke (once per stroke)
+            self.scriptedEffect.saveStateForUndo()
             self.isDrawing = True
             xy = callerInteractor.GetEventPosition()
             self.processPoint(xy, viewWidget)
