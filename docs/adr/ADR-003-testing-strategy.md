@@ -11,25 +11,24 @@ Accepted (Infrastructure Complete, Test Implementations Pending)
 | Test infrastructure (pytest) | Complete | conftest.py, fixtures ready |
 | Synthetic image generators | Complete | test_fixtures/synthetic_image.py |
 | Test file scaffolding | Complete | All test files created |
-| IntensityAnalyzer tests | Scaffolded | Tests skip with "not yet implemented" |
-| Algorithm tests | Scaffolded | Tests skip with "not yet implemented" |
-| Cache tests | Scaffolded | Tests skip with "not yet implemented" |
+| IntensityAnalyzer tests | Complete | 17 tests (GMM, thresholds, edge cases) |
+| Algorithm tests | Complete | 10 tests (all algorithms + brush mask) |
+| Cache tests | Complete | 7 tests (PerformanceCache + CacheStats) |
+| Auto-threshold tests | Complete | 14 tests (all threshold methods) |
 | Integration tests | Not started | Requires Slicer environment |
 
 ### Current Test Output
 
 ```
 $ uv run pytest -v
-21 tests collected
-21 skipped (all tests skip with "not yet implemented")
+51 tests collected
+32 passed, 19 skipped (SimpleITK-dependent tests skip outside Slicer)
 ```
 
 ### Next Steps
 
-1. Implement IntensityAnalyzer unit tests (GMM analysis)
-2. Implement algorithm unit tests for each algorithm
-3. Implement cache behavior tests
-4. Add Slicer integration tests
+1. Add Slicer integration tests (full effect testing with UI)
+2. Add visual/manual test documentation
 
 ## Context
 
