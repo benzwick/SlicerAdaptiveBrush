@@ -2,32 +2,32 @@
 
 ## Status
 
-Accepted (Infrastructure Complete, Optimization Pending)
+Accepted (Core Caching Active)
 
 ## Implementation Status
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| PerformanceCache class | Complete | Structure and interface ready |
-| Gradient cache fields | Scaffolded | Fields exist, not actively used |
+| PerformanceCache class | Complete | Tiered caching active |
+| Gradient cache | Active | Reuses gradient for same slice |
+| Threshold cache | Active | Reuses when seed intensity similar |
 | ROI cache fields | Scaffolded | Fields exist, not actively used |
-| Threshold cache | Partial | Computed fresh each time |
 | Preview mode | Not started | Full resolution always computed |
-| Cache statistics | Complete | Logging infrastructure ready |
+| Cache statistics | Complete | Hit/miss tracking active |
 | Cache invalidation | Complete | Triggers on parameter changes |
 
 ### Current Behavior
 
-The cache currently:
-- Times each brush computation (for performance monitoring)
-- Computes fresh thresholds for each point
-- Invalidates on parameter changes (radius, sensitivity, algorithm)
-- Clears state on mouse release
+The cache actively provides:
+- **Threshold caching**: Reuses thresholds when new seed intensity is within 1.5× std of cached intensity
+- **Gradient caching**: Reuses gradient magnitude for same slice index and volume
+- **Statistics tracking**: Logs cache hit rates on mouse release
+- **Parameter invalidation**: Clears caches when brush parameters change
+- **Per-stroke cleanup**: Clears ROI cache on mouse release, keeps gradient/threshold
 
-The following optimizations are designed but not active:
-- Gradient magnitude caching across slice
+Remaining optimizations (not yet active):
 - ROI reuse when seed moves within cached region
-- Preview mode during drag operations
+- Preview mode during drag operations (downsampled preview)
 
 ## Context
 

@@ -576,6 +576,85 @@ class TestPerformanceCache(unittest.TestCase):
         self.assertIsNone(self.cache.gradient_cache)
         self.assertEqual(self.cache.stats.gradient_hits, 0)
 
+    def test_threshold_caching_reuses_when_similar_intensity(self):
+        """Threshold cache should be reused when seed intensity is similar."""
+        # Set up cached threshold
+        self.cache.threshold_cache = {"lower": 80, "upper": 120, "mean": 100, "std": 10}
+        self.cache.threshold_seed_intensity = 100.0
+        self.cache.threshold_tolerance = 15.0  # 1.5 * std
+
+        # Check that similar intensity can reuse
+        self.assertTrue(self.cache._canReuseThresholds(105.0))  # Within tolerance
+        self.assertTrue(self.cache._canReuseThresholds(95.0))  # Within tolerance
+
+        # Check that different intensity cannot reuse
+        self.assertFalse(self.cache._canReuseThresholds(120.0))  # Outside tolerance
+        self.assertFalse(self.cache._canReuseThresholds(80.0))  # Outside tolerance
+
+    def test_threshold_caching_no_cache_returns_false(self):
+        """Should not reuse when no cache exists."""
+        self.assertFalse(self.cache._canReuseThresholds(100.0))
+
+    def test_gradient_caching_reuses_same_slice(self):
+        """Gradient cache should be reused for same slice."""
+        # Create dummy volume and gradient
+        volume = np.random.rand(10, 50, 50).astype(np.float32)
+        gradient = np.random.rand(50, 50).astype(np.float32)
+
+        # Mock compute function that should only be called once
+        call_count = [0]
+
+        def compute_gradient(slice_array):
+            call_count[0] += 1
+            return gradient
+
+        # First call - should compute
+        result1 = self.cache.getOrComputeGradient(volume, 5, "vol1", compute_gradient)
+        self.assertEqual(call_count[0], 1)
+        self.assertEqual(self.cache.stats.gradient_misses, 1)
+
+        # Second call same slice - should reuse cache
+        result2 = self.cache.getOrComputeGradient(volume, 5, "vol1", compute_gradient)
+        self.assertEqual(call_count[0], 1)  # Still 1, no new computation
+        self.assertEqual(self.cache.stats.gradient_hits, 1)
+
+        np.testing.assert_array_equal(result1, result2)
+
+    def test_gradient_caching_invalidates_on_slice_change(self):
+        """Gradient cache should recompute when slice changes."""
+        volume = np.random.rand(10, 50, 50).astype(np.float32)
+        call_count = [0]
+
+        def compute_gradient(slice_array):
+            call_count[0] += 1
+            return slice_array * 0.5  # Simple gradient mock
+
+        # First call on slice 5
+        self.cache.getOrComputeGradient(volume, 5, "vol1", compute_gradient)
+        self.assertEqual(call_count[0], 1)
+
+        # Second call on slice 7 - should recompute
+        self.cache.getOrComputeGradient(volume, 7, "vol1", compute_gradient)
+        self.assertEqual(call_count[0], 2)
+        self.assertEqual(self.cache.stats.gradient_misses, 2)
+
+    def test_gradient_caching_invalidates_on_volume_change(self):
+        """Gradient cache should recompute when volume changes."""
+        volume = np.random.rand(10, 50, 50).astype(np.float32)
+        call_count = [0]
+
+        def compute_gradient(slice_array):
+            call_count[0] += 1
+            return slice_array * 0.5
+
+        # First call
+        self.cache.getOrComputeGradient(volume, 5, "vol1", compute_gradient)
+        self.assertEqual(call_count[0], 1)
+
+        # Second call with different volume ID - should recompute
+        self.cache.getOrComputeGradient(volume, 5, "vol2", compute_gradient)
+        self.assertEqual(call_count[0], 2)
+
 
 @unittest.skipIf(CacheStats is None, "CacheStats not importable")
 class TestCacheStats(unittest.TestCase):

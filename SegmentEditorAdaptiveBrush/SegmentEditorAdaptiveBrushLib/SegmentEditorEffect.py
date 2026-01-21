@@ -13,9 +13,8 @@ from typing import Dict
 import ctk
 import numpy as np
 import qt
-import vtk
-
 import slicer
+import vtk
 from slicer.i18n import tr as _
 
 # Add parent directory to path for imports when loaded by Slicer
@@ -1120,7 +1119,6 @@ intensity similarity, stopping at edges and boundaries.</p>
         Args:
             mask: Binary mask numpy array (z, y, x ordering).
         """
-        import vtkSegmentationCorePython as vtkSegmentationCore
 
         modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
 

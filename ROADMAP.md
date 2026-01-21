@@ -52,7 +52,9 @@
 - [x] PerformanceCache class structure
 - [x] Cache invalidation on parameter changes
 - [x] Undo/redo support (single save per stroke)
-- [ ] Active gradient caching between strokes
+- [x] Threshold caching (reuse when seed intensity similar)
+- [x] Gradient caching between strokes on same slice
+- [x] Cache statistics and hit rate logging
 - [ ] ROI result caching for nearby brush positions
 - [ ] Preview mode during drag (reduced resolution)
 - [ ] Performance benchmarks
