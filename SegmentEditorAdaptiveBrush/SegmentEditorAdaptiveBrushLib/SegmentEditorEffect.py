@@ -5,11 +5,128 @@ based on image intensity similarity, adapting to image features (edges,
 boundaries) rather than using a fixed geometric shape.
 """
 
+import functools
 import logging
 import os
 import sys
 import time
+import traceback
 from typing import Dict
+
+
+# =============================================================================
+# Comprehensive Recursion Tracing for Debugging
+# =============================================================================
+_call_depth = {}
+_MAX_RECURSION_LOG = 3
+
+# Global tracer state
+_tracer_enabled = False
+_tracer_depth = 0
+_tracer_max_depth = 0
+_tracer_call_log = []
+_tracer_max_log = 200  # Max calls to log before stopping
+
+
+def _recursion_tracer(frame, event, arg):
+    """Trace function to capture all calls and identify recursion source."""
+    global _tracer_depth, _tracer_max_depth, _tracer_call_log, _tracer_enabled
+
+    if not _tracer_enabled:
+        return None
+
+    if event == "call":
+        _tracer_depth += 1
+        if _tracer_depth > _tracer_max_depth:
+            _tracer_max_depth = _tracer_depth
+
+        # Log the call
+        if len(_tracer_call_log) < _tracer_max_log:
+            filename = frame.f_code.co_filename
+            # Only log our files and slicer files, not stdlib
+            if "SlicerAdaptiveBrush" in filename or "Slicer" in filename:
+                short_file = filename.split("/")[-1]
+                func_name = frame.f_code.co_name
+                lineno = frame.f_lineno
+                _tracer_call_log.append(
+                    f"{'  ' * min(_tracer_depth, 20)}[{_tracer_depth}] {short_file}:{lineno} {func_name}"
+                )
+
+        # If we're getting deep, dump what we have
+        if _tracer_depth > 100 and _tracer_depth % 100 == 0:
+            logging.error(f"TRACER: Depth {_tracer_depth}, dumping call log...")
+            for line in _tracer_call_log[-50:]:
+                logging.error(line)
+
+        # Stop tracing if we hit recursion limit to allow error to propagate
+        if _tracer_depth > 900:
+            logging.critical(f"TRACER: Depth {_tracer_depth}! Stopping trace.")
+            logging.critical("TRACER: Last 100 calls before recursion:")
+            for line in _tracer_call_log[-100:]:
+                logging.critical(line)
+            _tracer_enabled = False
+            return None
+
+        return _recursion_tracer
+
+    elif event == "return":
+        _tracer_depth -= 1
+        return _recursion_tracer
+
+    return _recursion_tracer
+
+
+def start_recursion_trace():
+    """Start tracing to catch recursion source."""
+    global _tracer_enabled, _tracer_depth, _tracer_max_depth, _tracer_call_log
+    _tracer_enabled = True
+    _tracer_depth = 0
+    _tracer_max_depth = 0
+    _tracer_call_log = []
+    sys.settrace(_recursion_tracer)
+    logging.info("TRACER: Started recursion trace")
+
+
+def stop_recursion_trace():
+    """Stop tracing and report results."""
+    global _tracer_enabled, _tracer_max_depth, _tracer_call_log
+    sys.settrace(None)
+    _tracer_enabled = False
+    logging.info(f"TRACER: Stopped. Max depth reached: {_tracer_max_depth}")
+    if _tracer_max_depth > 50:
+        logging.warning(f"TRACER: Deep call stack detected ({_tracer_max_depth})")
+        logging.warning("TRACER: Call log:")
+        for line in _tracer_call_log[:100]:
+            logging.warning(line)
+
+
+def track_recursion(method):
+    """Decorator to track method call depth and log stack traces on recursion."""
+
+    @functools.wraps(method)
+    def wrapper(*args, **kwargs):
+        method_name = method.__name__
+        if method_name not in _call_depth:
+            _call_depth[method_name] = 0
+
+        _call_depth[method_name] += 1
+        depth = _call_depth[method_name]
+
+        try:
+            if depth > 1:
+                if depth <= _MAX_RECURSION_LOG + 1:
+                    stack = "".join(traceback.format_stack())
+                    logging.error(
+                        f"RECURSION DETECTED in {method_name}! Depth={depth}\nCall stack:\n{stack}"
+                    )
+                if depth > 50:
+                    logging.critical(f"RECURSION LIMIT in {method_name}! Depth={depth}, aborting.")
+                    return None
+            return method(*args, **kwargs)
+        finally:
+            _call_depth[method_name] -= 1
+
+    return wrapper
 
 import ctk
 import numpy as np
@@ -17,6 +134,10 @@ import qt
 import slicer
 import vtk
 import vtk.util.numpy_support
+
+# NOTE: Importing AbstractScriptedSegmentEditorEffect for inheritance causes RecursionError
+# in extension effects loaded via setPythonSource(). See class comment below for details.
+# from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
 from slicer.i18n import tr as _
 
 # Add parent directory to path for imports when loaded by Slicer
@@ -261,11 +382,31 @@ class BrushOutlinePipeline:
         self.sliceWidget = None
 
 
+# NOTE: Inheritance from AbstractScriptedSegmentEditorEffect causes RecursionError
+# when the effect is loaded. The built-in ThresholdEffect inherits successfully,
+# but extension effects loaded via setPythonSource() seem to have issues with the
+# base class utility methods (xyToIjk, xyzToRas, etc.) which call self.scriptedEffect
+# methods that may call back into Python, causing infinite recursion.
+#
+# Reference code that DOES NOT WORK for extensions:
+#
+# class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
+#     def __init__(self, scriptedEffect):
+#         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
+#         scriptedEffect.name = "Adaptive Brush"
+#         scriptedEffect.perSegment = True
+#
+# Working approach: No inheritance, implement cleanup() directly (Slicer finds it by name)
+
+
 class SegmentEditorEffect:
     """Adaptive brush segment editor effect.
 
-    This class implements the AbstractScriptedSegmentEditorEffect interface
-    to provide an adaptive brush that segments based on image intensity.
+    This effect provides an adaptive brush that segments based on image intensity.
+
+    Note: We intentionally do NOT inherit from AbstractScriptedSegmentEditorEffect.
+    Effects loaded via setPythonSource() are wrapped by qSlicerSegmentEditorScriptedEffect
+    which handles the interface. We implement cleanup() directly as Slicer looks for it by name.
     """
 
     def __init__(self, scriptedEffect):
@@ -288,6 +429,7 @@ class SegmentEditorEffect:
         self.eraseMode = False  # True = erase, False = add
         self._currentStrokeEraseMode = False  # Locked mode for current stroke
         self._isMiddleButtonHeld = False  # Track middle button for erase modifier
+        self._updatingThresholdRanges = False  # Reentrancy guard for threshold updates
 
         # Default parameters - Basic
         self.radiusMm = 5.0
@@ -483,6 +625,35 @@ class SegmentEditorEffect:
             },
         }
         self._currentPreset = "default"
+    def __getattr__(self, name):
+        """Log access to undefined attributes to help debug recursion.
+
+        This is called when an attribute is not found through normal lookup.
+        """
+        # Avoid recursion in logging itself
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+        logging.warning(f"__getattr__ called for undefined attribute: {name}")
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def __repr__(self):
+        """Return string representation to prevent default recursion."""
+        return f"<SegmentEditorEffect 'Adaptive Brush'>"
+
+    def __str__(self):
+        """Return string representation to prevent default recursion."""
+        return "SegmentEditorEffect(Adaptive Brush)"
+
+    def register(self):
+        """Register the effect with the segment editor effect factory.
+
+        This method is copied from AbstractScriptedSegmentEditorEffect since
+        we don't inherit from it (to avoid recursion issues).
+        """
+        import slicer
+
+        effectFactorySingleton = slicer.qSlicerSegmentEditorEffectFactory.instance()
+        effectFactorySingleton.registerEffect(self.scriptedEffect)
 
     def clone(self):
         """Create a copy of this effect.
@@ -502,9 +673,8 @@ class SegmentEditorEffect:
         Returns:
             QIcon for the effect toolbar button.
         """
-        iconPath = os.path.join(
-            os.path.dirname(__file__), "..", "Resources", "Icons", "SegmentEditorAdaptiveBrush.png"
-        )
+        # Icon is in the same directory as the effect file (extension pattern)
+        iconPath = os.path.join(os.path.dirname(__file__), "SegmentEditorEffect.png")
         if os.path.exists(iconPath):
             return qt.QIcon(iconPath)
         return qt.QIcon()
@@ -1469,6 +1639,7 @@ intensity similarity, stopping at edges and boundaries.</p>
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
         self.algorithm = self.algorithmCombo.currentData
+        logging.info(f"Algorithm changed to: {self.algorithm}")
         self.cache.invalidate()
         # Show/hide threshold controls based on algorithm
         isThresholdBrush = self.algorithm == "threshold_brush"
@@ -1529,14 +1700,30 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backend = self.backendCombo.currentData
         self.cache.invalidate()
 
+    @track_recursion
     def activate(self):
         """Called when the effect is selected."""
+        logging.debug("activate: START")
         self.cache.clear()
         self._createOutlinePipelines()
+        logging.debug("activate: after _createOutlinePipelines, calling _updateThresholdRanges")
         self._updateThresholdRanges()
+        logging.debug("activate: after _updateThresholdRanges")
         # Track current source volume for change detection
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
+        logging.debug("activate: END - starting recursion trace")
 
+        # Start tracing to catch what happens after activate() returns
+        start_recursion_trace()
+
+        # Schedule trace stop after 500ms (enough time to catch any recursion)
+        qt.QTimer.singleShot(500, self._stopTraceAfterActivate)
+
+    def _stopTraceAfterActivate(self):
+        """Stop the recursion trace after activate completes."""
+        stop_recursion_trace()
+
+    @track_recursion
     def deactivate(self):
         """Called when the effect is deselected."""
         self.cache.clear()
@@ -1544,14 +1731,140 @@ intensity similarity, stopping at edges and boundaries.</p>
         self._cleanupOutlinePipelines()
         self._lastSourceVolumeId = None
 
+    # -------------------------------------------------------------------------
+    # Methods that Slicer may call on effects - provide stubs to prevent
+    # AttributeError which could trigger recursive exception handlers
+    # -------------------------------------------------------------------------
+
+    @track_recursion
+    def setMRMLDefaults(self):
+        """Called to set default MRML parameters. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def updateGUIFromMRML(self):
+        """Called to sync GUI from MRML parameters. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def updateMRMLFromGUI(self):
+        """Called to sync MRML from GUI. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def interactionNodeModified(self, interactionNode):
+        """Called when the interaction node changes. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def layoutChanged(self):
+        """Called when the application layout changes. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def processViewNodeEvents(self, callerViewNode, eventId, viewWidget):
+        """Called to process view node events. No-op for this effect."""
+        pass
+
+    @track_recursion
+    def cleanup(self):
+        """Clean up resources to prevent memory leaks.
+
+        Disconnects all signal/slot connections and cleans up VTK pipelines.
+        This method is called by Slicer before the effect is deleted.
+
+        See: https://github.com/Slicer/Slicer/issues/7392
+        """
+        # Disconnect all signal/slot connections from UI widgets
+        # Using try/except to handle cases where widgets may not exist
+        widgets_to_disconnect = [
+            "presetCombo",
+            "resetPresetButton",
+            "radiusSlider",
+            "sensitivitySlider",
+            "zoneSlider",
+            "samplingMethodCombo",
+            "sphereModeCheckbox",
+            "previewModeCheckbox",
+            "algorithmCombo",
+            "backendCombo",
+            "cachingCheckbox",
+            "lowerThresholdSlider",
+            "upperThresholdSlider",
+            "autoThresholdCheckbox",
+            "thresholdMethodCombo",
+            "setFromSeedButton",
+            "toleranceSlider",
+            "gaussianSigmaSlider",
+            "percentileLowSlider",
+            "percentileHighSlider",
+            "stdMultiplierSlider",
+            "includeZoneCheckbox",
+            "geodesicEdgeWeightSlider",
+            "geodesicDistanceScaleSlider",
+            "geodesicSmoothingSlider",
+            "watershedGradientScaleSlider",
+            "watershedSmoothingSlider",
+            "levelSetPropagationSlider",
+            "levelSetCurvatureSlider",
+            "levelSetIterationsSlider",
+            "regionGrowingMultiplierSlider",
+            "regionGrowingIterationsSlider",
+            "randomWalkerBetaSlider",
+            "fillHolesCheckbox",
+            "closingRadiusSlider",
+            "addModeRadio",
+            "eraseModeRadio",
+        ]
+
+        for widget_name in widgets_to_disconnect:
+            try:
+                widget = getattr(self, widget_name, None)
+                if widget is not None:
+                    widget.disconnect()
+            except Exception:
+                pass  # Widget may already be deleted or not connected
+
+        # Clean up brush outline pipelines
+        self._cleanupOutlinePipelines()
+
+        # Clear cache
+        if hasattr(self, "cache") and self.cache is not None:
+            self.cache.clear()
+
+        # Note: Don't call parent cleanup() - it's just pass and ThresholdEffect doesn't call it either
+
+    @track_recursion
     def sourceVolumeNodeChanged(self):
         """Called when the source volume node changes.
 
         Updates threshold slider ranges to match the new volume's intensity range.
         """
+        logging.debug("sourceVolumeNodeChanged: START")
         self._updateThresholdRanges()
+        logging.debug("sourceVolumeNodeChanged: after _updateThresholdRanges")
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
+        logging.debug("sourceVolumeNodeChanged: after _getCurrentSourceVolumeId")
         self.cache.invalidate()
+        logging.debug("sourceVolumeNodeChanged: END")
+
+    @track_recursion
+    def masterVolumeNodeChanged(self):
+        """Called when the master volume node changes (deprecated name).
+
+        Delegates to sourceVolumeNodeChanged for backward compatibility.
+        """
+        logging.debug("masterVolumeNodeChanged: delegating to sourceVolumeNodeChanged")
+        self.sourceVolumeNodeChanged()
+
+    @track_recursion
+    def referenceGeometryChanged(self):
+        """Called when the reference geometry changes.
+
+        No-op for this effect - we handle volume changes in sourceVolumeNodeChanged.
+        """
+        logging.debug("referenceGeometryChanged: no-op")
+        pass
 
     def _getCurrentSourceVolumeId(self):
         """Get the ID of the current source volume, or None."""
@@ -1688,7 +2001,7 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         try:
             # Get the IJK coordinates
-            ijk = self.xyToIjk(xy, viewWidget)
+            ijk = self._xyToIjk(xy, viewWidget)
             if ijk is None:
                 self._hideSegmentationPreview()
                 return
@@ -1823,6 +2136,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         except Exception:
             return None
 
+    @track_recursion
     def _updateThresholdRanges(self):
         """Update threshold slider ranges based on source volume intensity.
 
@@ -1830,6 +2144,11 @@ intensity similarity, stopping at edges and boundaries.</p>
         for a more meaningful range than hardcoded values. Also sets
         appropriate step size and sensible default values.
         """
+        # Reentrancy guard to prevent recursive calls
+        if self._updatingThresholdRanges:
+            return
+        self._updatingThresholdRanges = True
+
         try:
             parameterSetNode = self.scriptedEffect.parameterSetNode()
             if parameterSetNode is None:
@@ -1853,37 +2172,51 @@ intensity similarity, stopping at edges and boundaries.</p>
             range_max = p99 + margin
             total_range = range_max - range_min
 
-            # Update slider ranges
-            self.lowerThresholdSlider.minimum = range_min
-            self.lowerThresholdSlider.maximum = range_max
-            self.upperThresholdSlider.minimum = range_min
-            self.upperThresholdSlider.maximum = range_max
+            # Block signals while updating slider ranges to prevent recursive updates
+            # This follows the pattern used in Slicer's ThresholdEffect
+            wasLowerBlocked = self.lowerThresholdSlider.blockSignals(True)
+            wasUpperBlocked = self.upperThresholdSlider.blockSignals(True)
 
-            # Set appropriate step size based on range
-            # Aim for ~200-500 steps across the range
-            step = max(1, total_range / 300)
-            # Round to nice values
-            if step >= 10:
-                step = round(step / 10) * 10
-            elif step >= 1:
-                step = round(step)
-            else:
-                step = round(step, 1)
+            try:
+                # Update slider ranges
+                self.lowerThresholdSlider.minimum = range_min
+                self.lowerThresholdSlider.maximum = range_max
+                self.upperThresholdSlider.minimum = range_min
+                self.upperThresholdSlider.maximum = range_max
 
-            self.lowerThresholdSlider.singleStep = step
-            self.upperThresholdSlider.singleStep = step
+                # Set appropriate step size based on range
+                # Aim for ~200-500 steps across the range
+                step = max(1, total_range / 300)
+                # Round to nice values
+                if step >= 10:
+                    step = round(step / 10) * 10
+                elif step >= 1:
+                    step = round(step)
+                else:
+                    step = round(step, 1)
 
-            # Set default values to interquartile range (25th to 75th percentile)
-            # This captures the "middle 50%" of intensities - a sensible starting point
-            self.lowerThresholdSlider.value = p25
-            self.upperThresholdSlider.value = p75
+                self.lowerThresholdSlider.singleStep = step
+                self.upperThresholdSlider.singleStep = step
+
+                # Set default values to interquartile range (25th to 75th percentile)
+                # This captures the "middle 50%" of intensities - a sensible starting point
+                self.lowerThresholdSlider.value = p25
+                self.upperThresholdSlider.value = p75
+            finally:
+                # Restore signal state
+                self.lowerThresholdSlider.blockSignals(wasLowerBlocked)
+                self.upperThresholdSlider.blockSignals(wasUpperBlocked)
 
             logging.debug(
                 f"Updated threshold ranges: [{range_min:.1f}, {range_max:.1f}], "
                 f"step: {step}, defaults (IQR): [{p25:.1f}, {p75:.1f}]"
             )
+            logging.debug("_updateThresholdRanges: about to exit try block")
         except Exception as e:
             logging.warning(f"Could not update threshold ranges: {e}")
+        finally:
+            self._updatingThresholdRanges = False
+            logging.debug("_updateThresholdRanges: exiting method")
 
     def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
         """Handle mouse interaction events.
@@ -2009,7 +2342,7 @@ intensity similarity, stopping at edges and boundaries.</p>
             xy: Screen coordinates (x, y).
             viewWidget: The slice view widget.
         """
-        ijk = self.xyToIjk(xy, viewWidget)
+        ijk = self._xyToIjk(xy, viewWidget)
         if ijk is None:
             return
 
@@ -2032,8 +2365,8 @@ intensity similarity, stopping at edges and boundaries.</p>
         except Exception as e:
             logging.exception(f"Error computing adaptive mask: {e}")
 
-    def xyToIjk(self, xy, viewWidget):
-        """Convert screen XY coordinates to volume IJK.
+    def _xyToIjk(self, xy, viewWidget):
+        """Convert screen XY coordinates to volume IJK (internal helper).
 
         Args:
             xy: Screen coordinates (x, y).
@@ -2169,6 +2502,10 @@ intensity similarity, stopping at edges and boundaries.</p>
         Returns:
             Binary mask numpy array.
         """
+        logging.debug(
+            f"_runSegmentation: algorithm={params['algorithm']}, seedIjk={seedIjk}, "
+            f"thresholds=[{thresholds.get('lower', 'N/A')}, {thresholds.get('upper', 'N/A')}]"
+        )
         # Extract ROI around seed
         roi, roiStart = self._extractROI(volumeArray, seedIjk, params["radius_voxels"])
 
