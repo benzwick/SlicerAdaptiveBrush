@@ -65,16 +65,14 @@ brush segmentation tools. Inspired by ITK-SNAP and ImFusion Labels.
 
             effectPath = os.path.join(
                 os.path.dirname(__file__),
-                "SegmentEditorAdaptiveBrushLib",
+                self.__class__.__name__ + "Lib",
                 "SegmentEditorEffect.py",
             )
 
             scriptedEffect = effects.qSlicerSegmentEditorScriptedEffect(None)
-            scriptedEffect.setPythonSource(effectPath)
-
-            # Register with the effect factory
-            effectFactory = effects.qSlicerSegmentEditorEffectFactory.instance()
-            effectFactory.registerEffect(scriptedEffect)
+            # Convert backslashes to forward slashes for Windows compatibility
+            scriptedEffect.setPythonSource(effectPath.replace("\\", "/"))
+            scriptedEffect.self().register()
 
             logging.info("Adaptive Brush effect registered successfully")
 
