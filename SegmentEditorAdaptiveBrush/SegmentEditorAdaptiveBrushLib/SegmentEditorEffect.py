@@ -136,10 +136,7 @@ import qt  # noqa: E402
 import slicer  # noqa: E402
 import vtk  # noqa: E402
 import vtk.util.numpy_support  # noqa: E402
-
-# NOTE: Importing AbstractScriptedSegmentEditorEffect for inheritance causes RecursionError
-# in extension effects loaded via setPythonSource(). See class comment below for details.
-# from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
+from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect  # noqa: E402
 from slicer.i18n import tr as _  # noqa: E402
 
 # Add parent directory to path for imports when loaded by Slicer
@@ -384,31 +381,10 @@ class BrushOutlinePipeline:
         self.sliceWidget = None
 
 
-# NOTE: Inheritance from AbstractScriptedSegmentEditorEffect causes RecursionError
-# when the effect is loaded. The built-in ThresholdEffect inherits successfully,
-# but extension effects loaded via setPythonSource() seem to have issues with the
-# base class utility methods (xyToIjk, xyzToRas, etc.) which call self.scriptedEffect
-# methods that may call back into Python, causing infinite recursion.
-#
-# Reference code that DOES NOT WORK for extensions:
-#
-# class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
-#     def __init__(self, scriptedEffect):
-#         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
-#         scriptedEffect.name = "Adaptive Brush"
-#         scriptedEffect.perSegment = True
-#
-# Working approach: No inheritance, implement cleanup() directly (Slicer finds it by name)
-
-
-class SegmentEditorEffect:
+class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """Adaptive brush segment editor effect.
 
     This effect provides an adaptive brush that segments based on image intensity.
-
-    Note: We intentionally do NOT inherit from AbstractScriptedSegmentEditorEffect.
-    Effects loaded via setPythonSource() are wrapped by qSlicerSegmentEditorScriptedEffect
-    which handles the interface. We implement cleanup() directly as Slicer looks for it by name.
     """
 
     def __init__(self, scriptedEffect):
@@ -419,7 +395,7 @@ class SegmentEditorEffect:
         """
         scriptedEffect.name = "Adaptive Brush"
         scriptedEffect.perSegment = True
-        self.scriptedEffect = scriptedEffect
+        AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
 
         # Algorithm components
         self.intensityAnalyzer = IntensityAnalyzer()
@@ -1835,7 +1811,8 @@ intensity similarity, stopping at edges and boundaries.</p>
         if hasattr(self, "cache") and self.cache is not None:
             self.cache.clear()
 
-        # Note: Don't call parent cleanup() - it's just pass and ThresholdEffect doesn't call it either
+        # Call parent cleanup
+        AbstractScriptedSegmentEditorEffect.cleanup(self)
 
     @track_recursion
     def sourceVolumeNodeChanged(self):

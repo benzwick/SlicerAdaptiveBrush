@@ -16,7 +16,6 @@ from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModule,
-    ScriptedLoadableModuleLogic,
     ScriptedLoadableModuleTest,
     ScriptedLoadableModuleWidget,
 )
@@ -58,9 +57,9 @@ brush segmentation tools. Inspired by ITK-SNAP and ImFusion Labels.
         self.parent.hidden = False
 
         # Register effect on startup
-        slicer.app.connect("startupCompleted()", self.registerEffect)
+        slicer.app.connect("startupCompleted()", self.registerEditorEffect)
 
-    def registerEffect(self):
+    def registerEditorEffect(self):
         """Register the Adaptive Brush effect with Segment Editor."""
         try:
             import qSlicerSegmentationsEditorEffectsPythonQt as effects
@@ -142,13 +141,6 @@ stopping at edges and boundaries.</p>
 
         # Add spacer
         self.layout.addStretch(1)
-
-
-class SegmentEditorAdaptiveBrushLogic(ScriptedLoadableModuleLogic):
-    """Logic class (minimal - main logic is in the effect)."""
-
-    def __init__(self):
-        ScriptedLoadableModuleLogic.__init__(self)
 
 
 class SegmentEditorAdaptiveBrushTest(ScriptedLoadableModuleTest):

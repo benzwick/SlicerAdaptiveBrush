@@ -16,6 +16,27 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         AbstractScriptedSegmentEditorEffect.__init__(self, scriptedEffect)
 ```
 
+## CRITICAL: createCursor() Implementation
+
+**DO NOT** call `self.scriptedEffect.createCursor()` - it causes infinite recursion:
+
+```python
+# ❌ WRONG - Causes infinite recursion
+def createCursor(self, widget):
+    return self.scriptedEffect.createCursor(widget)
+
+# ✅ CORRECT - Return cursor directly
+def createCursor(self, widget):
+    return qt.QCursor(qt.Qt.CrossCursor)
+    # OR: return slicer.util.mainWindow().cursor
+```
+
+Inheritance from `AbstractScriptedSegmentEditorEffect` is correct and recommended.
+The RecursionError that can occur is specifically about calling back to C++ methods
+that then call Python again. The `createCursor()` method is a common source of this
+issue because `self.scriptedEffect.createCursor(widget)` calls the C++ wrapper which
+in turn calls back to Python's `createCursor()` → infinite recursion.
+
 ## Required Methods
 
 ### 1. `__init__(self, scriptedEffect)`

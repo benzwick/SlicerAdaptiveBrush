@@ -90,3 +90,27 @@ def cleanup(self):
 
 ## Reference Extensions
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) - Maintained by Andras Lasso
+
+## Monitoring ScriptedSegmentEditorEffectTemplate
+
+The official Slicer template is the canonical reference for effect implementation patterns.
+
+### Template Location
+`Utilities/Templates/Modules/ScriptedSegmentEditorEffect/`
+
+### Fetch Current Template
+```bash
+# Module file
+gh api "repos/Slicer/Slicer/contents/Utilities/Templates/Modules/ScriptedSegmentEditorEffect/SegmentEditorTemplateKey.py" \
+  --jq '.content' | base64 -d
+
+# Effect file
+gh api "repos/Slicer/Slicer/contents/Utilities/Templates/Modules/ScriptedSegmentEditorEffect/SegmentEditorTemplateKeyLib/SegmentEditorEffect.py" \
+  --jq '.content' | base64 -d
+```
+
+### Check Recent Template Changes
+```bash
+gh api "repos/Slicer/Slicer/commits?path=Utilities/Templates/Modules/ScriptedSegmentEditorEffect&per_page=10" \
+  --jq '.[] | {sha: .sha[0:7], date: .commit.author.date, message: .commit.message | split("\n")[0]}'
+```
