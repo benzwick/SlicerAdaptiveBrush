@@ -10,6 +10,7 @@ License: Apache 2.0
 import logging
 import os
 
+import qt
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
@@ -45,6 +46,7 @@ For more information, see the <a href="https://github.com/your-org/SlicerAdaptiv
 project documentation</a>.
 """
         )
+        self.parent.helpText += self.getDefaultModuleDocumentationLink()
         self.parent.acknowledgementText = _(
             """
 This extension was developed as an open-source implementation of adaptive
@@ -52,8 +54,8 @@ brush segmentation tools. Inspired by ITK-SNAP and ImFusion Labels.
 """
         )
 
-        # Don't show this module in the module selector - it just registers the effect
-        self.parent.hidden = True
+        # Show module in selector so users can find usage instructions
+        self.parent.hidden = False
 
         # Register effect on startup
         slicer.app.connect("startupCompleted()", self.registerEffect)
@@ -89,25 +91,53 @@ class SegmentEditorAdaptiveBrushWidget(ScriptedLoadableModuleWidget):
     def setup(self):
         ScriptedLoadableModuleWidget.setup(self)
 
-        # Informational text
-        infoLabel = slicer.qMRMLWidget()
+        # Get the icon path for display
+        iconPath = os.path.join(
+            os.path.dirname(__file__),
+            self.moduleName + "Lib",
+            "SegmentEditorEffect.png",
+        )
+
+        # Informational text with icon
         infoText = _(
             """
 <h3>Adaptive Brush Effect</h3>
-<p>This module provides an Adaptive Brush effect for the Segment Editor.</p>
-<p>To use it:</p>
+<p>This module provides an <b>Adaptive Brush</b> effect for the Segment Editor.</p>
+
+<h4>How to Use</h4>
 <ol>
 <li>Open the <b>Segment Editor</b> module</li>
-<li>Select the <b>Adaptive Brush</b> effect from the effects toolbar</li>
+<li>Look for the Adaptive Brush icon in the effects toolbar:<br/>
+    <img src="{icon_path}" width="32" height="32" style="vertical-align: middle;"/>
+    (paintbrush with adaptive boundary)</li>
 <li>Click and drag on the image to paint with the adaptive brush</li>
 </ol>
+
 <p>The brush automatically segments regions based on intensity similarity,
 stopping at edges and boundaries.</p>
+
+<h4>Effect Not Visible?</h4>
+<p>If you don't see the Adaptive Brush effect in the Segment Editor:</p>
+<ul>
+<li>Restart 3D Slicer after installing the extension</li>
+<li>Check that the extension is enabled in <b>Edit → Application Settings → Modules</b></li>
+<li>Look in the "Additional effects" dropdown if your toolbar is narrow</li>
+<li>Verify installation in <b>Extension Manager</b></li>
+</ul>
+
+<h4>Links</h4>
+<ul>
+<li><a href="https://github.com/your-org/SlicerAdaptiveBrush">GitHub Repository</a>
+    - Source code, issues, and contributions</li>
+<li><a href="https://github.com/your-org/SlicerAdaptiveBrush#readme">Documentation</a>
+    - Usage guide and examples</li>
+</ul>
 """
-        )
+        ).format(icon_path=iconPath.replace("\\", "/"))
 
         textWidget = qt.QLabel(infoText)
         textWidget.setWordWrap(True)
+        textWidget.setOpenExternalLinks(True)
         self.layout.addWidget(textWidget)
 
         # Add spacer
@@ -126,7 +156,7 @@ class SegmentEditorAdaptiveBrushTest(ScriptedLoadableModuleTest):
 
     def setUp(self):
         """Reset the state before each test."""
-        slicer.mrmlScene.Clear()
+        slicer.mrmlScene.Clear(0)
 
     def runTest(self):
         """Run all tests."""
@@ -187,10 +217,3 @@ class SegmentEditorAdaptiveBrushTest(ScriptedLoadableModuleTest):
         self.assertIsNotNone(effect, "Failed to activate Adaptive Brush effect")
 
         self.delayDisplay("Basic segmentation test passed!")
-
-
-# Import qt here to avoid issues if module is imported before Slicer is fully initialized
-try:
-    import qt
-except ImportError:
-    pass
