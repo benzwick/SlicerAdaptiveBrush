@@ -1,13 +1,13 @@
-"""SegmentEditorAdaptiveBrush - Adaptive brush segment editor effect for 3D Slicer.
+"""Adaptive brush segment editor effect for 3D Slicer.
 
 This module provides an adaptive brush effect that automatically segments
 regions based on image intensity similarity, adapting to image features
 (edges, boundaries) rather than using a fixed geometric shape.
 
-License: Apache 2.0
+This is a scripted module that registers a segment editor effect.
+See https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
 """
 
-import logging
 import os
 
 import qt
@@ -32,7 +32,7 @@ class SegmentEditorAdaptiveBrush(ScriptedLoadableModule):
         self.parent.title = _("Segment Editor Adaptive Brush")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "Segmentation")]
         self.parent.dependencies = ["Segmentations"]
-        self.parent.contributors = ["SlicerAdaptiveBrush Contributors"]
+        self.parent.contributors = ["Ben Zwick"]
         self.parent.helpText = _(
             """
 Adaptive brush segment editor effect that automatically segments regions
@@ -61,27 +61,14 @@ brush segmentation tools. Inspired by ITK-SNAP and ImFusion Labels.
 
     def registerEditorEffect(self):
         """Register the Adaptive Brush effect with Segment Editor."""
-        try:
-            import qSlicerSegmentationsEditorEffectsPythonQt as effects
+        import qSlicerSegmentationsEditorEffectsPythonQt as qSlicerSegmentationsEditorEffects
 
-            effectPath = os.path.join(
-                os.path.dirname(__file__),
-                self.__class__.__name__ + "Lib",
-                "SegmentEditorEffect.py",
-            )
-
-            scriptedEffect = effects.qSlicerSegmentEditorScriptedEffect(None)
-            # Convert backslashes to forward slashes for Windows compatibility
-            scriptedEffect.setPythonSource(effectPath.replace("\\", "/"))
-            scriptedEffect.self().register()
-
-            logging.info("Adaptive Brush effect registered successfully")
-
-        except Exception as e:
-            logging.error(f"Failed to register Adaptive Brush effect: {e}")
-            import traceback
-
-            traceback.print_exc()
+        effectFilename = os.path.join(
+            os.path.dirname(__file__), self.__class__.__name__ + "Lib/SegmentEditorEffect.py"
+        )
+        clonedEffect = qSlicerSegmentationsEditorEffects.qSlicerSegmentEditorScriptedEffect(None)
+        clonedEffect.setPythonSource(effectFilename.replace("\\", "/"))
+        clonedEffect.self().register()
 
 
 class SegmentEditorAdaptiveBrushWidget(ScriptedLoadableModuleWidget):
@@ -161,9 +148,11 @@ class SegmentEditorAdaptiveBrushTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Testing effect registration...")
 
         # Check if effect is available
-        import qSlicerSegmentationsEditorEffectsPythonQt as effects
+        import qSlicerSegmentationsEditorEffectsPythonQt as qSlicerSegmentationsEditorEffects
 
-        effectFactory = effects.qSlicerSegmentEditorEffectFactory.instance()
+        effectFactory = (
+            qSlicerSegmentationsEditorEffects.qSlicerSegmentEditorEffectFactory.instance()
+        )
         registeredEffects = effectFactory.registeredEffects()
 
         self.assertIn(
