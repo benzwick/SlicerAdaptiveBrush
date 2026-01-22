@@ -8,6 +8,7 @@ boundaries) rather than using a fixed geometric shape.
 import logging
 import os
 import sys
+import time
 from typing import Dict
 
 import ctk
@@ -15,6 +16,7 @@ import numpy as np
 import qt
 import slicer
 import vtk
+import vtk.util.numpy_support
 from slicer.i18n import tr as _
 
 # Add parent directory to path for imports when loaded by Slicer
@@ -43,10 +45,36 @@ class BrushOutlinePipeline:
     Shows two circle outlines:
     - Outer circle (yellow): Maximum brush extent
     - Inner circle (cyan): Threshold sampling zone
+    - Preview overlay (green, semi-transparent): Segmentation preview
     """
 
     def __init__(self):
         """Initialize the brush outline pipeline."""
+        # Preview overlay image actor
+        self.previewImage = vtk.vtkImageData()
+        self.previewMapper = vtk.vtkImageMapper()
+        self.previewMapper.SetInputData(self.previewImage)
+        self.previewMapper.SetColorWindow(255)
+        self.previewMapper.SetColorLevel(127.5)
+
+        self.previewActor = vtk.vtkActor2D()
+        self.previewActor.SetMapper(self.previewMapper)
+        self.previewActor.VisibilityOff()
+        self.previewActor.SetPickable(False)
+        self.previewActor.GetProperty().SetOpacity(0.4)
+
+        # Lookup table for preview coloring (green with transparency)
+        self.previewLUT = vtk.vtkLookupTable()
+        self.previewLUT.SetNumberOfTableValues(2)
+        self.previewLUT.SetTableValue(0, 0.0, 0.0, 0.0, 0.0)  # Transparent for 0
+        self.previewLUT.SetTableValue(1, 0.2, 0.8, 0.3, 0.5)  # Green semi-transparent for 1
+        self.previewLUT.Build()
+
+        # Use color mapping for preview
+        self.previewColorMapper = vtk.vtkImageMapToColors()
+        self.previewColorMapper.SetLookupTable(self.previewLUT)
+        self.previewColorMapper.SetInputData(self.previewImage)
+
         # OUTER CIRCLE - Maximum extent (yellow)
         self.outerCircleSource = vtk.vtkRegularPolygonSource()
         self.outerCircleSource.SetNumberOfSides(64)
@@ -115,11 +143,14 @@ class BrushOutlinePipeline:
         if self.renderer is not None:
             self.renderer.RemoveActor2D(self.outerActor)
             self.renderer.RemoveActor2D(self.innerActor)
+            self.renderer.RemoveActor2D(self.previewActor)
 
         self.sliceWidget = sliceWidget
         if sliceWidget is not None:
             self.renderer = sliceWidget.sliceView().renderWindow().GetRenderers().GetFirstRenderer()
             if self.renderer is not None:
+                # Add preview first so it's behind the outline circles
+                self.renderer.AddActor2D(self.previewActor)
                 self.renderer.AddActor2D(self.outerActor)
                 self.renderer.AddActor2D(self.innerActor)
 
@@ -152,10 +183,58 @@ class BrushOutlinePipeline:
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
 
+    def updatePreview(self, mask2D, originXY, spacingXY):
+        """Update the preview overlay with a 2D mask.
+
+        Args:
+            mask2D: 2D numpy array (height, width) with 0/1 values.
+            originXY: Origin of the mask in slice XY coordinates (x, y).
+            spacingXY: Pixel spacing in XY (sx, sy).
+        """
+        if self.renderer is None or mask2D is None:
+            self.previewActor.VisibilityOff()
+            return
+
+        height, width = mask2D.shape
+
+        # Create VTK image from numpy array
+        self.previewImage.SetDimensions(width, height, 1)
+        self.previewImage.SetSpacing(spacingXY[0], spacingXY[1], 1.0)
+        self.previewImage.SetOrigin(originXY[0], originXY[1], 0)
+        self.previewImage.AllocateScalars(vtk.VTK_UNSIGNED_CHAR, 1)
+
+        # Copy mask data to VTK image
+        # VTK expects row-major with Y going up, numpy has Y going down
+        # Flip the mask vertically
+        flippedMask = np.flipud(mask2D).astype(np.uint8) * 255
+
+        # Get pointer to VTK image data and copy
+        vtk_array = vtk.util.numpy_support.numpy_to_vtk(
+            flippedMask.ravel(), deep=True, array_type=vtk.VTK_UNSIGNED_CHAR
+        )
+        self.previewImage.GetPointData().SetScalars(vtk_array)
+        self.previewImage.Modified()
+
+        # Update mapper
+        self.previewMapper.SetInputData(self.previewImage)
+        self.previewMapper.Modified()
+
+        self.previewActor.VisibilityOn()
+
+        if self.sliceWidget is not None:
+            self.sliceWidget.sliceView().scheduleRender()
+
+    def hidePreview(self):
+        """Hide only the preview overlay (keep circles visible)."""
+        self.previewActor.VisibilityOff()
+        if self.sliceWidget is not None:
+            self.sliceWidget.sliceView().scheduleRender()
+
     def hide(self):
-        """Hide the brush outlines."""
+        """Hide the brush outlines and preview."""
         self.outerActor.VisibilityOff()
         self.innerActor.VisibilityOff()
+        self.previewActor.VisibilityOff()
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
 
@@ -164,6 +243,7 @@ class BrushOutlinePipeline:
         if self.renderer is not None:
             self.renderer.RemoveActor2D(self.outerActor)
             self.renderer.RemoveActor2D(self.innerActor)
+            self.renderer.RemoveActor2D(self.previewActor)
             self.renderer = None
         self.sliceWidget = None
 
@@ -201,7 +281,13 @@ class SegmentEditorEffect:
         self.algorithm = "geodesic_distance"
         self.backend = "auto"
         self.sphereMode = False
+        self.previewMode = False  # Show segmentation preview on hover
         self.useThresholdCaching = False  # Disabled by default for accuracy
+
+        # Preview throttling to avoid computing on every pixel
+        self._lastPreviewTime = 0
+        self._lastPreviewXY = None
+        self._previewThrottleMs = 50  # Minimum ms between preview updates
 
         # Advanced parameters - Sampling
         # Gaussian sigma: controls center-weighting of intensity sampling
@@ -539,6 +625,19 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.sphereModeCheckbox.setToolTip(_("Paint in 3D volume instead of 2D slice"))
         self.sphereModeCheckbox.checked = self.sphereMode
         brushLayout.addRow(self.sphereModeCheckbox)
+
+        # Preview mode checkbox
+        self.previewModeCheckbox = qt.QCheckBox(_("Preview Mode"))
+        self.previewModeCheckbox.setToolTip(
+            _(
+                "Show semi-transparent preview of segmentation before clicking.\n\n"
+                "When enabled, moving the mouse over the image will show what\n"
+                "would be segmented if you clicked at that location.\n\n"
+                "Note: May reduce responsiveness on slower systems."
+            )
+        )
+        self.previewModeCheckbox.checked = self.previewMode
+        brushLayout.addRow(self.previewModeCheckbox)
 
         # ----- Algorithm Settings -----
         algorithmCollapsible = ctk.ctkCollapsibleButton()
@@ -1029,6 +1128,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.zoneSlider.valueChanged.connect(self.onZoneChanged)
         self.samplingMethodCombo.currentIndexChanged.connect(self.onSamplingMethodChanged)
         self.sphereModeCheckbox.toggled.connect(self.onSphereModeChanged)
+        self.previewModeCheckbox.toggled.connect(self.onPreviewModeChanged)
         self.algorithmCombo.currentIndexChanged.connect(self.onAlgorithmChanged)
         self.backendCombo.currentIndexChanged.connect(self.onBackendChanged)
         self.cachingCheckbox.toggled.connect(self.onCachingChanged)
@@ -1249,6 +1349,13 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.sphereMode = checked
         self.cache.invalidate()
 
+    def onPreviewModeChanged(self, checked):
+        """Handle preview mode toggle."""
+        self.previewMode = checked
+        if not checked:
+            # Hide any existing preview
+            self._hideSegmentationPreview()
+
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
         self.algorithm = self.algorithmCombo.currentData
@@ -1423,6 +1530,165 @@ intensity similarity, stopping at edges and boundaries.</p>
         for pipeline in self.outlinePipelines.values():
             pipeline.hide()
 
+    def _updateSegmentationPreview(self, xy, viewWidget):
+        """Compute and display segmentation preview at cursor position.
+
+        Args:
+            xy: Screen coordinates (x, y).
+            viewWidget: The slice view widget.
+        """
+        # Throttle preview updates to avoid performance issues
+        current_time = time.time() * 1000  # Convert to ms
+        if current_time - self._lastPreviewTime < self._previewThrottleMs:
+            return
+
+        # Skip if mouse hasn't moved significantly (more than 3 pixels)
+        if self._lastPreviewXY is not None:
+            dx = abs(xy[0] - self._lastPreviewXY[0])
+            dy = abs(xy[1] - self._lastPreviewXY[1])
+            if dx < 3 and dy < 3:
+                return
+
+        self._lastPreviewTime = current_time
+        self._lastPreviewXY = xy
+
+        try:
+            # Get the IJK coordinates
+            ijk = self.xyToIjk(xy, viewWidget)
+            if ijk is None:
+                self._hideSegmentationPreview()
+                return
+
+            # Get source volume
+            sourceVolumeNode = self.scriptedEffect.parameterSetNode().GetSourceVolumeNode()
+            if sourceVolumeNode is None:
+                return
+
+            # Compute the mask (same as when painting)
+            mask = self.computeAdaptiveMask(sourceVolumeNode, ijk, viewWidget)
+            if mask is None or not np.any(mask):
+                self._hideSegmentationPreview()
+                return
+
+            # Get the slice view info
+            sliceLogic = viewWidget.sliceLogic()
+            sliceNode = sliceLogic.GetSliceNode()
+            viewName = sliceNode.GetName()
+
+            if viewName not in self.outlinePipelines:
+                return
+
+            # Extract 2D slice from the 3D mask
+            # Get the current slice index
+            sliceIndex = self._getSliceIndex(viewWidget, sourceVolumeNode)
+            if sliceIndex is None:
+                return
+
+            # Get orientation to extract correct slice
+            orientation = sliceNode.GetOrientationString()
+
+            # Extract 2D slice based on orientation
+            if orientation == "Axial":
+                mask2D = mask[sliceIndex, :, :]
+            elif orientation == "Sagittal":
+                mask2D = mask[:, :, sliceIndex]
+            elif orientation == "Coronal":
+                mask2D = mask[:, sliceIndex, :]
+            else:
+                # For oblique, just use axial
+                mask2D = mask[sliceIndex, :, :] if sliceIndex < mask.shape[0] else None
+
+            if mask2D is None or not np.any(mask2D):
+                self._hideSegmentationPreview()
+                return
+
+            # Convert mask coordinates to XY screen coordinates
+            # Get the transform from IJK to XY
+            rasToXY = vtk.vtkMatrix4x4()
+            sliceNode.GetXYToRAS().GetInverse(rasToXY)
+
+            ijkToRAS = vtk.vtkMatrix4x4()
+            sourceVolumeNode.GetIJKToRASMatrix(ijkToRAS)
+
+            spacing = sourceVolumeNode.GetSpacing()
+
+            # For now, use a simple approach: position the preview at the brush location
+            # and scale based on spacing
+            sliceSpacing = self._getSliceSpacing(viewWidget)
+
+            # Calculate the origin of the mask in XY coordinates
+            # The mask is centered around the seed point
+            radiusVoxels = [self.radiusMm / s for s in spacing]
+            margin = 1.2
+
+            # Origin in XY: center minus radius
+            originXY = (
+                xy[0] - radiusVoxels[0] * margin / sliceSpacing,
+                xy[1] - radiusVoxels[1] * margin / sliceSpacing,
+            )
+
+            # Spacing in XY (pixels per voxel)
+            spacingXY = (1.0 / sliceSpacing, 1.0 / sliceSpacing)
+
+            # Update the preview overlay
+            self.outlinePipelines[viewName].updatePreview(mask2D, originXY, spacingXY)
+
+        except Exception as e:
+            logging.debug(f"Preview computation failed: {e}")
+            self._hideSegmentationPreview()
+
+    def _hideSegmentationPreview(self):
+        """Hide segmentation preview overlay in all views."""
+        for pipeline in self.outlinePipelines.values():
+            pipeline.hidePreview()
+
+    def _getSliceIndex(self, viewWidget, volumeNode):
+        """Get the current slice index for the given view and volume.
+
+        Args:
+            viewWidget: The slice view widget.
+            volumeNode: The volume node.
+
+        Returns:
+            Slice index (int) or None.
+        """
+        try:
+            sliceLogic = viewWidget.sliceLogic()
+            sliceNode = sliceLogic.GetSliceNode()
+
+            # Get the slice offset (position along the normal)
+            sliceOffset = sliceLogic.GetSliceOffset()
+
+            # Get volume origin and spacing
+            origin = volumeNode.GetOrigin()
+            spacing = volumeNode.GetSpacing()
+            dims = volumeNode.GetImageData().GetDimensions()
+
+            # Determine orientation
+            orientation = sliceNode.GetOrientationString()
+
+            if orientation == "Axial":
+                # Z axis
+                sliceIndex = int(round((sliceOffset - origin[2]) / spacing[2]))
+                sliceIndex = max(0, min(sliceIndex, dims[2] - 1))
+            elif orientation == "Sagittal":
+                # X axis
+                sliceIndex = int(round((sliceOffset - origin[0]) / spacing[0]))
+                sliceIndex = max(0, min(sliceIndex, dims[0] - 1))
+            elif orientation == "Coronal":
+                # Y axis
+                sliceIndex = int(round((sliceOffset - origin[1]) / spacing[1]))
+                sliceIndex = max(0, min(sliceIndex, dims[1] - 1))
+            else:
+                # Default to axial for oblique
+                sliceIndex = int(round((sliceOffset - origin[2]) / spacing[2]))
+                sliceIndex = max(0, min(sliceIndex, dims[2] - 1))
+
+            return sliceIndex
+
+        except Exception:
+            return None
+
     def _updateThresholdRanges(self):
         """Update threshold slider ranges based on source volume intensity.
 
@@ -1505,27 +1771,37 @@ intensity similarity, stopping at edges and boundaries.</p>
             # Save undo state at the START of the stroke (once per stroke)
             self.scriptedEffect.saveStateForUndo()
             self.isDrawing = True
+            # Hide segmentation preview when starting to draw
+            self._hideSegmentationPreview()
             self._updateBrushPreview(xy, viewWidget)
             self.processPoint(xy, viewWidget)
             return True
 
         elif eventId == vtk.vtkCommand.MouseMoveEvent:
-            # Update preview on mouse move
+            # Update brush outline preview on mouse move
             self._updateBrushPreview(xy, viewWidget)
             if self.isDrawing:
                 self.processPoint(xy, viewWidget)
                 return True  # Only consume when drawing
+            else:
+                # Show segmentation preview when hovering (if preview mode enabled)
+                if self.previewMode:
+                    self._updateSegmentationPreview(xy, viewWidget)
             return False  # Don't consume when just hovering
 
         elif eventId == vtk.vtkCommand.LeftButtonReleaseEvent:
             self.isDrawing = False
             self.lastIjk = None
             self.cache.onMouseRelease()
+            # Show preview again after drawing
+            if self.previewMode:
+                self._updateSegmentationPreview(xy, viewWidget)
             return True
 
         elif eventId == vtk.vtkCommand.LeaveEvent:
             # Hide preview when mouse leaves the view
             self._hideBrushPreview()
+            self._hideSegmentationPreview()
             return False
 
         elif eventId == vtk.vtkCommand.EnterEvent:
