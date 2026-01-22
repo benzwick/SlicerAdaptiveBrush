@@ -5,132 +5,12 @@ based on image intensity similarity, adapting to image features (edges,
 boundaries) rather than using a fixed geometric shape.
 """
 
-import functools
 import logging
 import os
 import sys
 import time
-import traceback
 
-# =============================================================================
-# Comprehensive Recursion Tracing for Debugging
-# =============================================================================
-# Set to True to enable recursion tracing after activate() - helps debug RecursionError
-DEBUG_RECURSION_TRACING = False
-
-_call_depth = {}
-_MAX_RECURSION_LOG = 3
-
-# Global tracer state
-_tracer_enabled = False
-_tracer_depth = 0
-_tracer_max_depth = 0
-_tracer_call_log = []
-_tracer_max_log = 200  # Max calls to log before stopping
-
-
-def _recursion_tracer(frame, event, arg):
-    """Trace function to capture all calls and identify recursion source."""
-    global _tracer_depth, _tracer_max_depth, _tracer_call_log, _tracer_enabled
-
-    if not _tracer_enabled:
-        return None
-
-    if event == "call":
-        _tracer_depth += 1
-        if _tracer_depth > _tracer_max_depth:
-            _tracer_max_depth = _tracer_depth
-
-        # Log the call
-        if len(_tracer_call_log) < _tracer_max_log:
-            filename = frame.f_code.co_filename
-            # Only log our files and slicer files, not stdlib
-            if "SlicerAdaptiveBrush" in filename or "Slicer" in filename:
-                short_file = filename.split("/")[-1]
-                func_name = frame.f_code.co_name
-                lineno = frame.f_lineno
-                _tracer_call_log.append(
-                    f"{'  ' * min(_tracer_depth, 20)}[{_tracer_depth}] {short_file}:{lineno} {func_name}"
-                )
-
-        # If we're getting deep, dump what we have
-        if _tracer_depth > 100 and _tracer_depth % 100 == 0:
-            logging.error(f"TRACER: Depth {_tracer_depth}, dumping call log...")
-            for line in _tracer_call_log[-50:]:
-                logging.error(line)
-
-        # Stop tracing if we hit recursion limit to allow error to propagate
-        if _tracer_depth > 900:
-            logging.critical(f"TRACER: Depth {_tracer_depth}! Stopping trace.")
-            logging.critical("TRACER: Last 100 calls before recursion:")
-            for line in _tracer_call_log[-100:]:
-                logging.critical(line)
-            _tracer_enabled = False
-            return None
-
-        return _recursion_tracer
-
-    elif event == "return":
-        _tracer_depth -= 1
-        return _recursion_tracer
-
-    return _recursion_tracer
-
-
-def start_recursion_trace():
-    """Start tracing to catch recursion source."""
-    global _tracer_enabled, _tracer_depth, _tracer_max_depth, _tracer_call_log
-    _tracer_enabled = True
-    _tracer_depth = 0
-    _tracer_max_depth = 0
-    _tracer_call_log = []
-    sys.settrace(_recursion_tracer)
-    logging.info("TRACER: Started recursion trace")
-
-
-def stop_recursion_trace():
-    """Stop tracing and report results."""
-    global _tracer_enabled, _tracer_max_depth, _tracer_call_log
-    sys.settrace(None)
-    _tracer_enabled = False
-    logging.info(f"TRACER: Stopped. Max depth reached: {_tracer_max_depth}")
-    if _tracer_max_depth > 50:
-        logging.warning(f"TRACER: Deep call stack detected ({_tracer_max_depth})")
-        logging.warning("TRACER: Call log:")
-        for line in _tracer_call_log[:100]:
-            logging.warning(line)
-
-
-def track_recursion(method):
-    """Decorator to track method call depth and log stack traces on recursion."""
-
-    @functools.wraps(method)
-    def wrapper(*args, **kwargs):
-        method_name = method.__name__
-        if method_name not in _call_depth:
-            _call_depth[method_name] = 0
-
-        _call_depth[method_name] += 1
-        depth = _call_depth[method_name]
-
-        try:
-            if depth > 1:
-                if depth <= _MAX_RECURSION_LOG + 1:
-                    stack = "".join(traceback.format_stack())
-                    logging.error(
-                        f"RECURSION DETECTED in {method_name}! Depth={depth}\nCall stack:\n{stack}"
-                    )
-                if depth > 50:
-                    logging.critical(f"RECURSION LIMIT in {method_name}! Depth={depth}, aborting.")
-                    return None
-            return method(*args, **kwargs)
-        finally:
-            _call_depth[method_name] -= 1
-
-    return wrapper
-
-
-import ctk  # noqa: E402
+import ctk
 import numpy as np  # noqa: E402
 import qt  # noqa: E402
 import slicer  # noqa: E402
@@ -1679,30 +1559,14 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.backend = self.backendCombo.currentData
         self.cache.invalidate()
 
-    @track_recursion
     def activate(self):
         """Called when the effect is selected."""
-        logging.debug("activate: START")
         self.cache.clear()
         self._createOutlinePipelines()
-        logging.debug("activate: after _createOutlinePipelines, calling _updateThresholdRanges")
         self._updateThresholdRanges()
-        logging.debug("activate: after _updateThresholdRanges")
         # Track current source volume for change detection
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
-        logging.debug("activate: END - starting recursion trace")
 
-        # Start tracing to catch what happens after activate() returns
-        if DEBUG_RECURSION_TRACING:
-            start_recursion_trace()
-            # Schedule trace stop after 500ms (enough time to catch any recursion)
-            qt.QTimer.singleShot(500, self._stopTraceAfterActivate)
-
-    def _stopTraceAfterActivate(self):
-        """Stop the recursion trace after activate completes."""
-        stop_recursion_trace()
-
-    @track_recursion
     def deactivate(self):
         """Called when the effect is deselected."""
         self.cache.clear()
@@ -1715,37 +1579,30 @@ intensity similarity, stopping at edges and boundaries.</p>
     # AttributeError which could trigger recursive exception handlers
     # -------------------------------------------------------------------------
 
-    @track_recursion
     def setMRMLDefaults(self):
         """Called to set default MRML parameters. No-op for this effect."""
         pass
 
-    @track_recursion
     def updateGUIFromMRML(self):
         """Called to sync GUI from MRML parameters. No-op for this effect."""
         pass
 
-    @track_recursion
     def updateMRMLFromGUI(self):
         """Called to sync MRML from GUI. No-op for this effect."""
         pass
 
-    @track_recursion
     def interactionNodeModified(self, interactionNode):
         """Called when the interaction node changes. No-op for this effect."""
         pass
 
-    @track_recursion
     def layoutChanged(self):
         """Called when the application layout changes. No-op for this effect."""
         pass
 
-    @track_recursion
     def processViewNodeEvents(self, callerViewNode, eventId, viewWidget):
         """Called to process view node events. No-op for this effect."""
         pass
 
-    @track_recursion
     def cleanup(self):
         """Clean up resources to prevent memory leaks.
 
@@ -1814,36 +1671,27 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Call parent cleanup
         AbstractScriptedSegmentEditorEffect.cleanup(self)
 
-    @track_recursion
     def sourceVolumeNodeChanged(self):
         """Called when the source volume node changes.
 
         Updates threshold slider ranges to match the new volume's intensity range.
         """
-        logging.debug("sourceVolumeNodeChanged: START")
         self._updateThresholdRanges()
-        logging.debug("sourceVolumeNodeChanged: after _updateThresholdRanges")
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
-        logging.debug("sourceVolumeNodeChanged: after _getCurrentSourceVolumeId")
         self.cache.invalidate()
-        logging.debug("sourceVolumeNodeChanged: END")
 
-    @track_recursion
     def masterVolumeNodeChanged(self):
         """Called when the master volume node changes (deprecated name).
 
         Delegates to sourceVolumeNodeChanged for backward compatibility.
         """
-        logging.debug("masterVolumeNodeChanged: delegating to sourceVolumeNodeChanged")
         self.sourceVolumeNodeChanged()
 
-    @track_recursion
     def referenceGeometryChanged(self):
         """Called when the reference geometry changes.
 
         No-op for this effect - we handle volume changes in sourceVolumeNodeChanged.
         """
-        logging.debug("referenceGeometryChanged: no-op")
         pass
 
     def _getCurrentSourceVolumeId(self):
@@ -2116,7 +1964,6 @@ intensity similarity, stopping at edges and boundaries.</p>
         except Exception:
             return None
 
-    @track_recursion
     def _updateThresholdRanges(self):
         """Update threshold slider ranges based on source volume intensity.
 
@@ -2191,12 +2038,10 @@ intensity similarity, stopping at edges and boundaries.</p>
                 f"Updated threshold ranges: [{range_min:.1f}, {range_max:.1f}], "
                 f"step: {step}, defaults (IQR): [{p25:.1f}, {p75:.1f}]"
             )
-            logging.debug("_updateThresholdRanges: about to exit try block")
         except Exception as e:
             logging.warning(f"Could not update threshold ranges: {e}")
         finally:
             self._updatingThresholdRanges = False
-            logging.debug("_updateThresholdRanges: exiting method")
 
     def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
         """Handle mouse interaction events.
