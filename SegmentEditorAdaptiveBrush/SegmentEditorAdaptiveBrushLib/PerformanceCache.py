@@ -7,7 +7,7 @@ a cached region.
 
 import logging
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional
 
 import numpy as np
 
@@ -43,13 +43,13 @@ class PerformanceCache:
 
         # Threshold cache (Tier 2 - reused when seed intensity is similar)
         # Only active when threshold_caching_enabled is True
-        self.threshold_cache: Optional[Dict] = None
+        self.threshold_cache: Optional[dict] = None
         self.threshold_seed_intensity: Optional[float] = None
         self.threshold_tolerance: float = 0.0  # Will be set based on std
 
         # ROI cache (Tier 3 - cleared on mouse release)
         self.roi_cache: Optional[np.ndarray] = None
-        self.roi_bounds: Optional[Tuple[Tuple[int, int, int], Tuple[int, int, int]]] = None
+        self.roi_bounds: Optional[tuple[tuple[int, int, int], tuple[int, int, int]]] = None
 
         # Statistics
         self.stats = CacheStats()
@@ -57,8 +57,8 @@ class PerformanceCache:
     def computeOrGetCached(
         self,
         volumeArray: np.ndarray,
-        seedIjk: Tuple[int, int, int],
-        params: Dict,
+        seedIjk: tuple[int, int, int],
+        params: dict,
         intensityAnalyzer: Any,
         segmentationFunc: Callable,
     ) -> np.ndarray:
@@ -84,17 +84,19 @@ class PerformanceCache:
 
         elapsed = (time.perf_counter() - start_time) * 1000
         self.stats.total_compute_time_ms += elapsed
-        logging.debug(f"Adaptive brush computation: {elapsed:.1f}ms")
+        logging.debug(
+            f"Adaptive brush computation: {elapsed:.1f}ms (algorithm={params['algorithm']})"
+        )
 
         return mask
 
     def _getOrComputeThresholds(
         self,
         volumeArray: np.ndarray,
-        seedIjk: Tuple[int, int, int],
-        params: Dict,
+        seedIjk: tuple[int, int, int],
+        params: dict,
         intensityAnalyzer: Any,
-    ) -> Dict:
+    ) -> dict:
         """Get cached thresholds or compute new ones.
 
         Thresholds are cached and reused when the new seed intensity is
@@ -228,7 +230,7 @@ class PerformanceCache:
         return gradient
 
     def isValidFor(
-        self, seedIjk: Tuple[int, int, int], radiusVoxels: Tuple[float, float, float]
+        self, seedIjk: tuple[int, int, int], radiusVoxels: tuple[float, float, float]
     ) -> bool:
         """Check if ROI cache is valid for given seed and radius.
 

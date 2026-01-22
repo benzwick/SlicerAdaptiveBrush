@@ -6,7 +6,6 @@ for specified Slicer revisions.
 """
 
 import argparse
-import os
 import re
 import shutil
 import tarfile
@@ -40,9 +39,7 @@ def parse_cmake_module_files(cmake_path: Path) -> tuple[list[str], list[str]]:
     content = cmake_path.read_text()
 
     # Extract MODULE_PYTHON_SCRIPTS
-    scripts_match = re.search(
-        r"set\(MODULE_PYTHON_SCRIPTS\s+(.*?)\s*\)", content, re.DOTALL
-    )
+    scripts_match = re.search(r"set\(MODULE_PYTHON_SCRIPTS\s+(.*?)\s*\)", content, re.DOTALL)
     scripts = []
     if scripts_match:
         scripts_text = scripts_match.group(1)
@@ -51,9 +48,7 @@ def parse_cmake_module_files(cmake_path: Path) -> tuple[list[str], list[str]]:
         scripts = [s.strip() for s in scripts_text.split() if s.strip()]
 
     # Extract MODULE_PYTHON_RESOURCES
-    resources_match = re.search(
-        r"set\(MODULE_PYTHON_RESOURCES\s+(.*?)\s*\)", content, re.DOTALL
-    )
+    resources_match = re.search(r"set\(MODULE_PYTHON_RESOURCES\s+(.*?)\s*\)", content, re.DOTALL)
     resources = []
     if resources_match:
         resources_text = resources_match.group(1)

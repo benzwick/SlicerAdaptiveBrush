@@ -11,8 +11,6 @@ import os
 import sys
 import time
 import traceback
-from typing import Dict
-
 
 # =============================================================================
 # Comprehensive Recursion Tracing for Debugging
@@ -131,17 +129,18 @@ def track_recursion(method):
 
     return wrapper
 
-import ctk
-import numpy as np
-import qt
-import slicer
-import vtk
-import vtk.util.numpy_support
+
+import ctk  # noqa: E402
+import numpy as np  # noqa: E402
+import qt  # noqa: E402
+import slicer  # noqa: E402
+import vtk  # noqa: E402
+import vtk.util.numpy_support  # noqa: E402
 
 # NOTE: Importing AbstractScriptedSegmentEditorEffect for inheritance causes RecursionError
 # in extension effects loaded via setPythonSource(). See class comment below for details.
 # from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
-from slicer.i18n import tr as _
+from slicer.i18n import tr as _  # noqa: E402
 
 # Add parent directory to path for imports when loaded by Slicer
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -149,13 +148,13 @@ if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
 # Import algorithm components (use non-relative imports for Slicer compatibility)
-from IntensityAnalyzer import IntensityAnalyzer
-from PerformanceCache import PerformanceCache
+from IntensityAnalyzer import IntensityAnalyzer  # noqa: E402
+from PerformanceCache import PerformanceCache  # noqa: E402
 
 # Try to import SimpleITK (should be available in Slicer)
 try:
-    import SimpleITK as sitk
-    import sitkUtils
+    import SimpleITK as sitk  # noqa: E402
+    import sitkUtils  # noqa: E402, F401 - for future use with volume push/pull
 
     HAS_SIMPLEITK = True
 except ImportError:
@@ -503,7 +502,7 @@ class SegmentEditorEffect:
         self.closingRadius = 0
 
         # Brush outline visualization - one pipeline per slice view
-        self.outlinePipelines: Dict[str, BrushOutlinePipeline] = {}
+        self.outlinePipelines: dict[str, BrushOutlinePipeline] = {}
         self.activeViewWidget = None
 
         # Track source volume for detecting changes
@@ -628,6 +627,7 @@ class SegmentEditorEffect:
             },
         }
         self._currentPreset = "default"
+
     def __getattr__(self, name):
         """Log access to undefined attributes to help debug recursion.
 
@@ -641,7 +641,7 @@ class SegmentEditorEffect:
 
     def __repr__(self):
         """Return string representation to prevent default recursion."""
-        return f"<SegmentEditorEffect 'Adaptive Brush'>"
+        return "<SegmentEditorEffect 'Adaptive Brush'>"
 
     def __str__(self):
         """Return string representation to prevent default recursion."""
@@ -2687,9 +2687,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Combine user-controllable gradient_scale with edge_sensitivity
         # gradient_scale is a base multiplier, edge_sensitivity fine-tunes it
         effective_scale = watershed_gradient_scale * (0.5 + 1.5 * edge_sensitivity)
-        gradArray = np.clip(gradArray / gradMax * 255 * effective_scale, 0, 255).astype(
-            np.float32
-        )
+        gradArray = np.clip(gradArray / gradMax * 255 * effective_scale, 0, 255).astype(np.float32)
 
         gradient = sitk.GetImageFromArray(gradArray)
 
@@ -3037,9 +3035,7 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         if HAS_SKIMAGE_RW:
             try:
-                return self._randomWalkerSkimage(
-                    roi, localSeed, thresholds, beta, radius_voxels
-                )
+                return self._randomWalkerSkimage(roi, localSeed, thresholds, beta, radius_voxels)
             except Exception as e:
                 logging.error(f"scikit-image Random Walker failed: {e}, using fallback")
                 # Only show UI warning once per session to avoid spamming
@@ -3307,9 +3303,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         if sampling_method == "mean_std":
             # Weighted mean and std
             weighted_mean = np.sum(zone_intensities * normalized_weights)
-            weighted_variance = np.sum(
-                normalized_weights * (zone_intensities - weighted_mean) ** 2
-            )
+            weighted_variance = np.sum(normalized_weights * (zone_intensities - weighted_mean) ** 2)
             weighted_std = np.sqrt(weighted_variance)
 
             lower = weighted_mean - std_multiplier * weighted_std

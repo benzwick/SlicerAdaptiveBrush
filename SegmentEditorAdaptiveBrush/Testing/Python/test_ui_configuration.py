@@ -5,9 +5,9 @@ and won't cause warnings or errors in CTK/Qt. The configurations are
 tested against the expected values defined in the effect code.
 """
 
-import pytest
 from dataclasses import dataclass
-from typing import Optional
+
+import pytest
 
 
 @dataclass
@@ -48,9 +48,7 @@ class SliderConfig:
         # singleStep must not exceed range
         range_size = self.maximum - self.minimum
         if self.single_step > range_size:
-            errors.append(
-                f"{self.name}: single_step ({self.single_step}) > range ({range_size})"
-            )
+            errors.append(f"{self.name}: single_step ({self.single_step}) > range ({range_size})")
 
         # For integer sliders (decimals=0), singleStep must be >= 1
         if self.decimals == 0 and self.single_step < 1:

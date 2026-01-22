@@ -5,7 +5,7 @@ Gaussian Mixture Models (GMM) or simple statistics as a fallback.
 """
 
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -27,7 +27,7 @@ class IntensityAnalyzer:
     the seed point to compute optimal thresholds.
     """
 
-    def __init__(self, use_gmm: bool = True, n_components_range: Tuple[int, int] = (2, 4)):
+    def __init__(self, use_gmm: bool = True, n_components_range: tuple[int, int] = (2, 4)):
         """Initialize the analyzer.
 
         Args:
@@ -41,10 +41,10 @@ class IntensityAnalyzer:
     def analyze(
         self,
         image: np.ndarray,
-        seed_point: Tuple[int, int, int],
-        radius_voxels: Optional[Tuple[float, float, float]] = None,
+        seed_point: tuple[int, int, int],
+        radius_voxels: Optional[tuple[float, float, float]] = None,
         edge_sensitivity: float = 0.5,
-    ) -> Dict:
+    ) -> dict:
         """Analyze intensity distribution around seed point.
 
         Args:
@@ -86,8 +86,8 @@ class IntensityAnalyzer:
     def _extract_roi(
         self,
         image: np.ndarray,
-        seed_point: Tuple[int, int, int],
-        radius_voxels: Tuple[float, float, float],
+        seed_point: tuple[int, int, int],
+        radius_voxels: tuple[float, float, float],
     ) -> np.ndarray:
         """Extract region of interest around seed point.
 
@@ -119,7 +119,7 @@ class IntensityAnalyzer:
 
     def _gmm_analysis(
         self, roi: np.ndarray, seed_intensity: float, edge_sensitivity: float = 0.5
-    ) -> Dict:
+    ) -> dict:
         """Analyze using Gaussian Mixture Model.
 
         Args:
@@ -194,7 +194,7 @@ class IntensityAnalyzer:
 
     def _simple_statistics(
         self, roi: np.ndarray, seed_intensity: float, edge_sensitivity: float = 0.5
-    ) -> Dict:
+    ) -> dict:
         """Fallback analysis using simple statistics.
 
         Uses intensities similar to the seed to estimate thresholds.
@@ -220,7 +220,6 @@ class IntensityAnalyzer:
             }
 
         # Compute global statistics
-        global_mean = float(np.mean(roi))
         global_std = float(np.std(roi))
 
         if global_std < 1e-6:
