@@ -1909,6 +1909,36 @@ intensity similarity, stopping at edges and boundaries.</p>
             self._isMiddleButtonHeld = False
             return False
 
+        # Handle scroll wheel events for brush radius and threshold zone adjustment
+        if eventId in (
+            vtk.vtkCommand.MouseWheelForwardEvent,
+            vtk.vtkCommand.MouseWheelBackwardEvent,
+        ):
+            isCtrlPressed = callerInteractor.GetControlKey()
+            isShiftPressed = callerInteractor.GetShiftKey()
+            forward = eventId == vtk.vtkCommand.MouseWheelForwardEvent
+
+            if isShiftPressed and isCtrlPressed:
+                # Ctrl+Shift+scroll: adjust threshold zone
+                delta = 5 if forward else -5
+                newValue = max(10, min(100, self.thresholdZone + delta))
+                self.thresholdZone = newValue
+                self.zoneSlider.value = newValue
+                self._updateBrushPreview(xy, viewWidget)
+                return True  # Consume event
+
+            elif isShiftPressed and not isCtrlPressed:
+                # Shift+scroll: adjust brush radius by ~20%
+                factor = 1.2 if forward else 0.8
+                newRadius = max(1.0, min(100.0, self.radiusMm * factor))
+                self.radiusMm = newRadius
+                self.radiusSlider.value = newRadius
+                self._updateBrushPreview(xy, viewWidget)
+                return True  # Consume event
+
+            # If neither modifier combo, don't consume (let Slicer handle Ctrl+scroll for zoom)
+            return False
+
         # Detect Ctrl key for temporary mode inversion
         isCtrlPressed = callerInteractor.GetControlKey()
 

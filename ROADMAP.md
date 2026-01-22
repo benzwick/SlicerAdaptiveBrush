@@ -73,11 +73,13 @@
 
 ## Version 0.9.0 - Usability Enhancements (Current)
 
+- [x] Erase mode (Ctrl+click or Middle+click to invert)
+- [x] Scroll wheel controls
+  - [x] Shift+scroll for brush radius
+  - [x] Ctrl+Shift+scroll for threshold zone
 - [ ] Keyboard shortcuts
   - [ ] `[` / `]` to decrease/increase brush radius
-  - [ ] `Shift+scroll` to adjust edge sensitivity
   - [ ] Number keys (1-5) to switch algorithms quickly
-- [ ] Brush size with scroll wheel (Ctrl+scroll)
 - [ ] Algorithm-specific parameter visibility (hide irrelevant params)
 - [ ] Status bar feedback (show algorithm and computation time)
 - [ ] Save/load custom user presets

@@ -57,6 +57,16 @@ Holding middle button while left-clicking **temporarily inverts** the current mo
 
 **Rationale:** Middle button alone still allows pan. Middle+left provides a one-handed alternative to Ctrl+left for users who prefer it.
 
+### 4. Scroll Wheel Controls
+
+| Action | Operation |
+|--------|-----------|
+| Shift + scroll | Adjust brush radius (±20% per notch) |
+| Ctrl + Shift + scroll | Adjust threshold zone (±5% per notch) |
+
+**Note:** Ctrl + scroll is reserved by Slicer for zoom. Slicer's built-in Shift+scroll
+only works for the standard brush effect, so we implement our own for Adaptive Brush.
+
 ### Visual Feedback
 
 | Mode | Outer Circle | Inner Circle |
