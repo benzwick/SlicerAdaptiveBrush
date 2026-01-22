@@ -38,6 +38,15 @@ except ImportError:
     HAS_SIMPLEITK = False
     logging.warning("SimpleITK not available - some features will be disabled")
 
+# Try to import scikit-image for Random Walker algorithm
+try:
+    from skimage.segmentation import random_walker as skimage_random_walker
+
+    HAS_SKIMAGE_RW = True
+except ImportError:
+    HAS_SKIMAGE_RW = False
+    logging.debug("scikit-image not available - using fallback Random Walker")
+
 
 class BrushOutlinePipeline:
     """VTK pipeline for brush outline visualization in a slice view.
@@ -329,6 +338,12 @@ class SegmentEditorEffect:
         # Iterations 4: enough passes for stable region
         self.regionGrowingIterations = 4
 
+        # Advanced parameters - Random Walker
+        # Beta 130: controls edge sensitivity (higher = stronger edges)
+        self.randomWalkerBeta = 130.0
+        # Mode: 'bf' (brute force) or 'cg' (conjugate gradient)
+        self.randomWalkerMode = "cg"
+
         # Advanced parameters - Morphology
         # Fill holes: ON for cleaner results
         self.fillHoles = True
@@ -356,6 +371,7 @@ class SegmentEditorEffect:
                 "std_multiplier": 2.0,
                 "geodesic_edge_weight": 8.0,
                 "geodesic_smoothing": 0.5,
+                "random_walker_beta": 130.0,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
@@ -418,15 +434,14 @@ class SegmentEditorEffect:
             },
             "tumor_lesion": {
                 "name": "Tumor / Lesion",
-                "description": "Tumors and lesions with irregular boundaries",
-                "algorithm": "region_growing",
+                "description": "Tumors and lesions with irregular/ambiguous boundaries",
+                "algorithm": "random_walker",
                 "edge_sensitivity": 45,
                 "threshold_zone": 60,
                 "sampling_method": "mean_std",
                 "gaussian_sigma": 0.6,
                 "std_multiplier": 2.5,
-                "region_growing_multiplier": 2.5,
-                "region_growing_iterations": 5,
+                "random_walker_beta": 100.0,  # Lower beta for soft boundaries
                 "fill_holes": True,
                 "closing_radius": 1,
             },
@@ -525,7 +540,7 @@ intensity similarity, stopping at edges and boundaries.</p>
 <ul>
 <li><b>Geodesic Distance</b>: Fast, follows edges naturally (recommended)</li>
 <li><b>Watershed</b>: Good edge following, may be blocky on noisy images</li>
-<li><b>Random Walker</b>: Smooth boundaries, good for ambiguous edges</li>
+<li><b>Random Walker</b>: Probabilistic segmentation, excellent for ambiguous/blurry edges</li>
 <li><b>Level Set</b>: Smooth contours, slower but precise</li>
 <li><b>Region Growing</b>: Fast, good for homogeneous regions</li>
 <li><b>Threshold Brush</b>: Simple intensity thresholding</li>
@@ -1082,6 +1097,31 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.regionGrowingIterationsSlider.decimals = 0
         advancedLayout.addRow(_("Iterations:"), self.regionGrowingIterationsSlider)
 
+        # --- Random Walker Parameters ---
+        rwLabel = qt.QLabel(_("<b>Random Walker</b>"))
+        advancedLayout.addRow(rwLabel)
+
+        self.randomWalkerBetaSlider = ctk.ctkSliderWidget()
+        self.randomWalkerBetaSlider.setToolTip(
+            _(
+                "Edge sensitivity for Random Walker algorithm.\n\n"
+                "Controls how strongly edges affect the random walk.\n"
+                "Higher values = stronger edge boundaries.\n\n"
+                "• 50-80: Low edge sensitivity, smoother boundaries\n"
+                "• 100-150: Moderate sensitivity (recommended)\n"
+                "• 200-500: High sensitivity, tighter boundaries\n\n"
+                "Increase for sharp edges (bone/air).\n"
+                "Decrease for soft tissue or noisy images.\n\n"
+                "Recommended: 130"
+            )
+        )
+        self.randomWalkerBetaSlider.minimum = 10
+        self.randomWalkerBetaSlider.maximum = 500
+        self.randomWalkerBetaSlider.value = self.randomWalkerBeta
+        self.randomWalkerBetaSlider.singleStep = 10
+        self.randomWalkerBetaSlider.decimals = 0
+        advancedLayout.addRow(_("Beta (edge weight):"), self.randomWalkerBetaSlider)
+
         # --- Morphology Parameters ---
         morphLabel = qt.QLabel(_("<b>Post-processing</b>"))
         advancedLayout.addRow(morphLabel)
@@ -1155,6 +1195,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.levelSetIterationsSlider.valueChanged.connect(self.onAdvancedParamChanged)
         self.regionGrowingMultiplierSlider.valueChanged.connect(self.onAdvancedParamChanged)
         self.regionGrowingIterationsSlider.valueChanged.connect(self.onAdvancedParamChanged)
+        self.randomWalkerBetaSlider.valueChanged.connect(self.onAdvancedParamChanged)
         self.fillHolesCheckbox.toggled.connect(self.onAdvancedParamChanged)
         self.closingRadiusSlider.valueChanged.connect(self.onAdvancedParamChanged)
 
@@ -1200,6 +1241,7 @@ intensity similarity, stopping at edges and boundaries.</p>
             self.levelSetIterationsSlider,
             self.regionGrowingMultiplierSlider,
             self.regionGrowingIterationsSlider,
+            self.randomWalkerBetaSlider,
             self.fillHolesCheckbox,
             self.closingRadiusSlider,
         ]
@@ -1283,6 +1325,11 @@ intensity similarity, stopping at edges and boundaries.</p>
                 self.regionGrowingIterations = preset["region_growing_iterations"]
                 self.regionGrowingIterationsSlider.value = preset["region_growing_iterations"]
 
+            # Apply random walker parameters
+            if "random_walker_beta" in preset:
+                self.randomWalkerBeta = preset["random_walker_beta"]
+                self.randomWalkerBetaSlider.value = preset["random_walker_beta"]
+
             # Apply morphology parameters
             if "fill_holes" in preset:
                 self.fillHoles = preset["fill_holes"]
@@ -1340,6 +1387,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.levelSetIterations = int(self.levelSetIterationsSlider.value)
         self.regionGrowingMultiplier = self.regionGrowingMultiplierSlider.value
         self.regionGrowingIterations = int(self.regionGrowingIterationsSlider.value)
+        self.randomWalkerBeta = self.randomWalkerBetaSlider.value
         self.fillHoles = self.fillHolesCheckbox.checked
         self.closingRadius = int(self.closingRadiusSlider.value)
         self.cache.invalidate()
@@ -1948,6 +1996,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             # Advanced - Region Growing
             "region_growing_multiplier": self.regionGrowingMultiplier,
             "region_growing_iterations": self.regionGrowingIterations,
+            # Advanced - Random Walker
+            "random_walker_beta": self.randomWalkerBeta,
             # Advanced - Morphology
             "fill_holes": self.fillHoles,
             "closing_radius": self.closingRadius,
@@ -2477,11 +2527,128 @@ intensity similarity, stopping at edges and boundaries.</p>
             return self._connectedThreshold(roi, localSeed, thresholds)
 
     def _randomWalker(self, roi, localSeed, thresholds, params):
-        """Random Walker-inspired segmentation.
+        """Random Walker segmentation using scikit-image.
 
-        Uses iterative region growing with gradient-weighted expansion.
-        Simulates random walk behavior by iteratively growing the region
-        while respecting edge boundaries.
+        Uses the Random Walker algorithm which treats segmentation as an
+        electrical potential problem. Excellent at handling ambiguous boundaries
+        by computing probability of random walk reaching foreground vs background.
+
+        Falls back to gradient-weighted region growing if scikit-image unavailable.
+
+        Args:
+            roi: ROI array (z, y, x).
+            localSeed: Seed point in local coordinates (i, j, k).
+            thresholds: Intensity thresholds.
+            params: Algorithm parameters including random_walker_beta.
+
+        Returns:
+            Binary mask array.
+        """
+        edge_sensitivity = params.get("edge_sensitivity", 0.5)
+        radius_voxels = params.get("radius_voxels", [10, 10, 10])
+
+        # Get user-configurable beta parameter
+        base_beta = params.get("random_walker_beta", 130.0)
+        # Scale beta by edge sensitivity (higher sensitivity = higher beta)
+        beta = base_beta * (0.5 + edge_sensitivity)  # 65-195 range at default
+
+        if HAS_SKIMAGE_RW:
+            try:
+                return self._randomWalkerSkimage(
+                    roi, localSeed, thresholds, beta, radius_voxels
+                )
+            except Exception as e:
+                logging.warning(f"scikit-image Random Walker failed: {e}, using fallback")
+
+        # Fallback: gradient-weighted region growing
+        return self._randomWalkerFallback(roi, localSeed, thresholds, params)
+
+    def _randomWalkerSkimage(self, roi, localSeed, thresholds, beta, radius_voxels):
+        """Scikit-image Random Walker implementation.
+
+        Args:
+            roi: ROI array (z, y, x).
+            localSeed: Seed point in local coordinates (i, j, k).
+            thresholds: Intensity thresholds.
+            beta: Edge sensitivity parameter for random walker.
+            radius_voxels: Radius in voxels per dimension.
+
+        Returns:
+            Binary mask array.
+        """
+        # Normalize ROI for better numerical stability
+        roi_min = np.min(roi)
+        roi_max = np.max(roi)
+        roi_range = roi_max - roi_min
+        if roi_range < 1e-6:
+            return np.zeros_like(roi, dtype=np.uint8)
+        roi_norm = (roi - roi_min) / roi_range
+
+        # Create markers array: 0=unknown, 1=foreground, 2=background
+        markers = np.zeros(roi.shape, dtype=np.int8)
+
+        # Foreground marker: small sphere around seed
+        shape = roi.shape  # (z, y, x)
+        z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+        dx = (x - localSeed[0]) / max(radius_voxels[0] * 0.15, 1)
+        dy = (y - localSeed[1]) / max(radius_voxels[1] * 0.15, 1)
+        dz = (z - localSeed[2]) / max(radius_voxels[2] * 0.15, 1)
+        seed_dist = np.sqrt(dx**2 + dy**2 + dz**2)
+        markers[seed_dist <= 1.0] = 1  # Foreground seed region
+
+        # Background marker: ring at outer edge of ROI
+        # Create ring at ~90% of the ROI extent
+        outer_ring_factor = 0.9
+        dx_outer = (x - localSeed[0]) / (radius_voxels[0] * outer_ring_factor)
+        dy_outer = (y - localSeed[1]) / (radius_voxels[1] * outer_ring_factor)
+        dz_outer = (z - localSeed[2]) / (radius_voxels[2] * outer_ring_factor)
+        outer_dist = np.sqrt(dx_outer**2 + dy_outer**2 + dz_outer**2)
+        markers[(outer_dist >= 1.0) & (outer_dist <= 1.2)] = 2  # Background ring
+
+        # Also mark regions outside intensity range as background
+        intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+        # Mark definitely-out-of-range voxels as background
+        markers[~intensity_mask & (markers == 0)] = 2
+
+        # Ensure we have both foreground and background markers
+        if not np.any(markers == 1) or not np.any(markers == 2):
+            logging.debug("Random Walker: insufficient markers, using fallback")
+            return self._connectedThreshold(roi, localSeed, thresholds)
+
+        # Run Random Walker
+        # mode='cg' (conjugate gradient) is faster for larger images
+        labels = skimage_random_walker(
+            roi_norm,
+            markers,
+            beta=beta,
+            mode="cg",
+            return_full_prob=False,
+        )
+
+        # Extract foreground (label 1)
+        mask = (labels == 1).astype(np.uint8)
+
+        # Constrain to intensity range for safety
+        mask = mask & intensity_mask.astype(np.uint8)
+
+        # Ensure connectivity to seed
+        if np.any(mask):
+            sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
+            sitkMask = sitk.GetImageFromArray(mask)
+            try:
+                connected = sitk.ConnectedThreshold(
+                    sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
+                )
+                mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
+            except Exception:
+                pass  # Keep original mask if connectivity check fails
+
+        return mask
+
+    def _randomWalkerFallback(self, roi, localSeed, thresholds, params):
+        """Fallback Random Walker using gradient-weighted region growing.
+
+        Used when scikit-image is not available.
 
         Args:
             roi: ROI array.
@@ -2501,7 +2668,6 @@ intensity similarity, stopping at edges and boundaries.</p>
         seed_intensity = roi[localSeed[2], localSeed[1], localSeed[0]]
 
         # Smooth the image based on edge sensitivity
-        # Low sensitivity = more smoothing = more permissive
         sigma = 0.5 + 1.5 * (1.0 - edge_sensitivity)  # 0.5-2.0
         smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=sigma)
 
@@ -2513,8 +2679,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         gradMax = np.percentile(gradArray, 95) + 1e-8
         gradNorm = gradArray / gradMax
 
-        # Create edge-aware speed image
-        # Beta controls edge importance
+        # Create edge-aware weight using beta parameter
         beta = 5.0 + 15.0 * edge_sensitivity  # 5-20
         edgeWeight = np.exp(-beta * gradNorm)
 
@@ -2528,15 +2693,12 @@ intensity similarity, stopping at edges and boundaries.</p>
         weight = edgeWeight * intensity_weight
 
         # Use connected threshold on weighted image
-        # This effectively does gradient-weighted region growing
         weighted_roi = (roi * weight).astype(np.float32)
         sitkWeighted = sitk.GetImageFromArray(weighted_roi)
 
-        # Adjust thresholds for weighted image
         weight_at_seed = weight[localSeed[2], localSeed[1], localSeed[0]]
 
         if weight_at_seed > 0.1:
-            # Compute thresholds on weighted image
             weighted_lower = thresholds["lower"] * weight_at_seed * 0.5
             weighted_upper = thresholds["upper"] * weight_at_seed * 1.5
 
@@ -2555,15 +2717,14 @@ intensity similarity, stopping at edges and boundaries.</p>
                 maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
                 mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
 
-                # Also constrain by original intensity thresholds
+                # Constrain by original intensity thresholds
                 intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
                 mask = mask & intensity_mask.astype(np.uint8)
 
                 return mask
             except Exception as e:
-                logging.error(f"Random walker connected threshold failed: {e}")
+                logging.error(f"Random walker fallback failed: {e}")
 
-        # Fallback to standard connected threshold
         return self._connectedThreshold(roi, localSeed, thresholds)
 
     def _applyBrushMask(self, mask, localSeed, radiusVoxels):
