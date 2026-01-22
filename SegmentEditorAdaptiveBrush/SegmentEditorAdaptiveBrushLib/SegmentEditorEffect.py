@@ -608,6 +608,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.sensitivitySlider.setToolTip(
             _("How strictly to follow intensity boundaries (0=permissive, 100=strict)")
         )
+        self.sensitivitySlider.decimals = 0
         self.sensitivitySlider.minimum = 0
         self.sensitivitySlider.maximum = 100
         self.sensitivitySlider.value = self.edgeSensitivity
@@ -623,6 +624,7 @@ intensity similarity, stopping at edges and boundaries.</p>
                 "calculation. This zone is also guaranteed to be included in the result."
             )
         )
+        self.zoneSlider.decimals = 0
         self.zoneSlider.minimum = 10
         self.zoneSlider.maximum = 100
         self.zoneSlider.value = self.thresholdZone
