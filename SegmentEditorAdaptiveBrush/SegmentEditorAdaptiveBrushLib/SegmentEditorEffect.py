@@ -682,8 +682,8 @@ class SegmentEditorEffect:
     def createCursor(self, widget):
         """Create a custom cursor for the effect.
 
-        Returns a cursor with a small crosshair, similar to other segment editor effects.
-        The base class implementation composites the effect icon with an arrow cursor.
+        Returns a crosshair cursor. We must NOT call self.scriptedEffect.createCursor()
+        because that calls back to this Python method, causing infinite recursion.
 
         Args:
             widget: The view widget.
@@ -691,9 +691,9 @@ class SegmentEditorEffect:
         Returns:
             QCursor for this effect.
         """
-        # Use the default cursor creation from the base class
-        # This composites a small effect icon with an arrow cursor
-        return self.scriptedEffect.createCursor(widget)
+        # Return a simple crosshair cursor
+        # DO NOT call self.scriptedEffect.createCursor(widget) - it recurses back here!
+        return qt.QCursor(qt.Qt.CrossCursor)
 
     def helpText(self):
         """Return help text for the effect.
