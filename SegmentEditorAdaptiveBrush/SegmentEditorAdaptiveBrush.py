@@ -41,7 +41,7 @@ based on image intensity similarity.
 The brush adapts to image features (edges, boundaries) rather than using
 a fixed geometric shape, similar to tools in ITK-SNAP and ImFusion.
 
-For more information, see the <a href="https://github.com/your-org/SlicerAdaptiveBrush">
+For more information, see the <a href="https://github.com/benzwick/SlicerAdaptiveBrush">
 project documentation</a>.
 """
         )
@@ -126,9 +126,9 @@ stopping at edges and boundaries.</p>
 
 <h4>Links</h4>
 <ul>
-<li><a href="https://github.com/your-org/SlicerAdaptiveBrush">GitHub Repository</a>
+<li><a href="https://github.com/benzwick/SlicerAdaptiveBrush">GitHub Repository</a>
     - Source code, issues, and contributions</li>
-<li><a href="https://github.com/your-org/SlicerAdaptiveBrush#readme">Documentation</a>
+<li><a href="https://github.com/benzwick/SlicerAdaptiveBrush#readme">Documentation</a>
     - Usage guide and examples</li>
 </ul>
 """
