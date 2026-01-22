@@ -113,9 +113,10 @@ jobs:
             ### Installation
 
             1. Download the package for your platform and Slicer version
-            2. In 3D Slicer, go to **Edit > Application Settings > Modules**
-            3. Add the extracted folder to **Additional module paths**
-            4. Restart Slicer
+            2. In 3D Slicer, open the Extension Manager (**View > Extension Manager**)
+            3. Click **Install from file...**
+            4. Select the downloaded `.tar.gz` (Linux/macOS) or `.zip` (Windows) file
+            5. Restart Slicer
 
             ### Packages
 
