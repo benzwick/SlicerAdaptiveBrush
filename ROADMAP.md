@@ -44,10 +44,12 @@
 
 - [x] Level Set algorithm (Geodesic Active Contour via SimpleITK)
 - [x] Region Growing algorithm (ConfidenceConnected)
-- [x] Algorithm dropdown selector with 5 options
+- [x] Geodesic Distance algorithm (Fast Marching with gradient+intensity speed)
+- [x] Random Walker algorithm (scikit-image with fallback)
+- [x] Algorithm dropdown selector with 8 options
 - [x] Backend selector UI (Auto/CPU/GPU preparation)
 
-## Version 0.7.0 - Performance Infrastructure (Current)
+## Version 0.7.0 - Performance Infrastructure ✓
 
 - [x] PerformanceCache class structure
 - [x] Cache invalidation on parameter changes
@@ -56,15 +58,38 @@
 - [x] Gradient caching between strokes on same slice
 - [x] Cache statistics and hit rate logging
 - [ ] ROI result caching for nearby brush positions
-- [ ] Preview mode during drag (reduced resolution)
 - [ ] Performance benchmarks
+
+## Version 0.8.0 - Advanced UI ✓
+
+- [x] Dual-circle brush visualization (outer=extent, inner=threshold zone)
+- [x] Preview mode (semi-transparent segmentation preview before clicking)
+- [x] Dynamic threshold ranges based on image intensity percentiles
+- [x] Parameter presets for common tissue types (Bone, Soft Tissue, Lung, Brain, Tumor, Vessels, Fat)
+- [x] Advanced parameters UI section (collapsible)
+- [x] Gaussian distance weighting for intensity sampling
+- [x] Comprehensive tooltips for all parameters
+- [x] User-visible warnings for missing dependencies
+
+## Version 0.9.0 - Usability Enhancements (Current)
+
+- [ ] Keyboard shortcuts
+  - [ ] `[` / `]` to decrease/increase brush radius
+  - [ ] `Shift+scroll` to adjust edge sensitivity
+  - [ ] Number keys (1-5) to switch algorithms quickly
+- [ ] Brush size with scroll wheel (Ctrl+scroll)
+- [ ] Algorithm-specific parameter visibility (hide irrelevant params)
+- [ ] Status bar feedback (show algorithm and computation time)
+- [ ] Save/load custom user presets
+- [ ] Speed up Level Set with early stopping convergence check
 
 ## Version 1.0.0 - Production Ready
 
 - [ ] Complete UI polish
 - [ ] Comprehensive documentation
 - [ ] User guide with examples
-- [x] Test implementations (32 tests passing)
+- [x] Test implementations (41 tests passing)
+- [ ] Auto-parameter suggestion based on image characteristics
 - [ ] Extension submission to Slicer Extensions Index
 
 ## Future (v2.0+)
