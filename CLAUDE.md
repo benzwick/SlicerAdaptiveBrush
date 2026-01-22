@@ -202,6 +202,7 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-002**: Implementation strategy (CPU foundation with GPU roadmap)
 - **ADR-003**: Testing strategy
 - **ADR-004**: Caching strategy for performance
+- **ADR-005**: Mouse and keyboard controls
 
 ## Dependencies
 
@@ -247,6 +248,75 @@ self.scriptedEffect.modifySelectedSegmentByLabelmap(
     slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
 )
 ```
+
+## Slicer Mouse & Keyboard Shortcuts
+
+Reference: https://slicer.readthedocs.io/en/latest/user_guide/user_interface.html#mouse-keyboard-shortcuts
+
+### Slice Views (Conflicts to Avoid)
+
+| Action | Operation |
+|--------|-----------|
+| Right-click + drag | Zoom |
+| Middle-click + drag | Pan |
+| Shift + left-click + drag | Pan |
+| Ctrl + mouse wheel | Zoom |
+| Shift + mouse wheel | Brush size (segment editor) |
+
+### Safe for Effects
+
+| Action | Status |
+|--------|--------|
+| Left-click | Captured by effects |
+| Ctrl + left-click | Available |
+| Middle-click | Can override |
+
+## Manual Testing Requirements
+
+All features MUST include documented manual testing steps. Include:
+
+1. **Prerequisites** - What data to load, what state to set up
+2. **Test steps** - Numbered actions to perform
+3. **Expected results** - What should happen at each step
+4. **Edge cases** - Boundary conditions to verify
+
+### Example: Testing Erase Mode
+
+**Prerequisites:**
+1. Open 3D Slicer
+2. Load sample data: `File > Download Sample Data > MRHead`
+3. Open Segment Editor module
+4. Create a new segment
+5. Select Adaptive Brush effect
+6. Paint some voxels with Add mode
+
+**Test: Erase Mode via UI**
+1. Click "Erase" radio button
+2. Verify brush outline turns red/orange
+3. Paint over existing segmentation
+4. **Expected:** Voxels are removed from segment
+
+**Test: Ctrl Modifier**
+1. Set UI to "Add" mode
+2. Hold Ctrl key
+3. Verify brush outline turns red/orange while Ctrl held
+4. Paint while holding Ctrl
+5. **Expected:** Voxels are removed (mode inverted)
+6. Release Ctrl, verify brush returns to yellow
+
+**Test: Middle + Left-Click Modifier**
+1. Start in "Add" mode
+2. Hold middle button (scroll wheel button)
+3. While holding middle, left-click and drag
+4. Verify brush outline turns red/orange while painting
+5. **Expected:** Voxels are erased (mode inverted by middle button)
+6. Release middle button, verify brush returns to yellow
+
+**Edge cases:**
+- Mode does NOT change mid-stroke (locked at stroke start)
+- All algorithms work in both add and erase modes
+- Standard Slicer navigation (right-click zoom, middle-drag pan, shift+drag pan) still works
+- Middle button pan works when not also left-clicking
 
 ## References
 

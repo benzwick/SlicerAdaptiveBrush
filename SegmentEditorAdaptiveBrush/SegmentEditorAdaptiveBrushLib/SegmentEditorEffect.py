@@ -285,6 +285,9 @@ class SegmentEditorEffect:
         # State
         self.isDrawing = False
         self.lastIjk = None
+        self.eraseMode = False  # True = erase, False = add
+        self._currentStrokeEraseMode = False  # Locked mode for current stroke
+        self._isMiddleButtonHeld = False  # Track middle button for erase modifier
 
         # Default parameters - Basic
         self.radiusMm = 5.0
@@ -535,7 +538,9 @@ class SegmentEditorEffect:
 intensity similarity, stopping at edges and boundaries.</p>
 <h4>Usage:</h4>
 <ul>
-<li><b>Left-click and drag</b>: Paint adaptive regions</li>
+<li><b>Left-click and drag</b>: Paint adaptive regions (add or erase)</li>
+<li><b>Ctrl + left-click</b>: Temporarily invert mode (add↔erase)</li>
+<li><b>Middle + left-click</b>: Temporarily invert mode (like Ctrl)</li>
 <li><b>Radius</b>: Maximum brush extent (circle shows limit)</li>
 <li><b>Edge Sensitivity</b>: How strictly to follow intensity boundaries (0%=permissive, 100%=strict)</li>
 <li><b>Algorithm</b>: Choose segmentation method</li>
@@ -553,6 +558,7 @@ intensity similarity, stopping at edges and boundaries.</p>
 <ul>
 <li>Circle outline shows <b>maximum extent</b> - actual painting may be smaller based on edges</li>
 <li>Higher edge sensitivity = tighter boundary following = smaller regions</li>
+<li>Yellow brush = Add mode, Red/orange brush = Erase mode</li>
 </ul>
 </html>"""
         )
@@ -638,6 +644,27 @@ intensity similarity, stopping at edges and boundaries.</p>
             )
         )
         brushLayout.addRow(_("Sampling Method:"), self.samplingMethodCombo)
+
+        # Mode selection (Add/Erase)
+        modeLayout = qt.QHBoxLayout()
+        modeLabel = qt.QLabel(_("Mode:"))
+        self.addModeRadio = qt.QRadioButton(_("Add"))
+        self.eraseModeRadio = qt.QRadioButton(_("Erase"))
+        self.addModeRadio.setChecked(True)
+        self.addModeRadio.setToolTip(
+            _("Paint to add to segment (Ctrl+click or Middle+click to temporarily erase)")
+        )
+        self.eraseModeRadio.setToolTip(
+            _("Paint to erase from segment (Ctrl+click or Middle+click to temporarily add)")
+        )
+        modeLayout.addWidget(modeLabel)
+        modeLayout.addWidget(self.addModeRadio)
+        modeLayout.addWidget(self.eraseModeRadio)
+        modeLayout.addStretch()
+        brushLayout.addRow(modeLayout)
+
+        # Connect mode signals
+        self.addModeRadio.toggled.connect(self.onModeChanged)
 
         # 3D sphere mode checkbox
         self.sphereModeCheckbox = qt.QCheckBox(_("3D Sphere Mode"))
@@ -1408,6 +1435,35 @@ intensity similarity, stopping at edges and boundaries.</p>
             # Hide any existing preview
             self._hideSegmentationPreview()
 
+    def onModeChanged(self, checked):
+        """Handle add/erase mode toggle.
+
+        Args:
+            checked: True if the "Add" radio button is checked.
+        """
+        # Only respond to the radio that became checked
+        if not checked:
+            return
+        self.eraseMode = self.eraseModeRadio.isChecked()
+        # Update any visible brush preview to show new color
+        self._updateBrushColors()
+
+    def _updateBrushColors(self):
+        """Update brush outline colors based on current erase mode."""
+        for pipeline in self.outlinePipelines.values():
+            if self.eraseMode:
+                # Erase mode: red/orange colors
+                pipeline.outerActor.GetProperty().SetColor(1.0, 0.3, 0.1)
+                pipeline.innerActor.GetProperty().SetColor(1.0, 0.5, 0.3)
+            else:
+                # Add mode: yellow/cyan colors
+                pipeline.outerActor.GetProperty().SetColor(1.0, 0.9, 0.1)
+                pipeline.innerActor.GetProperty().SetColor(0.2, 0.9, 1.0)
+        # Request render for visible views
+        for pipeline in self.outlinePipelines.values():
+            if pipeline.sliceWidget is not None:
+                pipeline.sliceWidget.sliceView().scheduleRender()
+
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
         self.algorithm = self.algorithmCombo.currentData
@@ -1528,7 +1584,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.outlinePipelines.clear()
         self.activeViewWidget = None
 
-    def _updateBrushPreview(self, xy, viewWidget):
+    def _updateBrushPreview(self, xy, viewWidget, eraseMode=None):
         """Update the brush outline at the cursor position.
 
         Shows two circles: outer (max extent) and inner (threshold zone).
@@ -1536,6 +1592,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         Args:
             xy: Screen coordinates (x, y).
             viewWidget: The slice view widget.
+            eraseMode: If True, show erase colors. If None, use self.eraseMode.
         """
         if viewWidget is None:
             return
@@ -1560,7 +1617,19 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Update the pipeline for this view
         if viewName in self.outlinePipelines:
-            self.outlinePipelines[viewName].updateOutline(xy, radiusPixels, innerRatio)
+            pipeline = self.outlinePipelines[viewName]
+            pipeline.updateOutline(xy, radiusPixels, innerRatio)
+
+            # Update colors based on erase mode
+            effectiveEraseMode = eraseMode if eraseMode is not None else self.eraseMode
+            if effectiveEraseMode:
+                # Erase mode: red/orange colors
+                pipeline.outerActor.GetProperty().SetColor(1.0, 0.3, 0.1)
+                pipeline.innerActor.GetProperty().SetColor(1.0, 0.5, 0.3)
+            else:
+                # Add mode: yellow/cyan colors
+                pipeline.outerActor.GetProperty().SetColor(1.0, 0.9, 0.1)
+                pipeline.innerActor.GetProperty().SetColor(0.2, 0.9, 1.0)
 
         # Hide outlines in other views
         for name, pipeline in self.outlinePipelines.items():
@@ -1830,23 +1899,49 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         xy = callerInteractor.GetEventPosition()
 
+        # Track middle button state for erase modifier
+        if eventId == vtk.vtkCommand.MiddleButtonPressEvent:
+            self._isMiddleButtonHeld = True
+            # Don't consume - let pan work
+            return False
+
+        elif eventId == vtk.vtkCommand.MiddleButtonReleaseEvent:
+            self._isMiddleButtonHeld = False
+            return False
+
+        # Detect Ctrl key for temporary mode inversion
+        isCtrlPressed = callerInteractor.GetControlKey()
+
+        # Preview mode (hovering): only Ctrl inverts mode (middle button doesn't affect preview)
+        # This is because middle button alone should allow pan without changing brush color
+        previewEraseMode = self.eraseMode != bool(isCtrlPressed)
+
+        # Paint mode: both Ctrl and middle button can invert mode
+        # Middle button only takes effect when combined with left-click
+        isModifierActive = bool(isCtrlPressed) or self._isMiddleButtonHeld
+        paintEraseMode = self.eraseMode != isModifierActive
+
         if eventId == vtk.vtkCommand.LeftButtonPressEvent:
             # Save undo state at the START of the stroke (once per stroke)
             self.scriptedEffect.saveStateForUndo()
             self.isDrawing = True
+            # Lock the erase mode for this stroke (can't change mid-stroke)
+            self._currentStrokeEraseMode = paintEraseMode
             # Hide segmentation preview when starting to draw
             self._hideSegmentationPreview()
-            self._updateBrushPreview(xy, viewWidget)
+            self._updateBrushPreview(xy, viewWidget, paintEraseMode)
             self.processPoint(xy, viewWidget)
             return True
 
         elif eventId == vtk.vtkCommand.MouseMoveEvent:
-            # Update brush outline preview on mouse move
-            self._updateBrushPreview(xy, viewWidget)
             if self.isDrawing:
+                # While drawing, use the locked stroke mode for preview
+                self._updateBrushPreview(xy, viewWidget, self._currentStrokeEraseMode)
                 self.processPoint(xy, viewWidget)
                 return True  # Only consume when drawing
             else:
+                # While hovering, only Ctrl affects preview (not middle button)
+                self._updateBrushPreview(xy, viewWidget, previewEraseMode)
                 # Show segmentation preview when hovering (if preview mode enabled)
                 if self.previewMode:
                     self._updateSegmentationPreview(xy, viewWidget)
@@ -1856,7 +1951,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             self.isDrawing = False
             self.lastIjk = None
             self.cache.onMouseRelease()
-            # Show preview again after drawing
+            # Show preview again after drawing (revert to hover preview mode)
+            self._updateBrushPreview(xy, viewWidget, previewEraseMode)
             if self.previewMode:
                 self._updateSegmentationPreview(xy, viewWidget)
             return True
@@ -1868,8 +1964,8 @@ intensity similarity, stopping at edges and boundaries.</p>
             return False
 
         elif eventId == vtk.vtkCommand.EnterEvent:
-            # Update preview when mouse enters
-            self._updateBrushPreview(xy, viewWidget)
+            # Update preview when mouse enters (hover mode)
+            self._updateBrushPreview(xy, viewWidget, previewEraseMode)
             return False
 
         return False
@@ -1900,7 +1996,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         try:
             mask = self.computeAdaptiveMask(sourceVolumeNode, ijk, viewWidget)
             if mask is not None:
-                self.applyMaskToSegment(mask)
+                self.applyMaskToSegment(mask, erase=self._currentStrokeEraseMode)
         except Exception as e:
             logging.exception(f"Error computing adaptive mask: {e}")
 
@@ -3006,11 +3102,12 @@ intensity similarity, stopping at edges and boundaries.</p>
             f"{seed_intensity + tolerance:.1f}]"
         )
 
-    def applyMaskToSegment(self, mask):
+    def applyMaskToSegment(self, mask, erase=False):
         """Apply the computed mask to the current segment.
 
         Args:
             mask: Binary mask numpy array (z, y, x ordering).
+            erase: If True, remove mask from segment. If False, add to segment.
         """
 
         modifierLabelmap = self.scriptedEffect.defaultModifierLabelmap()
@@ -3056,10 +3153,12 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Mark the image data as modified
         imageData.Modified()
 
-        # Apply to segment using Add mode
-        self.scriptedEffect.modifySelectedSegmentByLabelmap(
-            modifierLabelmap, slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
-        )
+        # Apply to segment using appropriate mode
+        if erase:
+            mode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeRemove
+        else:
+            mode = slicer.qSlicerSegmentEditorAbstractEffect.ModificationModeAdd
+        self.scriptedEffect.modifySelectedSegmentByLabelmap(modifierLabelmap, mode)
 
 
 # Required for Slicer to find the effect class
