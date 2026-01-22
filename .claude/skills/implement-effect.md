@@ -5,7 +5,7 @@
 Inherit from `AbstractScriptedSegmentEditorEffect`:
 
 ```python
-from slicer.ScriptedLoadableModule import *
+from SegmentEditorEffects import AbstractScriptedSegmentEditorEffect
 
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """Adaptive brush segment editor effect."""
@@ -19,7 +19,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 ## Required Methods
 
 ### 1. `__init__(self, scriptedEffect)`
-Set effect name and properties.
+Set effect name and properties, call parent init.
 
 ### 2. `clone(self)`
 Return new instance for registration:
@@ -32,10 +32,10 @@ def clone(self):
 ```
 
 ### 3. `icon(self)`
-Return QIcon for toolbar:
+Return QIcon for toolbar (icon in same directory as effect):
 ```python
 def icon(self):
-    iconPath = os.path.join(os.path.dirname(__file__), 'Resources/Icons/AdaptiveBrush.png')
+    iconPath = os.path.join(os.path.dirname(__file__), 'SegmentEditorEffect.png')
     if os.path.exists(iconPath):
         return qt.QIcon(iconPath)
     return qt.QIcon()
@@ -63,15 +63,41 @@ def setupOptionsFrame(self):
     self.radiusSlider.value = 5
     self.scriptedEffect.addLabeledOptionsWidget("Radius (mm):", self.radiusSlider)
 
-    # Edge sensitivity
-    self.sensitivitySlider = ctk.ctkSliderWidget()
-    self.sensitivitySlider.minimum = 0
-    self.sensitivitySlider.maximum = 100
-    self.sensitivitySlider.value = 50
-    self.scriptedEffect.addLabeledOptionsWidget("Edge Sensitivity:", self.sensitivitySlider)
+    # Connect signals
+    self.radiusSlider.valueChanged.connect(self.onRadiusChanged)
 ```
 
-### 6. `processInteractionEvents(self, callerInteractor, eventId, viewWidget)`
+### 6. `cleanup(self)` (REQUIRED - Added Jan 2025)
+Clean up resources to prevent memory leaks. Called by Slicer before effect deletion.
+
+```python
+def cleanup(self):
+    """Clean up resources to prevent memory leaks.
+
+    See: https://github.com/Slicer/Slicer/issues/7392
+    """
+    # Disconnect all signal/slot connections
+    widgets_to_disconnect = [
+        "radiusSlider",
+        "sensitivitySlider",
+        # ... all widgets with connections
+    ]
+    for widget_name in widgets_to_disconnect:
+        try:
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.disconnect()
+        except Exception:
+            pass
+
+    # Clean up VTK pipelines, actors, etc.
+    # ...
+
+    # Call parent cleanup
+    AbstractScriptedSegmentEditorEffect.cleanup(self)
+```
+
+### 7. `processInteractionEvents(self, callerInteractor, eventId, viewWidget)`
 Handle mouse events:
 ```python
 def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
@@ -104,7 +130,6 @@ def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
 ```python
 def xyToIjk(self, xy, viewWidget):
     """Convert screen coordinates to volume IJK."""
-    # Get the slice logic
     sliceLogic = viewWidget.sliceLogic()
     sliceNode = sliceLogic.GetSliceNode()
 
@@ -155,12 +180,27 @@ def applyMaskToSegment(self, maskArray, sourceVolumeNode):
 
 ## Effect Registration
 
-In the module's `__init__.py` or main file:
+In the module's main file:
 
 ```python
-def registerEffect():
+def registerEffect(self):
     import qSlicerSegmentationsEditorEffectsPythonQt as effects
+    effectPath = os.path.join(
+        os.path.dirname(__file__),
+        self.__class__.__name__ + "Lib",
+        "SegmentEditorEffect.py",
+    )
     scriptedEffect = effects.qSlicerSegmentEditorScriptedEffect(None)
-    scriptedEffect.setPythonSource(effectFilePath)
+    scriptedEffect.setPythonSource(effectPath.replace("\\", "/"))
     scriptedEffect.self().register()
 ```
+
+## Memory Management Notes
+
+- Always disconnect signals in `cleanup()` to prevent memory leaks
+- VTK actors and pipelines should be removed from renderers
+- Clear any caches or large data structures
+- The `cleanup()` method is called when:
+  - The segment editor widget is destroyed
+  - The effect is being replaced by another effect
+  - Slicer is shutting down
