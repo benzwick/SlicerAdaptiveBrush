@@ -45,7 +45,11 @@ try:
     HAS_SKIMAGE_RW = True
 except ImportError:
     HAS_SKIMAGE_RW = False
-    logging.debug("scikit-image not available - using fallback Random Walker")
+    skimage_random_walker = None  # type: ignore
+    logging.warning(
+        "scikit-image not available - Random Walker will use fallback algorithm. "
+        "Install scikit-image for better results: pip install scikit-image"
+    )
 
 
 class BrushOutlinePipeline:
@@ -1412,6 +1416,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         isThresholdBrush = self.algorithm == "threshold_brush"
         self.thresholdGroup.setVisible(isThresholdBrush)
 
+        # Warn user if Random Walker selected without scikit-image
+        if self.algorithm == "random_walker" and not HAS_SKIMAGE_RW:
+            slicer.util.warningDisplay(
+                "scikit-image is not installed. Random Walker will use a fallback "
+                "algorithm with reduced accuracy.\n\n"
+                "For best results, install scikit-image:\n"
+                "  pip install scikit-image\n\n"
+                "Then restart 3D Slicer.",
+                windowTitle="Random Walker - Missing Dependency",
+            )
+
     def onThresholdChanged(self, value):
         """Handle manual threshold slider change."""
         self.cache.invalidate()
@@ -2558,7 +2573,15 @@ intensity similarity, stopping at edges and boundaries.</p>
                     roi, localSeed, thresholds, beta, radius_voxels
                 )
             except Exception as e:
-                logging.warning(f"scikit-image Random Walker failed: {e}, using fallback")
+                logging.error(f"scikit-image Random Walker failed: {e}, using fallback")
+                # Only show UI warning once per session to avoid spamming
+                if not getattr(self, "_randomWalkerErrorShown", False):
+                    self._randomWalkerErrorShown = True
+                    slicer.util.warningDisplay(
+                        f"Random Walker algorithm failed: {e}\n\n"
+                        "Using fallback algorithm. Results may be less accurate.",
+                        windowTitle="Random Walker Error",
+                    )
 
         # Fallback: gradient-weighted region growing
         return self._randomWalkerFallback(roi, localSeed, thresholds, params)
