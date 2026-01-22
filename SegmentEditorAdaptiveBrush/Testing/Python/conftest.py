@@ -1,7 +1,17 @@
 """Pytest configuration and fixtures for SlicerAdaptiveBrush tests."""
 
+import importlib.util
+import os
+import sys
+
 import numpy as np
 import pytest
+
+# Add library path for imports
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(_THIS_DIR)), "SegmentEditorAdaptiveBrushLib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
 
 # Try to import SimpleITK (available in Slicer, may not be in standalone pytest)
 try:
@@ -11,9 +21,7 @@ try:
 except ImportError:
     HAS_SIMPLEITK = False
 
-# Try to import sklearn for GMM tests
-import importlib.util
-
+# Check sklearn availability for GMM tests
 HAS_SKLEARN = importlib.util.find_spec("sklearn") is not None
 
 

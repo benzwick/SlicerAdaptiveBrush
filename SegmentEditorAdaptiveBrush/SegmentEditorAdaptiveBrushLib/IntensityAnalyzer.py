@@ -8,15 +8,37 @@ import logging
 from typing import Optional
 
 import numpy as np
+from DependencyManager import dependency_manager
 
-# Try to import sklearn for GMM
-try:
+# Check initial sklearn availability (without prompting)
+HAS_SKLEARN = dependency_manager.is_available("sklearn")
+GaussianMixture = None
+
+if HAS_SKLEARN:
     from sklearn.mixture import GaussianMixture
-
-    HAS_SKLEARN = True
-except ImportError:
-    HAS_SKLEARN = False
+else:
     logging.info("sklearn not available - using simple statistics for threshold estimation")
+
+
+def _ensure_sklearn() -> bool:
+    """Prompt to install sklearn if not available.
+
+    Returns:
+        True if sklearn is now available, False otherwise
+    """
+    global HAS_SKLEARN, GaussianMixture
+
+    if HAS_SKLEARN:
+        return True
+
+    if dependency_manager.ensure_available("sklearn"):
+        from sklearn.mixture import GaussianMixture as GM
+
+        GaussianMixture = GM
+        HAS_SKLEARN = True
+        return True
+
+    return False
 
 
 class IntensityAnalyzer:
@@ -78,10 +100,11 @@ class IntensityAnalyzer:
             # Return conservative thresholds based on full image
             return self._simple_statistics(image.flatten(), np.mean(image), edge_sensitivity)
 
+        # Use GMM if available and requested
         if self.use_gmm:
             return self._gmm_analysis(roi, seed_intensity, edge_sensitivity)
-        else:
-            return self._simple_statistics(roi, seed_intensity, edge_sensitivity)
+
+        return self._simple_statistics(roi, seed_intensity, edge_sensitivity)
 
     def _extract_roi(
         self,

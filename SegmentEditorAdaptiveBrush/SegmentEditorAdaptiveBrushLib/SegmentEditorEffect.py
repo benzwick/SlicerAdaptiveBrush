@@ -25,6 +25,7 @@ if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
 # Import algorithm components (use non-relative imports for Slicer compatibility)
+from DependencyManager import dependency_manager  # noqa: E402
 from IntensityAnalyzer import IntensityAnalyzer  # noqa: E402
 from PerformanceCache import PerformanceCache  # noqa: E402
 
@@ -38,18 +39,38 @@ except ImportError:
     HAS_SIMPLEITK = False
     logging.warning("SimpleITK not available - some features will be disabled")
 
-# Try to import scikit-image for Random Walker algorithm
-try:
-    from skimage.segmentation import random_walker as skimage_random_walker
+# Check initial scikit-image availability for Random Walker (without prompting)
+HAS_SKIMAGE_RW = dependency_manager.is_available("skimage")
+skimage_random_walker = None
 
-    HAS_SKIMAGE_RW = True
-except ImportError:
-    HAS_SKIMAGE_RW = False
-    skimage_random_walker = None  # type: ignore
-    logging.warning(
+if HAS_SKIMAGE_RW:
+    from skimage.segmentation import random_walker as skimage_random_walker
+else:
+    logging.info(
         "scikit-image not available - Random Walker will use fallback algorithm. "
-        "Install scikit-image for better results: pip install scikit-image"
+        "User will be prompted to install when selecting the algorithm."
     )
+
+
+def _ensure_random_walker_available() -> bool:
+    """Prompt to install scikit-image if not available for Random Walker.
+
+    Returns:
+        True if skimage is now available, False otherwise
+    """
+    global HAS_SKIMAGE_RW, skimage_random_walker
+
+    if HAS_SKIMAGE_RW:
+        return True
+
+    if dependency_manager.ensure_available("skimage"):
+        from skimage.segmentation import random_walker as rw
+
+        skimage_random_walker = rw
+        HAS_SKIMAGE_RW = True
+        return True
+
+    return False
 
 
 class BrushOutlinePipeline:
@@ -1504,16 +1525,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         isThresholdBrush = self.algorithm == "threshold_brush"
         self.thresholdGroup.setVisible(isThresholdBrush)
 
-        # Warn user if Random Walker selected without scikit-image
+        # Prompt to install scikit-image if Random Walker selected without it
         if self.algorithm == "random_walker" and not HAS_SKIMAGE_RW:
-            slicer.util.warningDisplay(
-                "scikit-image is not installed. Random Walker will use a fallback "
-                "algorithm with reduced accuracy.\n\n"
-                "For best results, install scikit-image:\n"
-                "  pip install scikit-image\n\n"
-                "Then restart 3D Slicer.",
-                windowTitle="Random Walker - Missing Dependency",
-            )
+            # Try to install (will prompt user)
+            if not _ensure_random_walker_available():
+                # User declined or installation failed - warn about fallback
+                slicer.util.warningDisplay(
+                    "scikit-image is not available. Random Walker will use a fallback "
+                    "algorithm with reduced accuracy.\n\n"
+                    "You can install it manually and restart Slicer for best results.",
+                    windowTitle="Random Walker - Using Fallback",
+                )
 
     def onThresholdChanged(self, value):
         """Handle manual threshold slider change."""
@@ -1566,6 +1588,17 @@ intensity similarity, stopping at edges and boundaries.</p>
         self._updateThresholdRanges()
         # Track current source volume for change detection
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
+
+        # Prompt to install sklearn for GMM if not available
+        # Do this at activation time, not during painting
+        from IntensityAnalyzer import HAS_SKLEARN, _ensure_sklearn
+
+        if not HAS_SKLEARN:
+            if _ensure_sklearn():
+                # Recreate analyzer with GMM now available
+                from IntensityAnalyzer import IntensityAnalyzer
+
+                self.intensityAnalyzer = IntensityAnalyzer()
 
     def deactivate(self):
         """Called when the effect is deselected."""

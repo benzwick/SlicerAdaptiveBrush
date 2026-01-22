@@ -8,4 +8,10 @@ that automatically segments regions based on image intensity similarity.
 # not imported as a package. This __init__.py is mainly for documentation
 # and potential future use as a proper Python package.
 
-__all__ = ["SegmentEditorEffect", "IntensityAnalyzer", "PerformanceCache"]
+__all__ = [
+    "SegmentEditorEffect",
+    "IntensityAnalyzer",
+    "PerformanceCache",
+    "DependencyManager",
+    "dependency_manager",
+]
