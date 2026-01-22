@@ -1,0 +1,129 @@
+name: Package Extension
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      slicer_revisions:
+        description: 'Slicer revisions (comma-separated)'
+        required: false
+        default: '33241,34045'
+
+permissions:
+  contents: write
+
+env:
+  EXTENSION_NAME: SlicerAdaptiveBrush
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.info.outputs.tag }}
+      version: ${{ steps.info.outputs.version }}
+      slicer_revisions: ${{ steps.info.outputs.slicer_revisions }}
+      commit_hash: ${{ steps.info.outputs.commit_hash }}
+      date: ${{ steps.info.outputs.date }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Extract version info
+        id: info
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG="v0.0.0-dev"
+          fi
+          VERSION="${TAG#v}"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            REVISIONS="${{ github.event.inputs.slicer_revisions }}"
+          else
+            REVISIONS="33241,34045"
+          fi
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "slicer_revisions=$REVISIONS" >> $GITHUB_OUTPUT
+          echo "commit_hash=${{ github.sha }}" >> $GITHUB_OUTPUT
+          echo "date=$(date -u +%Y-%m-%d)" >> $GITHUB_OUTPUT
+
+  package:
+    needs: setup
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Package extension
+        run: |
+          python .github/scripts/package_extension.py \
+            --platform ${{ matrix.platform }} \
+            --slicer-revisions "${{ needs.setup.outputs.slicer_revisions }}" \
+            --version "${{ needs.setup.outputs.version }}" \
+            --commit-hash "${{ needs.setup.outputs.commit_hash }}" \
+            --date "${{ needs.setup.outputs.date }}" \
+            --output-dir packages
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.platform }}
+          path: packages/*
+          retention-days: 7
+
+  release:
+    needs: [setup, package]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+          pattern: packages-*
+          merge-multiple: true
+
+      - name: List packages
+        run: ls -la packages/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.setup.outputs.tag }}
+          name: ${{ env.EXTENSION_NAME }} ${{ needs.setup.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(needs.setup.outputs.version, '-') }}
+          files: packages/*
+          body: |
+            ## ${{ env.EXTENSION_NAME }} ${{ needs.setup.outputs.version }}
+
+            ### Installation
+
+            1. Download the package for your platform and Slicer version
+            2. In 3D Slicer, go to **Edit > Application Settings > Modules**
+            3. Add the extracted folder to **Additional module paths**
+            4. Restart Slicer
+
+            ### Packages
+
+            | Platform | Slicer Version | File |
+            |----------|---------------|------|
+            | Linux | 5.8.1 | `SlicerAdaptiveBrush-5.8.1-33241-linux-${{ needs.setup.outputs.version }}.tar.gz` |
+            | Linux | 5.10.0 | `SlicerAdaptiveBrush-5.10.0-34045-linux-${{ needs.setup.outputs.version }}.tar.gz` |
+            | macOS | 5.8.1 | `SlicerAdaptiveBrush-5.8.1-33241-macos-${{ needs.setup.outputs.version }}.tar.gz` |
+            | macOS | 5.10.0 | `SlicerAdaptiveBrush-5.10.0-34045-macos-${{ needs.setup.outputs.version }}.tar.gz` |
+            | Windows | 5.8.1 | `SlicerAdaptiveBrush-5.8.1-33241-windows-${{ needs.setup.outputs.version }}.zip` |
+            | Windows | 5.10.0 | `SlicerAdaptiveBrush-5.10.0-34045-windows-${{ needs.setup.outputs.version }}.zip` |
