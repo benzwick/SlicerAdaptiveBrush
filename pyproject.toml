@@ -28,10 +28,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-org/SlicerAdaptiveBrush"
-Documentation = "https://github.com/your-org/SlicerAdaptiveBrush#readme"
-Repository = "https://github.com/your-org/SlicerAdaptiveBrush.git"
-Issues = "https://github.com/your-org/SlicerAdaptiveBrush/issues"
+Homepage = "https://github.com/benzwick/SlicerAdaptiveBrush"
+Documentation = "https://github.com/benzwick/SlicerAdaptiveBrush#readme"
+Repository = "https://github.com/benzwick/SlicerAdaptiveBrush.git"
+Issues = "https://github.com/benzwick/SlicerAdaptiveBrush/issues"
 
 # Development dependencies for local dev with uv
 # Usage: uv sync --dev

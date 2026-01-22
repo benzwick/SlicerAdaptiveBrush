@@ -4,11 +4,12 @@ project(SlicerAdaptiveBrush)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
-set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/SlicerAdaptiveBrush")
-set(EXTENSION_CONTRIBUTORS "John Doe (AnyWare Corp.)")
-set(EXTENSION_DESCRIPTION "This is an example of a simple extension")
-set(EXTENSION_ICONURL "https://www.example.com/Slicer/Extensions/SlicerAdaptiveBrush.png")
-set(EXTENSION_SCREENSHOTURLS "https://www.example.com/Slicer/Extensions/SlicerAdaptiveBrush/Screenshots/1.png")
+set(EXTENSION_HOMEPAGE "https://github.com/benzwick/SlicerAdaptiveBrush")
+set(EXTENSION_CATEGORY "Segmentation")
+set(EXTENSION_CONTRIBUTORS "Ben Zwick")
+set(EXTENSION_DESCRIPTION "Adaptive brush segment editor effect that segments based on image intensity similarity, stopping at edges and boundaries.")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/SlicerAdaptiveBrush.png")
+set(EXTENSION_SCREENSHOTURLS "")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
