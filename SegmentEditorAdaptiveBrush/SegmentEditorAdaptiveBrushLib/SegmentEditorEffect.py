@@ -17,6 +17,9 @@ from typing import Dict
 # =============================================================================
 # Comprehensive Recursion Tracing for Debugging
 # =============================================================================
+# Set to True to enable recursion tracing after activate() - helps debug RecursionError
+DEBUG_RECURSION_TRACING = False
+
 _call_depth = {}
 _MAX_RECURSION_LOG = 3
 
@@ -1714,10 +1717,10 @@ intensity similarity, stopping at edges and boundaries.</p>
         logging.debug("activate: END - starting recursion trace")
 
         # Start tracing to catch what happens after activate() returns
-        start_recursion_trace()
-
-        # Schedule trace stop after 500ms (enough time to catch any recursion)
-        qt.QTimer.singleShot(500, self._stopTraceAfterActivate)
+        if DEBUG_RECURSION_TRACING:
+            start_recursion_trace()
+            # Schedule trace stop after 500ms (enough time to catch any recursion)
+            qt.QTimer.singleShot(500, self._stopTraceAfterActivate)
 
     def _stopTraceAfterActivate(self):
         """Stop the recursion trace after activate completes."""
