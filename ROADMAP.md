@@ -87,8 +87,10 @@
 ## Version 0.10.0 - GUI Polish (Current)
 
 - [ ] Collapsible help section (like Paint effect's "Show details")
-- [ ] Reorder widgets for better usability (algorithm first)
-- [ ] Simple/Advanced mode toggle
+- [ ] Reorder widgets: most impactful parameters first, progressive disclosure
+  - [ ] Basic controls visible by default (algorithm, radius, sensitivity)
+  - [ ] Advanced parameters in collapsed sections
+  - [ ] Consistent parameter positions across algorithms (muscle memory)
 - [ ] Algorithm-specific parameter visibility (hide irrelevant params)
 - [ ] Add link to documentation
 

@@ -62,13 +62,29 @@ Implement a **multi-stage GitHub Actions pipeline**:
 
 ### Record-and-Replay Testing
 
-Users can record Slicer sessions, and test scripts are generated from recordings:
+Slicer has a **QtTesting** framework for recording GUI interactions to XML files, but it's
+considered experimental. The recommended approach is Python scripts operating on MRML nodes.
 
-1. User records actions in Slicer (File > Record Macro or custom recorder)
-2. Recording saved as JSON/Python script
-3. Claude converts recording to pytest-compatible test
-4. Test replays actions and verifies expected outcomes
-5. Screenshots captured at key points for documentation
+**Workflow:**
+1. User describes or records actions in Slicer (QtTesting XML or manual description)
+2. Claude converts to Python test scripts that manipulate MRML nodes directly
+3. Tests replay actions programmatically (more reliable than GUI replay)
+4. Screenshots captured at key points for documentation
+
+**Example test from user description:**
+```
+User: "I loaded MRHead, selected Adaptive Brush, set preset to Brain,
+       clicked on white matter at roughly (128, 100, 90), verified it
+       segmented the surrounding tissue"
+
+→ Converted to Python test that:
+   - Loads MRHead via SampleData
+   - Activates Adaptive Brush effect
+   - Applies Brain preset
+   - Simulates click at specified coordinates
+   - Verifies segment volume > threshold
+   - Captures screenshot
+```
 
 ### CI Status Badge
 
