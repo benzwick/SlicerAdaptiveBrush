@@ -71,27 +71,52 @@
 - [x] Comprehensive tooltips for all parameters
 - [x] User-visible warnings for missing dependencies
 
-## Version 0.9.0 - Usability Enhancements (Current)
+## Version 0.9.0 - Usability Enhancements ✓
 
 - [x] Erase mode (Ctrl+click or Middle+click to invert)
 - [x] Scroll wheel controls
   - [x] Shift+scroll for brush radius
   - [x] Ctrl+Shift+scroll for threshold zone
-- [ ] Keyboard shortcuts
-  - [ ] `[` / `]` to decrease/increase brush radius
-  - [ ] Number keys (1-5) to switch algorithms quickly
-- [ ] Algorithm-specific parameter visibility (hide irrelevant params)
-- [ ] Status bar feedback (show algorithm and computation time)
+- [x] Custom icons (brush with sparkles)
+- [x] Configurable crosshair display (styles, size, color)
+- [x] Auto-install optional Python dependencies with user prompt
+- [ ] Keyboard shortcuts (`[`/`]` for radius, number keys for algorithms)
+- [ ] Status bar feedback (algorithm name, computation time)
 - [ ] Save/load custom user presets
-- [ ] Speed up Level Set with early stopping convergence check
+
+## Version 0.10.0 - GUI Polish (Current)
+
+- [ ] Collapsible help section (like Paint effect's "Show details")
+- [ ] Reorder widgets for better usability (algorithm first)
+- [ ] Simple/Advanced mode toggle
+- [ ] Algorithm-specific parameter visibility (hide irrelevant params)
+- [ ] Add link to documentation
+
+## Version 0.11.0 - CI/CD Pipeline
+
+- [ ] GitHub Actions: run pytest on all commits
+- [ ] CI status badge in README
+- [ ] Extension packaging workflow
+
+## Version 0.12.0 - Slicer Integration Testing
+
+- [ ] GitHub Action: install extension into Slicer
+- [ ] Run effect on Slicer sample data (MRHead, CTChest, etc.)
+- [ ] Verify extension installs and all Slicer tests pass
+- [ ] Record-and-replay: convert recorded Slicer sessions to test scripts
+
+## Version 0.13.0 - Living Documentation
+
+- [ ] Test scripts generate screenshots automatically
+- [ ] Documentation written to match test coverage
+- [ ] Auto-generated website (GitHub Pages)
+- [ ] Documentation updates dynamically with code changes
+- [ ] User guide with auto-captured screenshots
 
 ## Version 1.0.0 - Production Ready
 
-- [ ] Complete UI polish
-- [ ] Comprehensive documentation
-- [ ] User guide with examples
-- [x] Test implementations (41 tests passing)
-- [ ] Auto-parameter suggestion based on image characteristics
+- [ ] All tests passing (unit + integration)
+- [ ] Complete documentation
 - [ ] Extension submission to Slicer Extensions Index
 
 ## Future (v2.0+)
@@ -103,3 +128,4 @@
 - [ ] C++ optimization of critical paths
 - [ ] Adaptive radius based on local features
 - [ ] Background computation thread
+- [ ] Auto-parameter suggestion based on image characteristics

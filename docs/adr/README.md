@@ -14,6 +14,11 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-002](ADR-002-python-cpp-boundaries.md) | Python vs C++ Implementation Boundaries | Accepted |
 | [ADR-003](ADR-003-testing-strategy.md) | Testing Strategy | Accepted |
 | [ADR-004](ADR-004-caching-strategy.md) | Caching Strategy for Drag Operations | Accepted |
+| [ADR-005](ADR-005-mouse-keyboard-controls.md) | Mouse and Keyboard Controls | Accepted |
+| [ADR-006](ADR-006-iconography.md) | Iconography | Accepted |
+| [ADR-007](ADR-007-dependency-management.md) | Optional Dependency Management | Accepted |
+| [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Proposed |
+| [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Proposed |
 
 ## Template
 
