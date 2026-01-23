@@ -775,37 +775,25 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
 
         Returns:
             HTML string with usage instructions.
+            First line before <br>. shown as collapsed summary.
         """
-        return _(
-            """<html>
-<p><b>Adaptive Brush</b>: Paint with a brush that adapts to image intensity boundaries.</p>
-<p>The brush automatically segments the region containing the cursor based on
-intensity similarity, stopping at edges and boundaries.</p>
-<h4>Usage:</h4>
-<ul>
-<li><b>Left-click and drag</b>: Paint adaptive regions (add or erase)</li>
-<li><b>Ctrl + left-click</b>: Temporarily invert mode (add↔erase)</li>
-<li><b>Middle + left-click</b>: Temporarily invert mode (like Ctrl)</li>
-<li><b>Radius</b>: Maximum brush extent (circle shows limit)</li>
-<li><b>Edge Sensitivity</b>: How strictly to follow intensity boundaries (0%=permissive, 100%=strict)</li>
-<li><b>Algorithm</b>: Choose segmentation method</li>
-</ul>
-<h4>Algorithms:</h4>
-<ul>
-<li><b>Geodesic Distance</b>: Fast, follows edges naturally (recommended)</li>
-<li><b>Watershed</b>: Good edge following, may be blocky on noisy images</li>
-<li><b>Random Walker</b>: Probabilistic segmentation, excellent for ambiguous/blurry edges</li>
-<li><b>Level Set</b>: Smooth contours, slower but precise</li>
-<li><b>Region Growing</b>: Fast, good for homogeneous regions</li>
-<li><b>Threshold Brush</b>: Simple intensity thresholding</li>
-</ul>
-<h4>Notes:</h4>
-<ul>
-<li>Circle outline shows <b>maximum extent</b> - actual painting may be smaller based on edges</li>
-<li>Higher edge sensitivity = tighter boundary following = smaller regions</li>
-<li>Yellow brush = Add mode, Red/orange brush = Erase mode</li>
-</ul>
-</html>"""
+        return "<html>" + _(
+            """Paint with a brush that adapts to image intensity boundaries<br>.
+Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+scroll to adjust brush size.<p>
+<b>Brush Circles:</b>
+<ul style="margin: 0">
+<li><b>Yellow (outer)</b>: Maximum brush extent
+<li><b>Cyan (inner)</b>: Threshold sampling zone
+</ul><p>
+<b>Algorithms:</b>
+<ul style="margin: 0">
+<li><b>Geodesic Distance</b>: Fast, follows edges naturally (recommended)
+<li><b>Watershed</b>: Good edge following, may be blocky on noisy images
+<li><b>Random Walker</b>: Excellent for ambiguous/blurry edges
+<li><b>Level Set</b>: Smooth contours, slower but precise
+<li><b>Region Growing</b>: Fast, good for homogeneous regions
+<li><b>Threshold Brush</b>: Simple intensity thresholding
+</ul>"""
         )
 
     def setupOptionsFrame(self):
@@ -837,6 +825,19 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         brushLayout.addRow(_("Preset:"), presetLayout)
 
+        # Algorithm dropdown (most important choice - visible immediately)
+        self.algorithmCombo = qt.QComboBox()
+        self.algorithmCombo.addItem(_("Geodesic Distance (Recommended)"), "geodesic_distance")
+        self.algorithmCombo.addItem(_("Watershed"), "watershed")
+        self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
+        self.algorithmCombo.addItem(_("Level Set (GPU)"), "level_set_gpu")
+        self.algorithmCombo.addItem(_("Level Set (CPU)"), "level_set_cpu")
+        self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
+        self.algorithmCombo.addItem(_("Region Growing"), "region_growing")
+        self.algorithmCombo.addItem(_("Threshold Brush (Simple)"), "threshold_brush")
+        self.algorithmCombo.setToolTip(_("Segmentation algorithm to use"))
+        brushLayout.addRow(_("Algorithm:"), self.algorithmCombo)
+
         # Radius slider
         self.radiusSlider = ctk.ctkSliderWidget()
         self.radiusSlider.setToolTip(_("Brush radius in millimeters"))
@@ -848,20 +849,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.radiusSlider.suffix = " mm"
         brushLayout.addRow(_("Radius:"), self.radiusSlider)
 
-        # Edge sensitivity slider
-        self.sensitivitySlider = ctk.ctkSliderWidget()
-        self.sensitivitySlider.setToolTip(
-            _("How strictly to follow intensity boundaries (0=permissive, 100=strict)")
-        )
-        self.sensitivitySlider.decimals = 0
-        self.sensitivitySlider.minimum = 0
-        self.sensitivitySlider.maximum = 100
-        self.sensitivitySlider.value = self.edgeSensitivity
-        self.sensitivitySlider.singleStep = 5
-        self.sensitivitySlider.suffix = "%"
-        brushLayout.addRow(_("Edge Sensitivity:"), self.sensitivitySlider)
-
-        # Threshold zone slider (inner circle for sampling)
+        # Threshold zone slider (inner circle for sampling) - before edge sensitivity
         self.zoneSlider = ctk.ctkSliderWidget()
         self.zoneSlider.setToolTip(
             _(
@@ -876,6 +864,34 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.zoneSlider.singleStep = 5
         self.zoneSlider.suffix = "%"
         brushLayout.addRow(_("Threshold Zone:"), self.zoneSlider)
+
+        # Edge sensitivity slider
+        self.sensitivitySlider = ctk.ctkSliderWidget()
+        self.sensitivitySlider.setToolTip(
+            _("How strictly to follow intensity boundaries (0=permissive, 100=strict)")
+        )
+        self.sensitivitySlider.decimals = 0
+        self.sensitivitySlider.minimum = 0
+        self.sensitivitySlider.maximum = 100
+        self.sensitivitySlider.value = self.edgeSensitivity
+        self.sensitivitySlider.singleStep = 5
+        self.sensitivitySlider.suffix = "%"
+        brushLayout.addRow(_("Edge Sensitivity:"), self.sensitivitySlider)
+
+        # Include zone checkbox (grouped with threshold zone)
+        self.includeZoneCheckbox = qt.QCheckBox(_("Guarantee inner zone in result"))
+        self.includeZoneCheckbox.setToolTip(
+            _(
+                "When enabled, the inner threshold zone (cyan circle) is always\n"
+                "included in the segmentation result, regardless of algorithm output.\n\n"
+                "• OFF (recommended): Algorithm determines all boundaries naturally\n"
+                "• ON: Guarantees at least the inner zone is painted\n\n"
+                "Enable if the brush sometimes produces empty results when clicking\n"
+                "on valid tissue. Keep OFF for maximum boundary accuracy."
+            )
+        )
+        self.includeZoneCheckbox.checked = self.includeZoneInResult
+        brushLayout.addRow(self.includeZoneCheckbox)
 
         # Intensity sampling method dropdown
         self.samplingMethodCombo = qt.QComboBox()
@@ -932,45 +948,13 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.previewModeCheckbox.checked = self.previewMode
         brushLayout.addRow(self.previewModeCheckbox)
 
-        # ----- Algorithm Settings -----
-        algorithmCollapsible = ctk.ctkCollapsibleButton()
-        algorithmCollapsible.text = _("Algorithm")
-        algorithmCollapsible.collapsed = True
-        self.scriptedEffect.addOptionsWidget(algorithmCollapsible)
-        algorithmLayout = qt.QFormLayout(algorithmCollapsible)
-
-        # Algorithm dropdown
-        self.algorithmCombo = qt.QComboBox()
-        self.algorithmCombo.addItem(_("Geodesic Distance (Recommended)"), "geodesic_distance")
-        self.algorithmCombo.addItem(_("Watershed"), "watershed")
-        self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
-        self.algorithmCombo.addItem(_("Level Set (GPU)"), "level_set_gpu")
-        self.algorithmCombo.addItem(_("Level Set (CPU)"), "level_set_cpu")
-        self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
-        self.algorithmCombo.addItem(_("Region Growing"), "region_growing")
-        self.algorithmCombo.addItem(_("Threshold Brush (Simple)"), "threshold_brush")
-        self.algorithmCombo.setToolTip(_("Segmentation algorithm to use"))
-        algorithmLayout.addRow(_("Algorithm:"), self.algorithmCombo)
-
-        # Backend dropdown
-        self.backendCombo = qt.QComboBox()
-        self.backendCombo.addItem(_("Auto"), "auto")
-        self.backendCombo.addItem(_("CPU"), "cpu")
-        self.backendCombo.addItem(_("GPU (OpenCL)"), "gpu_opencl")
-        self.backendCombo.addItem(_("GPU (CUDA)"), "gpu_cuda")
-        self.backendCombo.setToolTip(_("Computation backend"))
-        algorithmLayout.addRow(_("Backend:"), self.backendCombo)
-
-        # Threshold caching checkbox
-        self.cachingCheckbox = qt.QCheckBox(_("Enable threshold caching"))
-        self.cachingCheckbox.setToolTip(
-            _(
-                "Reuse threshold calculations when painting in similar intensity regions. "
-                "Improves drag performance but may reduce accuracy at region boundaries."
-            )
-        )
-        self.cachingCheckbox.checked = self.useThresholdCaching
-        algorithmLayout.addRow(self.cachingCheckbox)
+        # ----- Algorithm Parameters (dynamic section) -----
+        # Title updates based on selected algorithm
+        self.algorithmParamsCollapsible = ctk.ctkCollapsibleButton()
+        self.algorithmParamsCollapsible.text = _("Geodesic Distance Parameters")
+        self.algorithmParamsCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(self.algorithmParamsCollapsible)
+        self.algorithmParamsLayout = qt.QFormLayout(self.algorithmParamsCollapsible)
 
         # ----- Threshold Brush Settings -----
         self.thresholdGroup = qt.QWidget()
@@ -1054,121 +1038,13 @@ intensity similarity, stopping at edges and boundaries.</p>
         thresholdLayout.addRow(self.manualThresholdGroup)
         self.manualThresholdGroup.setVisible(False)  # Hidden when auto is checked
 
-        algorithmLayout.addRow(self.thresholdGroup)
+        self.algorithmParamsLayout.addRow(self.thresholdGroup)
         self.thresholdGroup.setVisible(False)  # Hidden unless Threshold Brush selected
 
-        # ----- Advanced Parameters -----
-        advancedCollapsible = ctk.ctkCollapsibleButton()
-        advancedCollapsible.text = _("Advanced Parameters")
-        advancedCollapsible.collapsed = True
-        self.scriptedEffect.addOptionsWidget(advancedCollapsible)
-        advancedLayout = qt.QFormLayout(advancedCollapsible)
-
-        # --- Sampling Parameters ---
-        samplingLabel = qt.QLabel(_("<b>Sampling</b>"))
-        advancedLayout.addRow(samplingLabel)
-
-        # Gaussian sigma for distance weighting
-        self.gaussianSigmaSlider = ctk.ctkSliderWidget()
-        self.gaussianSigmaSlider.setToolTip(
-            _(
-                "Controls how much center pixels influence threshold computation.\n\n"
-                "• 0.0 = Uniform weighting (all pixels in zone weighted equally)\n"
-                "• 0.3-0.5 = Moderate center bias (recommended for most cases)\n"
-                "• 1.0+ = Strong center bias (only pixels very close to cursor matter)\n\n"
-                "Higher values make the brush more sensitive to the exact click location.\n"
-                "Lower values average over a larger area, reducing noise sensitivity.\n\n"
-                "Recommended: 0.5 (default)"
-            )
-        )
-        self.gaussianSigmaSlider.minimum = 0.0
-        self.gaussianSigmaSlider.maximum = 2.0
-        self.gaussianSigmaSlider.value = self.gaussianSigma
-        self.gaussianSigmaSlider.singleStep = 0.1
-        self.gaussianSigmaSlider.decimals = 2
-        advancedLayout.addRow(_("Gaussian Sigma:"), self.gaussianSigmaSlider)
-
-        # Percentile low
-        self.percentileLowSlider = ctk.ctkSliderWidget()
-        self.percentileLowSlider.setToolTip(
-            _(
-                "Lower bound percentile for 'Percentile' sampling method.\n\n"
-                "Intensities below this percentile are excluded from threshold range.\n"
-                "• 0% = Include minimum intensity\n"
-                "• 5% = Exclude darkest 5% (recommended - removes outliers)\n"
-                "• 10-20% = More aggressive outlier removal\n\n"
-                "Increase if dark noise/artifacts are being included.\n\n"
-                "Recommended: 5%"
-            )
-        )
-        self.percentileLowSlider.minimum = 0
-        self.percentileLowSlider.maximum = 40
-        self.percentileLowSlider.value = self.percentileLow
-        self.percentileLowSlider.singleStep = 1
-        self.percentileLowSlider.decimals = 0
-        self.percentileLowSlider.suffix = "%"
-        advancedLayout.addRow(_("Percentile Low:"), self.percentileLowSlider)
-
-        # Percentile high
-        self.percentileHighSlider = ctk.ctkSliderWidget()
-        self.percentileHighSlider.setToolTip(
-            _(
-                "Upper bound percentile for 'Percentile' sampling method.\n\n"
-                "Intensities above this percentile are excluded from threshold range.\n"
-                "• 100% = Include maximum intensity\n"
-                "• 95% = Exclude brightest 5% (recommended - removes outliers)\n"
-                "• 80-90% = More aggressive outlier removal\n\n"
-                "Decrease if bright noise/artifacts are being included.\n\n"
-                "Recommended: 95%"
-            )
-        )
-        self.percentileHighSlider.minimum = 60
-        self.percentileHighSlider.maximum = 100
-        self.percentileHighSlider.value = self.percentileHigh
-        self.percentileHighSlider.singleStep = 1
-        self.percentileHighSlider.decimals = 0
-        self.percentileHighSlider.suffix = "%"
-        advancedLayout.addRow(_("Percentile High:"), self.percentileHighSlider)
-
-        # Std multiplier
-        self.stdMultiplierSlider = ctk.ctkSliderWidget()
-        self.stdMultiplierSlider.setToolTip(
-            _(
-                "Multiplier for standard deviation in 'Mean±Std' sampling method.\n\n"
-                "Threshold range = mean ± (multiplier × std deviation)\n"
-                "• 1.0 = ~68% of data (tight, may miss edges)\n"
-                "• 2.0 = ~95% of data (recommended for most tissues)\n"
-                "• 2.5 = ~99% of data (permissive)\n"
-                "• 3.0+ = Very wide range (may leak into adjacent structures)\n\n"
-                "Decrease for tighter boundaries, increase if segmentation has gaps.\n\n"
-                "Recommended: 2.0"
-            )
-        )
-        self.stdMultiplierSlider.minimum = 0.5
-        self.stdMultiplierSlider.maximum = 4.0
-        self.stdMultiplierSlider.value = self.stdMultiplier
-        self.stdMultiplierSlider.singleStep = 0.1
-        self.stdMultiplierSlider.decimals = 1
-        advancedLayout.addRow(_("Std Multiplier:"), self.stdMultiplierSlider)
-
-        # Include zone checkbox
-        self.includeZoneCheckbox = qt.QCheckBox(_("Guarantee inner zone in result"))
-        self.includeZoneCheckbox.setToolTip(
-            _(
-                "When enabled, the inner threshold zone (cyan circle) is always\n"
-                "included in the segmentation result, regardless of algorithm output.\n\n"
-                "• OFF (recommended): Algorithm determines all boundaries naturally\n"
-                "• ON: Guarantees at least the inner zone is painted\n\n"
-                "Enable if the brush sometimes produces empty results when clicking\n"
-                "on valid tissue. Keep OFF for maximum boundary accuracy."
-            )
-        )
-        self.includeZoneCheckbox.checked = self.includeZoneInResult
-        advancedLayout.addRow(self.includeZoneCheckbox)
-
-        # --- Geodesic Distance Parameters ---
-        geodesicLabel = qt.QLabel(_("<b>Geodesic Distance</b>"))
-        advancedLayout.addRow(geodesicLabel)
+        # --- Geodesic Distance Parameters (in Algorithm Parameters section) ---
+        self.geodesicParamsGroup = qt.QWidget()
+        geodesicLayout = qt.QFormLayout(self.geodesicParamsGroup)
+        geodesicLayout.setContentsMargins(0, 0, 0, 0)
 
         self.geodesicEdgeWeightSlider = ctk.ctkSliderWidget()
         self.geodesicEdgeWeightSlider.setToolTip(
@@ -1188,7 +1064,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.geodesicEdgeWeightSlider.value = self.geodesicEdgeWeight
         self.geodesicEdgeWeightSlider.singleStep = 0.5
         self.geodesicEdgeWeightSlider.decimals = 1
-        advancedLayout.addRow(_("Edge Weight:"), self.geodesicEdgeWeightSlider)
+        geodesicLayout.addRow(_("Edge Weight:"), self.geodesicEdgeWeightSlider)
 
         self.geodesicDistanceScaleSlider = ctk.ctkSliderWidget()
         self.geodesicDistanceScaleSlider.setToolTip(
@@ -1207,7 +1083,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.geodesicDistanceScaleSlider.value = self.geodesicDistanceScale
         self.geodesicDistanceScaleSlider.singleStep = 0.1
         self.geodesicDistanceScaleSlider.decimals = 1
-        advancedLayout.addRow(_("Distance Scale:"), self.geodesicDistanceScaleSlider)
+        geodesicLayout.addRow(_("Distance Scale:"), self.geodesicDistanceScaleSlider)
 
         self.geodesicSmoothingSlider = ctk.ctkSliderWidget()
         self.geodesicSmoothingSlider.setToolTip(
@@ -1226,11 +1102,14 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.geodesicSmoothingSlider.value = self.geodesicSmoothing
         self.geodesicSmoothingSlider.singleStep = 0.1
         self.geodesicSmoothingSlider.decimals = 1
-        advancedLayout.addRow(_("Smoothing:"), self.geodesicSmoothingSlider)
+        geodesicLayout.addRow(_("Smoothing:"), self.geodesicSmoothingSlider)
 
-        # --- Watershed Parameters ---
-        watershedLabel = qt.QLabel(_("<b>Watershed</b>"))
-        advancedLayout.addRow(watershedLabel)
+        self.algorithmParamsLayout.addRow(self.geodesicParamsGroup)
+
+        # --- Watershed Parameters (in Algorithm Parameters section) ---
+        self.watershedParamsGroup = qt.QWidget()
+        watershedLayout = qt.QFormLayout(self.watershedParamsGroup)
+        watershedLayout.setContentsMargins(0, 0, 0, 0)
 
         self.watershedGradientScaleSlider = ctk.ctkSliderWidget()
         self.watershedGradientScaleSlider.setToolTip(
@@ -1249,7 +1128,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.watershedGradientScaleSlider.value = self.watershedGradientScale
         self.watershedGradientScaleSlider.singleStep = 0.1
         self.watershedGradientScaleSlider.decimals = 1
-        advancedLayout.addRow(_("Gradient Scale:"), self.watershedGradientScaleSlider)
+        watershedLayout.addRow(_("Gradient Scale:"), self.watershedGradientScaleSlider)
 
         self.watershedSmoothingSlider = ctk.ctkSliderWidget()
         self.watershedSmoothingSlider.setToolTip(
@@ -1268,11 +1147,15 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.watershedSmoothingSlider.value = self.watershedSmoothing
         self.watershedSmoothingSlider.singleStep = 0.1
         self.watershedSmoothingSlider.decimals = 1
-        advancedLayout.addRow(_("Smoothing:"), self.watershedSmoothingSlider)
+        watershedLayout.addRow(_("Smoothing:"), self.watershedSmoothingSlider)
 
-        # --- Level Set Parameters ---
-        levelSetLabel = qt.QLabel(_("<b>Level Set</b>"))
-        advancedLayout.addRow(levelSetLabel)
+        self.algorithmParamsLayout.addRow(self.watershedParamsGroup)
+        self.watershedParamsGroup.setVisible(False)
+
+        # --- Level Set Parameters (in Algorithm Parameters section) ---
+        self.levelSetParamsGroup = qt.QWidget()
+        levelSetLayout = qt.QFormLayout(self.levelSetParamsGroup)
+        levelSetLayout.setContentsMargins(0, 0, 0, 0)
 
         self.levelSetPropagationSlider = ctk.ctkSliderWidget()
         self.levelSetPropagationSlider.setToolTip(
@@ -1291,7 +1174,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.levelSetPropagationSlider.value = self.levelSetPropagation
         self.levelSetPropagationSlider.singleStep = 0.1
         self.levelSetPropagationSlider.decimals = 1
-        advancedLayout.addRow(_("Propagation:"), self.levelSetPropagationSlider)
+        levelSetLayout.addRow(_("Propagation:"), self.levelSetPropagationSlider)
 
         self.levelSetCurvatureSlider = ctk.ctkSliderWidget()
         self.levelSetCurvatureSlider.setToolTip(
@@ -1310,7 +1193,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.levelSetCurvatureSlider.value = self.levelSetCurvature
         self.levelSetCurvatureSlider.singleStep = 0.1
         self.levelSetCurvatureSlider.decimals = 1
-        advancedLayout.addRow(_("Curvature:"), self.levelSetCurvatureSlider)
+        levelSetLayout.addRow(_("Curvature:"), self.levelSetCurvatureSlider)
 
         self.levelSetIterationsSlider = ctk.ctkSliderWidget()
         self.levelSetIterationsSlider.setToolTip(
@@ -1329,11 +1212,15 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.levelSetIterationsSlider.value = self.levelSetIterations
         self.levelSetIterationsSlider.singleStep = 10
         self.levelSetIterationsSlider.decimals = 0
-        advancedLayout.addRow(_("Iterations:"), self.levelSetIterationsSlider)
+        levelSetLayout.addRow(_("Iterations:"), self.levelSetIterationsSlider)
 
-        # --- Region Growing Parameters ---
-        regionGrowingLabel = qt.QLabel(_("<b>Region Growing</b>"))
-        advancedLayout.addRow(regionGrowingLabel)
+        self.algorithmParamsLayout.addRow(self.levelSetParamsGroup)
+        self.levelSetParamsGroup.setVisible(False)
+
+        # --- Region Growing Parameters (in Algorithm Parameters section) ---
+        self.regionGrowingParamsGroup = qt.QWidget()
+        regionGrowingLayout = qt.QFormLayout(self.regionGrowingParamsGroup)
+        regionGrowingLayout.setContentsMargins(0, 0, 0, 0)
 
         self.regionGrowingMultiplierSlider = ctk.ctkSliderWidget()
         self.regionGrowingMultiplierSlider.setToolTip(
@@ -1353,7 +1240,7 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.regionGrowingMultiplierSlider.value = self.regionGrowingMultiplier
         self.regionGrowingMultiplierSlider.singleStep = 0.1
         self.regionGrowingMultiplierSlider.decimals = 1
-        advancedLayout.addRow(_("Multiplier:"), self.regionGrowingMultiplierSlider)
+        regionGrowingLayout.addRow(_("Multiplier:"), self.regionGrowingMultiplierSlider)
 
         self.regionGrowingIterationsSlider = ctk.ctkSliderWidget()
         self.regionGrowingIterationsSlider.setToolTip(
@@ -1373,11 +1260,15 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.regionGrowingIterationsSlider.value = self.regionGrowingIterations
         self.regionGrowingIterationsSlider.singleStep = 1
         self.regionGrowingIterationsSlider.decimals = 0
-        advancedLayout.addRow(_("Iterations:"), self.regionGrowingIterationsSlider)
+        regionGrowingLayout.addRow(_("Iterations:"), self.regionGrowingIterationsSlider)
 
-        # --- Random Walker Parameters ---
-        rwLabel = qt.QLabel(_("<b>Random Walker</b>"))
-        advancedLayout.addRow(rwLabel)
+        self.algorithmParamsLayout.addRow(self.regionGrowingParamsGroup)
+        self.regionGrowingParamsGroup.setVisible(False)
+
+        # --- Random Walker Parameters (in Algorithm Parameters section) ---
+        self.randomWalkerParamsGroup = qt.QWidget()
+        rwLayout = qt.QFormLayout(self.randomWalkerParamsGroup)
+        rwLayout.setContentsMargins(0, 0, 0, 0)
 
         self.randomWalkerBetaSlider = ctk.ctkSliderWidget()
         self.randomWalkerBetaSlider.setToolTip(
@@ -1398,11 +1289,108 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.randomWalkerBetaSlider.value = self.randomWalkerBeta
         self.randomWalkerBetaSlider.singleStep = 10
         self.randomWalkerBetaSlider.decimals = 0
-        advancedLayout.addRow(_("Beta (edge weight):"), self.randomWalkerBetaSlider)
+        rwLayout.addRow(_("Beta (edge weight):"), self.randomWalkerBetaSlider)
 
-        # --- Morphology Parameters ---
-        morphLabel = qt.QLabel(_("<b>Post-processing</b>"))
-        advancedLayout.addRow(morphLabel)
+        self.algorithmParamsLayout.addRow(self.randomWalkerParamsGroup)
+        self.randomWalkerParamsGroup.setVisible(False)
+
+        # ----- Sampling & Post-processing -----
+        samplingCollapsible = ctk.ctkCollapsibleButton()
+        samplingCollapsible.text = _("Sampling & Post-processing")
+        samplingCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(samplingCollapsible)
+        samplingLayout = qt.QFormLayout(samplingCollapsible)
+
+        # --- Sampling Parameters ---
+        samplingLabel = qt.QLabel(_("<b>Sampling</b>"))
+        samplingLayout.addRow(samplingLabel)
+
+        # Gaussian sigma for distance weighting
+        self.gaussianSigmaSlider = ctk.ctkSliderWidget()
+        self.gaussianSigmaSlider.setToolTip(
+            _(
+                "Controls how much center pixels influence threshold computation.\n\n"
+                "• 0.0 = Uniform weighting (all pixels in zone weighted equally)\n"
+                "• 0.3-0.5 = Moderate center bias (recommended for most cases)\n"
+                "• 1.0+ = Strong center bias (only pixels very close to cursor matter)\n\n"
+                "Higher values make the brush more sensitive to the exact click location.\n"
+                "Lower values average over a larger area, reducing noise sensitivity.\n\n"
+                "Recommended: 0.5 (default)"
+            )
+        )
+        self.gaussianSigmaSlider.minimum = 0.0
+        self.gaussianSigmaSlider.maximum = 2.0
+        self.gaussianSigmaSlider.value = self.gaussianSigma
+        self.gaussianSigmaSlider.singleStep = 0.1
+        self.gaussianSigmaSlider.decimals = 2
+        samplingLayout.addRow(_("Gaussian Sigma:"), self.gaussianSigmaSlider)
+
+        # Percentile low
+        self.percentileLowSlider = ctk.ctkSliderWidget()
+        self.percentileLowSlider.setToolTip(
+            _(
+                "Lower bound percentile for 'Percentile' sampling method.\n\n"
+                "Intensities below this percentile are excluded from threshold range.\n"
+                "• 0% = Include minimum intensity\n"
+                "• 5% = Exclude darkest 5% (recommended - removes outliers)\n"
+                "• 10-20% = More aggressive outlier removal\n\n"
+                "Increase if dark noise/artifacts are being included.\n\n"
+                "Recommended: 5%"
+            )
+        )
+        self.percentileLowSlider.minimum = 0
+        self.percentileLowSlider.maximum = 40
+        self.percentileLowSlider.value = self.percentileLow
+        self.percentileLowSlider.singleStep = 1
+        self.percentileLowSlider.decimals = 0
+        self.percentileLowSlider.suffix = "%"
+        samplingLayout.addRow(_("Percentile Low:"), self.percentileLowSlider)
+
+        # Percentile high
+        self.percentileHighSlider = ctk.ctkSliderWidget()
+        self.percentileHighSlider.setToolTip(
+            _(
+                "Upper bound percentile for 'Percentile' sampling method.\n\n"
+                "Intensities above this percentile are excluded from threshold range.\n"
+                "• 100% = Include maximum intensity\n"
+                "• 95% = Exclude brightest 5% (recommended - removes outliers)\n"
+                "• 80-90% = More aggressive outlier removal\n\n"
+                "Decrease if bright noise/artifacts are being included.\n\n"
+                "Recommended: 95%"
+            )
+        )
+        self.percentileHighSlider.minimum = 60
+        self.percentileHighSlider.maximum = 100
+        self.percentileHighSlider.value = self.percentileHigh
+        self.percentileHighSlider.singleStep = 1
+        self.percentileHighSlider.decimals = 0
+        self.percentileHighSlider.suffix = "%"
+        samplingLayout.addRow(_("Percentile High:"), self.percentileHighSlider)
+
+        # Std multiplier
+        self.stdMultiplierSlider = ctk.ctkSliderWidget()
+        self.stdMultiplierSlider.setToolTip(
+            _(
+                "Multiplier for standard deviation in 'Mean±Std' sampling method.\n\n"
+                "Threshold range = mean ± (multiplier × std deviation)\n"
+                "• 1.0 = ~68% of data (tight, may miss edges)\n"
+                "• 2.0 = ~95% of data (recommended for most tissues)\n"
+                "• 2.5 = ~99% of data (permissive)\n"
+                "• 3.0+ = Very wide range (may leak into adjacent structures)\n\n"
+                "Decrease for tighter boundaries, increase if segmentation has gaps.\n\n"
+                "Recommended: 2.0"
+            )
+        )
+        self.stdMultiplierSlider.minimum = 0.5
+        self.stdMultiplierSlider.maximum = 4.0
+        self.stdMultiplierSlider.value = self.stdMultiplier
+        self.stdMultiplierSlider.singleStep = 0.1
+        self.stdMultiplierSlider.decimals = 1
+        samplingLayout.addRow(_("Std Multiplier:"), self.stdMultiplierSlider)
+
+        # --- Post-processing Parameters ---
+        postProcLabel = qt.QLabel(_("<b>Post-processing</b>"))
+        samplingLayout.addRow(postProcLabel)
 
         self.fillHolesCheckbox = qt.QCheckBox(_("Fill holes in result"))
         self.fillHolesCheckbox.setToolTip(
@@ -1415,7 +1403,7 @@ intensity similarity, stopping at edges and boundaries.</p>
             )
         )
         self.fillHolesCheckbox.checked = self.fillHoles
-        advancedLayout.addRow(self.fillHolesCheckbox)
+        samplingLayout.addRow(self.fillHolesCheckbox)
 
         self.closingRadiusSlider = ctk.ctkSliderWidget()
         self.closingRadiusSlider.setToolTip(
@@ -1436,7 +1424,31 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.closingRadiusSlider.value = self.closingRadius
         self.closingRadiusSlider.singleStep = 1
         self.closingRadiusSlider.decimals = 0
-        advancedLayout.addRow(_("Closing Radius:"), self.closingRadiusSlider)
+        samplingLayout.addRow(_("Closing Radius:"), self.closingRadiusSlider)
+
+        # --- Backend & Performance ---
+        backendLabel = qt.QLabel(_("<b>Backend & Performance</b>"))
+        samplingLayout.addRow(backendLabel)
+
+        # Backend dropdown
+        self.backendCombo = qt.QComboBox()
+        self.backendCombo.addItem(_("Auto"), "auto")
+        self.backendCombo.addItem(_("CPU"), "cpu")
+        self.backendCombo.addItem(_("GPU (OpenCL)"), "gpu_opencl")
+        self.backendCombo.addItem(_("GPU (CUDA)"), "gpu_cuda")
+        self.backendCombo.setToolTip(_("Computation backend"))
+        samplingLayout.addRow(_("Backend:"), self.backendCombo)
+
+        # Threshold caching checkbox
+        self.cachingCheckbox = qt.QCheckBox(_("Enable threshold caching"))
+        self.cachingCheckbox.setToolTip(
+            _(
+                "Reuse threshold calculations when painting in similar intensity regions. "
+                "Improves drag performance but may reduce accuracy at region boundaries."
+            )
+        )
+        self.cachingCheckbox.checked = self.useThresholdCaching
+        samplingLayout.addRow(self.cachingCheckbox)
 
         # ----- Display Settings -----
         displayCollapsible = ctk.ctkCollapsibleButton()
@@ -1510,11 +1522,8 @@ intensity similarity, stopping at edges and boundaries.</p>
 
         # Preset color buttons
         self.crosshairWhiteButton = qt.QPushButton(_("White"))
-        self.crosshairWhiteButton.setMaximumWidth(50)
         self.crosshairYellowButton = qt.QPushButton(_("Yellow"))
-        self.crosshairYellowButton.setMaximumWidth(50)
         self.crosshairCyanButton = qt.QPushButton(_("Cyan"))
-        self.crosshairCyanButton.setMaximumWidth(50)
         crosshairColorLayout.addWidget(self.crosshairWhiteButton)
         crosshairColorLayout.addWidget(self.crosshairYellowButton)
         crosshairColorLayout.addWidget(self.crosshairCyanButton)
@@ -1775,6 +1784,9 @@ intensity similarity, stopping at edges and boundaries.</p>
         # Invalidate cache once after all changes
         self.cache.invalidate()
 
+        # Update algorithm parameters visibility (since signals were blocked)
+        self._updateAlgorithmParamsVisibility()
+
         logging.debug(f"Applied preset: {preset['name']}")
 
     def onRadiusChanged(self, value):
@@ -1861,14 +1873,66 @@ intensity similarity, stopping at edges and boundaries.</p>
             if pipeline.sliceWidget is not None:
                 pipeline.sliceWidget.sliceView().scheduleRender()
 
+    def _getAlgorithmDisplayName(self, algorithm_id: str) -> str:
+        """Get human-readable display name for an algorithm."""
+        names = {
+            "geodesic_distance": _("Geodesic Distance"),
+            "watershed": _("Watershed"),
+            "random_walker": _("Random Walker"),
+            "level_set_gpu": _("Level Set (GPU)"),
+            "level_set_cpu": _("Level Set (CPU)"),
+            "connected_threshold": _("Connected Threshold"),
+            "region_growing": _("Region Growing"),
+            "threshold_brush": _("Threshold Brush"),
+        }
+        return names.get(algorithm_id, algorithm_id)
+
+    def _updateAlgorithmParamsVisibility(self):
+        """Update the algorithm parameters section title and visibility.
+
+        Called when the algorithm changes, either directly or via preset.
+        """
+        # Update dynamic section title
+        displayName = self._getAlgorithmDisplayName(self.algorithm)
+        self.algorithmParamsCollapsible.text = _("{name} Parameters").format(name=displayName)
+
+        # Hide all algorithm parameter groups first
+        self.thresholdGroup.setVisible(False)
+        self.geodesicParamsGroup.setVisible(False)
+        self.watershedParamsGroup.setVisible(False)
+        self.levelSetParamsGroup.setVisible(False)
+        self.regionGrowingParamsGroup.setVisible(False)
+        self.randomWalkerParamsGroup.setVisible(False)
+
+        # Show the appropriate parameter group and section
+        hasParams = True
+        if self.algorithm == "geodesic_distance":
+            self.geodesicParamsGroup.setVisible(True)
+        elif self.algorithm == "watershed":
+            self.watershedParamsGroup.setVisible(True)
+        elif self.algorithm in ("level_set_gpu", "level_set_cpu"):
+            self.levelSetParamsGroup.setVisible(True)
+        elif self.algorithm == "region_growing":
+            self.regionGrowingParamsGroup.setVisible(True)
+        elif self.algorithm == "random_walker":
+            self.randomWalkerParamsGroup.setVisible(True)
+        elif self.algorithm == "threshold_brush":
+            self.thresholdGroup.setVisible(True)
+        elif self.algorithm == "connected_threshold":
+            # No custom parameters for Connected Threshold
+            hasParams = False
+
+        # Hide the entire section if algorithm has no parameters
+        self.algorithmParamsCollapsible.setVisible(hasParams)
+
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
         self.algorithm = self.algorithmCombo.currentData
         logging.info(f"Algorithm changed to: {self.algorithm}")
         self.cache.invalidate()
-        # Show/hide threshold controls based on algorithm
-        isThresholdBrush = self.algorithm == "threshold_brush"
-        self.thresholdGroup.setVisible(isThresholdBrush)
+
+        # Update visibility
+        self._updateAlgorithmParamsVisibility()
 
         # Prompt to install scikit-image if Random Walker selected without it
         if self.algorithm == "random_walker" and not HAS_SKIMAGE_RW:
