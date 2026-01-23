@@ -80,10 +80,25 @@ class BrushOutlinePipeline:
     - Outer circle (yellow): Maximum brush extent
     - Inner circle (cyan): Threshold sampling zone
     - Preview overlay (green, semi-transparent): Segmentation preview
+    - Crosshair (optional): Center crosshair lines
     """
+
+    # Crosshair style constants
+    CROSSHAIR_STYLE_CROSS = "cross"  # Simple + shape
+    CROSSHAIR_STYLE_BULLSEYE = "bullseye"  # + with gap at center
+    CROSSHAIR_STYLE_DOT = "dot"  # Small dot at center
+    CROSSHAIR_STYLE_CROSSHAIR = "crosshair"  # Full lines extending to brush edge
 
     def __init__(self):
         """Initialize the brush outline pipeline."""
+        # Crosshair settings
+        self.crosshairEnabled = True
+        self.crosshairSize = 10  # Size in pixels (for cross/bullseye styles)
+        self.crosshairThickness = 1  # Line width
+        self.crosshairStyle = self.CROSSHAIR_STYLE_CROSS
+        self.crosshairColor = (1.0, 1.0, 1.0)  # White by default
+        self.crosshairOpacity = 0.9
+
         # Preview overlay image actor
         self.previewImage = vtk.vtkImageData()
         self.previewMapper = vtk.vtkImageMapper()
@@ -161,6 +176,51 @@ class BrushOutlinePipeline:
         innerProp.SetLineWidth(1.5)
         innerProp.SetOpacity(0.7)
 
+        # CROSSHAIR - Center indicator lines
+        self.crosshairPoints = vtk.vtkPoints()
+        self.crosshairLines = vtk.vtkCellArray()
+        self.crosshairPolyData = vtk.vtkPolyData()
+        self.crosshairPolyData.SetPoints(self.crosshairPoints)
+        self.crosshairPolyData.SetLines(self.crosshairLines)
+
+        self.crosshairMapper = vtk.vtkPolyDataMapper2D()
+        self.crosshairMapper.SetInputData(self.crosshairPolyData)
+
+        self.crosshairActor = vtk.vtkActor2D()
+        self.crosshairActor.SetMapper(self.crosshairMapper)
+        self.crosshairActor.VisibilityOff()
+        self.crosshairActor.SetPickable(False)
+
+        # Crosshair styling - white by default
+        crosshairProp = self.crosshairActor.GetProperty()
+        crosshairProp.SetColor(1.0, 1.0, 1.0)
+        crosshairProp.SetLineWidth(1)
+        crosshairProp.SetOpacity(0.9)
+
+        # CENTER DOT - for dot style
+        self.dotSource = vtk.vtkRegularPolygonSource()
+        self.dotSource.SetNumberOfSides(16)
+        self.dotSource.SetRadius(2.0)
+        self.dotSource.GeneratePolygonOn()
+        self.dotSource.GeneratePolylineOff()
+
+        self.dotTransform = vtk.vtkTransform()
+        self.dotTransformFilter = vtk.vtkTransformPolyDataFilter()
+        self.dotTransformFilter.SetTransform(self.dotTransform)
+        self.dotTransformFilter.SetInputConnection(self.dotSource.GetOutputPort())
+
+        self.dotMapper = vtk.vtkPolyDataMapper2D()
+        self.dotMapper.SetInputConnection(self.dotTransformFilter.GetOutputPort())
+
+        self.dotActor = vtk.vtkActor2D()
+        self.dotActor.SetMapper(self.dotMapper)
+        self.dotActor.VisibilityOff()
+        self.dotActor.SetPickable(False)
+
+        dotProp = self.dotActor.GetProperty()
+        dotProp.SetColor(1.0, 1.0, 1.0)
+        dotProp.SetOpacity(0.9)
+
         # Store the renderer
         self.renderer = None
         self.sliceWidget = None
@@ -178,6 +238,8 @@ class BrushOutlinePipeline:
             self.renderer.RemoveActor2D(self.outerActor)
             self.renderer.RemoveActor2D(self.innerActor)
             self.renderer.RemoveActor2D(self.previewActor)
+            self.renderer.RemoveActor2D(self.crosshairActor)
+            self.renderer.RemoveActor2D(self.dotActor)
 
         self.sliceWidget = sliceWidget
         if sliceWidget is not None:
@@ -187,6 +249,8 @@ class BrushOutlinePipeline:
                 self.renderer.AddActor2D(self.previewActor)
                 self.renderer.AddActor2D(self.outerActor)
                 self.renderer.AddActor2D(self.innerActor)
+                self.renderer.AddActor2D(self.crosshairActor)
+                self.renderer.AddActor2D(self.dotActor)
 
     def updateOutline(self, xyPosition, radiusPixels, innerRadiusRatio=0.5):
         """Update the brush outline position and size.
@@ -213,9 +277,148 @@ class BrushOutlinePipeline:
         # Only show inner circle if it's meaningfully different from outer
         self.innerActor.SetVisibility(innerRadiusRatio < 0.95)
 
+        # Update crosshair
+        self._updateCrosshair(xyPosition, radiusPixels)
+
         # Request render
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
+
+    def _updateCrosshair(self, xyPosition, radiusPixels):
+        """Update the crosshair visualization.
+
+        Args:
+            xyPosition: Center position in slice XY coordinates (x, y).
+            radiusPixels: Brush radius in pixels (used for crosshair style).
+        """
+        if not self.crosshairEnabled:
+            self.crosshairActor.VisibilityOff()
+            self.dotActor.VisibilityOff()
+            return
+
+        cx, cy = xyPosition[0], xyPosition[1]
+
+        # Update crosshair color and style
+        crosshairProp = self.crosshairActor.GetProperty()
+        crosshairProp.SetColor(*self.crosshairColor)
+        crosshairProp.SetLineWidth(self.crosshairThickness)
+        crosshairProp.SetOpacity(self.crosshairOpacity)
+
+        dotProp = self.dotActor.GetProperty()
+        dotProp.SetColor(*self.crosshairColor)
+        dotProp.SetOpacity(self.crosshairOpacity)
+
+        # Build crosshair geometry based on style
+        self.crosshairPoints.Reset()
+        self.crosshairLines.Reset()
+
+        if self.crosshairStyle == self.CROSSHAIR_STYLE_DOT:
+            # Just show a dot at center
+            self.crosshairActor.VisibilityOff()
+            self.dotSource.SetRadius(max(2, self.crosshairSize / 5))
+            self.dotTransform.Identity()
+            self.dotTransform.Translate(cx, cy, 0)
+            self.dotActor.VisibilityOn()
+
+        elif self.crosshairStyle == self.CROSSHAIR_STYLE_CROSS:
+            # Simple + shape
+            size = self.crosshairSize
+            self._addCrossLines(cx, cy, size, gap=0)
+            self.crosshairActor.VisibilityOn()
+            self.dotActor.VisibilityOff()
+
+        elif self.crosshairStyle == self.CROSSHAIR_STYLE_BULLSEYE:
+            # + with gap at center
+            size = self.crosshairSize
+            gap = max(3, size / 4)
+            self._addCrossLines(cx, cy, size, gap=gap)
+            self.crosshairActor.VisibilityOn()
+            # Also show small dot at center
+            self.dotSource.SetRadius(1.5)
+            self.dotTransform.Identity()
+            self.dotTransform.Translate(cx, cy, 0)
+            self.dotActor.VisibilityOn()
+
+        elif self.crosshairStyle == self.CROSSHAIR_STYLE_CROSSHAIR:
+            # Full lines extending to brush edge
+            size = radiusPixels * 0.9  # Slightly inside the brush circle
+            gap = max(3, radiusPixels * 0.1)
+            self._addCrossLines(cx, cy, size, gap=gap)
+            self.crosshairActor.VisibilityOn()
+            self.dotActor.VisibilityOff()
+
+        self.crosshairPolyData.Modified()
+
+    def _addCrossLines(self, cx, cy, size, gap=0):
+        """Add cross lines to the crosshair polydata.
+
+        Args:
+            cx, cy: Center position.
+            size: Half-length of each arm.
+            gap: Gap size at center (0 for solid cross).
+        """
+        # Horizontal line
+        if gap > 0:
+            # Left segment
+            p0 = self.crosshairPoints.InsertNextPoint(cx - size, cy, 0)
+            p1 = self.crosshairPoints.InsertNextPoint(cx - gap, cy, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p0)
+            self.crosshairLines.InsertCellPoint(p1)
+            # Right segment
+            p2 = self.crosshairPoints.InsertNextPoint(cx + gap, cy, 0)
+            p3 = self.crosshairPoints.InsertNextPoint(cx + size, cy, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p2)
+            self.crosshairLines.InsertCellPoint(p3)
+        else:
+            p0 = self.crosshairPoints.InsertNextPoint(cx - size, cy, 0)
+            p1 = self.crosshairPoints.InsertNextPoint(cx + size, cy, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p0)
+            self.crosshairLines.InsertCellPoint(p1)
+
+        # Vertical line
+        if gap > 0:
+            # Bottom segment
+            p4 = self.crosshairPoints.InsertNextPoint(cx, cy - size, 0)
+            p5 = self.crosshairPoints.InsertNextPoint(cx, cy - gap, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p4)
+            self.crosshairLines.InsertCellPoint(p5)
+            # Top segment
+            p6 = self.crosshairPoints.InsertNextPoint(cx, cy + gap, 0)
+            p7 = self.crosshairPoints.InsertNextPoint(cx, cy + size, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p6)
+            self.crosshairLines.InsertCellPoint(p7)
+        else:
+            p4 = self.crosshairPoints.InsertNextPoint(cx, cy - size, 0)
+            p5 = self.crosshairPoints.InsertNextPoint(cx, cy + size, 0)
+            self.crosshairLines.InsertNextCell(2)
+            self.crosshairLines.InsertCellPoint(p4)
+            self.crosshairLines.InsertCellPoint(p5)
+
+    def setCrosshairSettings(self, enabled=None, size=None, thickness=None, style=None, color=None):
+        """Update crosshair settings.
+
+        Args:
+            enabled: Whether crosshair is shown.
+            size: Size in pixels.
+            thickness: Line width.
+            style: One of CROSSHAIR_STYLE_* constants.
+            color: RGB tuple (0-1 range).
+        """
+        if enabled is not None:
+            self.crosshairEnabled = enabled
+        if size is not None:
+            self.crosshairSize = size
+        if thickness is not None:
+            self.crosshairThickness = thickness
+        if style is not None:
+            self.crosshairStyle = style
+        if color is not None:
+            self.crosshairColor = color
 
     def updatePreview(self, mask2D, originXY, spacingXY):
         """Update the preview overlay with a 2D mask.
@@ -269,6 +472,8 @@ class BrushOutlinePipeline:
         self.outerActor.VisibilityOff()
         self.innerActor.VisibilityOff()
         self.previewActor.VisibilityOff()
+        self.crosshairActor.VisibilityOff()
+        self.dotActor.VisibilityOff()
         if self.sliceWidget is not None:
             self.sliceWidget.sliceView().scheduleRender()
 
@@ -278,6 +483,8 @@ class BrushOutlinePipeline:
             self.renderer.RemoveActor2D(self.outerActor)
             self.renderer.RemoveActor2D(self.innerActor)
             self.renderer.RemoveActor2D(self.previewActor)
+            self.renderer.RemoveActor2D(self.crosshairActor)
+            self.renderer.RemoveActor2D(self.dotActor)
             self.renderer = None
         self.sliceWidget = None
 
@@ -559,21 +766,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             return qt.QIcon(iconPath)
         return qt.QIcon()
 
-    def createCursor(self, widget):
-        """Create a custom cursor for the effect.
-
-        Returns a crosshair cursor. We must NOT call self.scriptedEffect.createCursor()
-        because that calls back to this Python method, causing infinite recursion.
-
-        Args:
-            widget: The view widget.
-
-        Returns:
-            QCursor for this effect.
-        """
-        # Return a simple crosshair cursor
-        # DO NOT call self.scriptedEffect.createCursor(widget) - it recurses back here!
-        return qt.QCursor(qt.Qt.CrossCursor)
+    # Note: createCursor is NOT overridden here - the default C++ implementation
+    # in qSlicerSegmentEditorAbstractEffect::createCursor is used, which creates
+    # a cursor combining NullEffect.png with our icon() result
 
     def helpText(self):
         """Return help text for the effect.
@@ -1243,6 +1438,89 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.closingRadiusSlider.decimals = 0
         advancedLayout.addRow(_("Closing Radius:"), self.closingRadiusSlider)
 
+        # ----- Display Settings -----
+        displayCollapsible = ctk.ctkCollapsibleButton()
+        displayCollapsible.text = _("Display Settings")
+        displayCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(displayCollapsible)
+        displayLayout = qt.QFormLayout(displayCollapsible)
+
+        # Crosshair enable checkbox
+        self.crosshairCheckbox = qt.QCheckBox(_("Show crosshair"))
+        self.crosshairCheckbox.setToolTip(
+            _(
+                "Display a crosshair at the brush center for precise positioning.\n\n"
+                "The crosshair helps identify the exact center point where\n"
+                "the segmentation algorithm will be seeded."
+            )
+        )
+        self.crosshairCheckbox.checked = True  # Default on
+        displayLayout.addRow(self.crosshairCheckbox)
+
+        # Crosshair style dropdown
+        self.crosshairStyleCombo = qt.QComboBox()
+        self.crosshairStyleCombo.addItem(_("Cross (+)"), BrushOutlinePipeline.CROSSHAIR_STYLE_CROSS)
+        self.crosshairStyleCombo.addItem(
+            _("Bullseye (+ with gap)"), BrushOutlinePipeline.CROSSHAIR_STYLE_BULLSEYE
+        )
+        self.crosshairStyleCombo.addItem(_("Dot"), BrushOutlinePipeline.CROSSHAIR_STYLE_DOT)
+        self.crosshairStyleCombo.addItem(
+            _("Full crosshair"), BrushOutlinePipeline.CROSSHAIR_STYLE_CROSSHAIR
+        )
+        self.crosshairStyleCombo.setToolTip(
+            _(
+                "Crosshair style:\n"
+                "• Cross: Simple + shape at center\n"
+                "• Bullseye: Cross with gap and center dot\n"
+                "• Dot: Small dot at center only\n"
+                "• Full crosshair: Lines extending to brush edge"
+            )
+        )
+        displayLayout.addRow(_("Crosshair Style:"), self.crosshairStyleCombo)
+
+        # Crosshair size slider
+        self.crosshairSizeSlider = ctk.ctkSliderWidget()
+        self.crosshairSizeSlider.setToolTip(_("Size of crosshair in pixels"))
+        self.crosshairSizeSlider.minimum = 5
+        self.crosshairSizeSlider.maximum = 50
+        self.crosshairSizeSlider.value = 10
+        self.crosshairSizeSlider.singleStep = 1
+        self.crosshairSizeSlider.decimals = 0
+        self.crosshairSizeSlider.suffix = " px"
+        displayLayout.addRow(_("Crosshair Size:"), self.crosshairSizeSlider)
+
+        # Crosshair thickness slider
+        self.crosshairThicknessSlider = ctk.ctkSliderWidget()
+        self.crosshairThicknessSlider.setToolTip(_("Line thickness of crosshair"))
+        self.crosshairThicknessSlider.minimum = 1
+        self.crosshairThicknessSlider.maximum = 5
+        self.crosshairThicknessSlider.value = 1
+        self.crosshairThicknessSlider.singleStep = 1
+        self.crosshairThicknessSlider.decimals = 0
+        displayLayout.addRow(_("Crosshair Thickness:"), self.crosshairThicknessSlider)
+
+        # Crosshair color picker
+        crosshairColorLayout = qt.QHBoxLayout()
+        self.crosshairColorButton = qt.QPushButton()
+        self.crosshairColorButton.setToolTip(_("Click to change crosshair color"))
+        self.crosshairColorButton.setFixedSize(30, 30)
+        self._crosshairColor = qt.QColor(255, 255, 255)  # White default
+        self._updateColorButton()
+        crosshairColorLayout.addWidget(self.crosshairColorButton)
+
+        # Preset color buttons
+        self.crosshairWhiteButton = qt.QPushButton(_("White"))
+        self.crosshairWhiteButton.setMaximumWidth(50)
+        self.crosshairYellowButton = qt.QPushButton(_("Yellow"))
+        self.crosshairYellowButton.setMaximumWidth(50)
+        self.crosshairCyanButton = qt.QPushButton(_("Cyan"))
+        self.crosshairCyanButton.setMaximumWidth(50)
+        crosshairColorLayout.addWidget(self.crosshairWhiteButton)
+        crosshairColorLayout.addWidget(self.crosshairYellowButton)
+        crosshairColorLayout.addWidget(self.crosshairCyanButton)
+        crosshairColorLayout.addStretch()
+        displayLayout.addRow(_("Crosshair Color:"), crosshairColorLayout)
+
         # Connect signals
         self.presetCombo.currentIndexChanged.connect(self.onPresetChanged)
         self.resetPresetButton.clicked.connect(self.onResetPreset)
@@ -1281,6 +1559,73 @@ intensity similarity, stopping at edges and boundaries.</p>
         self.randomWalkerBetaSlider.valueChanged.connect(self.onAdvancedParamChanged)
         self.fillHolesCheckbox.toggled.connect(self.onAdvancedParamChanged)
         self.closingRadiusSlider.valueChanged.connect(self.onAdvancedParamChanged)
+
+        # Display settings signals
+        self.crosshairCheckbox.toggled.connect(self.onCrosshairSettingsChanged)
+        self.crosshairStyleCombo.currentIndexChanged.connect(self.onCrosshairSettingsChanged)
+        self.crosshairSizeSlider.valueChanged.connect(self.onCrosshairSettingsChanged)
+        self.crosshairThicknessSlider.valueChanged.connect(self.onCrosshairSettingsChanged)
+        self.crosshairColorButton.clicked.connect(self.onCrosshairColorPicker)
+        self.crosshairWhiteButton.clicked.connect(lambda: self._setCrosshairColor(255, 255, 255))
+        self.crosshairYellowButton.clicked.connect(lambda: self._setCrosshairColor(255, 230, 50))
+        self.crosshairCyanButton.clicked.connect(lambda: self._setCrosshairColor(50, 230, 255))
+
+    def _updateColorButton(self):
+        """Update the crosshair color button appearance."""
+        self.crosshairColorButton.setStyleSheet(
+            f"background-color: rgb({self._crosshairColor.red()}, "
+            f"{self._crosshairColor.green()}, {self._crosshairColor.blue()}); "
+            f"border: 1px solid gray;"
+        )
+
+    def _setCrosshairColor(self, r, g, b):
+        """Set crosshair color from RGB values."""
+        self._crosshairColor = qt.QColor(r, g, b)
+        self._updateColorButton()
+        self.onCrosshairSettingsChanged()
+
+    def onCrosshairColorPicker(self):
+        """Open color picker dialog for crosshair color."""
+        color = qt.QColorDialog.getColor(self._crosshairColor, None, _("Select Crosshair Color"))
+        if color.isValid():
+            self._crosshairColor = color
+            self._updateColorButton()
+            self.onCrosshairSettingsChanged()
+
+    def onCrosshairSettingsChanged(self):
+        """Handle crosshair settings changes."""
+        enabled = self.crosshairCheckbox.checked
+        style = self.crosshairStyleCombo.currentData
+        size = int(self.crosshairSizeSlider.value)
+        thickness = int(self.crosshairThicknessSlider.value)
+        color = (
+            self._crosshairColor.red() / 255.0,
+            self._crosshairColor.green() / 255.0,
+            self._crosshairColor.blue() / 255.0,
+        )
+
+        # Update all brush outline pipelines
+        for pipeline in self.outlinePipelines.values():
+            pipeline.setCrosshairSettings(
+                enabled=enabled,
+                style=style,
+                size=size,
+                thickness=thickness,
+                color=color,
+            )
+
+        # Trigger a redraw if brush is visible
+        self._forceOutlineUpdate()
+
+    def _forceOutlineUpdate(self):
+        """Force redraw of brush outline in all views."""
+        # Schedule render in all slice views with pipelines
+        for pipeline in self.outlinePipelines.values():
+            if pipeline.sliceWidget is not None:
+                try:
+                    pipeline.sliceWidget.sliceView().scheduleRender()
+                except Exception:
+                    pass
 
     def onPresetChanged(self, index):
         """Handle preset selection change."""
