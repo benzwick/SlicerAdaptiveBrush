@@ -21,8 +21,7 @@ classifiers = [
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
@@ -34,9 +33,10 @@ Repository = "https://github.com/benzwick/SlicerAdaptiveBrush.git"
 Issues = "https://github.com/benzwick/SlicerAdaptiveBrush/issues"
 
 # Development dependencies for local dev with uv
-# Usage: uv sync --dev
+# Usage: uv sync --extra dev
 [project.optional-dependencies]
 dev = [
+    "numpy>=1.20.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.8.0",

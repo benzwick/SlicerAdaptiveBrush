@@ -9,7 +9,9 @@ import pytest
 
 # Add library path for imports
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(_THIS_DIR)), "SegmentEditorAdaptiveBrushLib")
+_LIB_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(_THIS_DIR)), "SegmentEditorAdaptiveBrushLib"
+)
 if _LIB_DIR not in sys.path:
     sys.path.insert(0, _LIB_DIR)
 

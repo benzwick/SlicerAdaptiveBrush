@@ -96,7 +96,7 @@ class PerformanceCache:
         seedIjk: tuple[int, int, int],
         params: dict,
         intensityAnalyzer: Any,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Get cached thresholds or compute new ones.
 
         Thresholds are cached and reused when the new seed intensity is
@@ -125,6 +125,7 @@ class PerformanceCache:
                 f"Threshold cache hit: seed={seed_intensity:.1f}, "
                 f"cached={self.threshold_seed_intensity:.1f}"
             )
+            assert self.threshold_cache is not None  # guaranteed by _canReuseThresholds
             return self.threshold_cache
 
         # Compute fresh thresholds
@@ -153,7 +154,7 @@ class PerformanceCache:
             f"tolerance={self.threshold_tolerance:.1f}"
         )
 
-        return thresholds
+        return dict(thresholds)
 
     def _canReuseThresholds(self, seed_intensity: Optional[float]) -> bool:
         """Check if cached thresholds can be reused.

@@ -12,7 +12,7 @@ SlicerAdaptiveBrush is a 3D Slicer extension providing an adaptive brush segment
 
 ```bash
 # Local development with uv (outside Slicer)
-uv sync --dev              # Install dev dependencies
+uv sync --extra dev        # Install dev dependencies
 uv run pre-commit install  # Set up git hooks (first time only)
 uv run pytest -v           # Run tests
 uv run ruff check .        # Lint code

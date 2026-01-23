@@ -84,21 +84,21 @@
 - [ ] Status bar feedback (algorithm name, computation time)
 - [ ] Save/load custom user presets
 
-## Version 0.10.0 - GUI Polish (Current)
+## Version 0.10.0 - GUI Polish ✓
 
-- [ ] Collapsible help section (like Paint effect's "Show details")
-- [ ] Reorder widgets: most impactful parameters first, progressive disclosure
-  - [ ] Basic controls visible by default (algorithm, radius, sensitivity)
-  - [ ] Advanced parameters in collapsed sections
-  - [ ] Consistent parameter positions across algorithms (muscle memory)
-- [ ] Algorithm-specific parameter visibility (hide irrelevant params)
-- [ ] Add link to documentation
+- [x] Collapsible help section (like Paint effect's "Show details")
+- [x] Reorder widgets: most impactful parameters first, progressive disclosure
+  - [x] Basic controls visible by default (algorithm, radius, sensitivity)
+  - [x] Advanced parameters in collapsed sections
+  - [x] Consistent parameter positions across algorithms (muscle memory)
+- [x] Algorithm-specific parameter visibility (hide irrelevant params)
+- [ ] ~~Add link to documentation~~ (deferred - no docs yet)
 
-## Version 0.11.0 - CI/CD Pipeline
+## Version 0.11.0 - CI/CD Pipeline ✓
 
-- [ ] GitHub Actions: run pytest on all commits
-- [ ] CI status badge in README
-- [ ] Extension packaging workflow
+- [x] GitHub Actions: run pytest on all commits
+- [x] CI status badge in README
+- [x] Extension packaging workflow
 
 ## Version 0.12.0 - Slicer Integration Testing
 

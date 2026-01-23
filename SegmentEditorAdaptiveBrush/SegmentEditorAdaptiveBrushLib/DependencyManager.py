@@ -65,6 +65,7 @@ class DependencyManager:
     """
 
     _instance: Optional["DependencyManager"] = None
+    _initialized: bool
 
     def __new__(cls) -> "DependencyManager":
         """Create or return singleton instance."""

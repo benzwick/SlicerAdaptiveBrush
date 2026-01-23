@@ -1,5 +1,7 @@
 # SlicerAdaptiveBrush
 
+[![CI](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml)
+
 An **Adaptive Brush** segment editor effect extension for [3D Slicer](https://www.slicer.org/).
 
 ## Overview
@@ -94,7 +96,7 @@ This project follows Test-Driven Development (TDD). See [CLAUDE.md](CLAUDE.md) f
 
 ```bash
 # Local development with uv
-uv sync --dev
+uv sync --extra dev
 uv run pytest -v
 uv run ruff check .
 

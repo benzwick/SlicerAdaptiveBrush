@@ -41,10 +41,12 @@ except ImportError:
 
 # Check initial scikit-image availability for Random Walker (without prompting)
 HAS_SKIMAGE_RW = dependency_manager.is_available("skimage")
-skimage_random_walker = None
+skimage_random_walker = None  # type: ignore[no-redef]
 
 if HAS_SKIMAGE_RW:
-    from skimage.segmentation import random_walker as skimage_random_walker
+    from skimage.segmentation import (  # type: ignore[no-redef]
+        random_walker as skimage_random_walker,
+    )
 else:
     logging.info(
         "scikit-image not available - Random Walker will use fallback algorithm. "
@@ -1885,7 +1887,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             "region_growing": _("Region Growing"),
             "threshold_brush": _("Threshold Brush"),
         }
-        return names.get(algorithm_id, algorithm_id)
+        return str(names.get(algorithm_id, algorithm_id))
 
     def _updateAlgorithmParamsVisibility(self):
         """Update the algorithm parameters section title and visibility.

@@ -12,10 +12,10 @@ from DependencyManager import dependency_manager
 
 # Check initial sklearn availability (without prompting)
 HAS_SKLEARN = dependency_manager.is_available("sklearn")
-GaussianMixture = None
+GaussianMixture = None  # type: ignore[no-redef]
 
 if HAS_SKLEARN:
-    from sklearn.mixture import GaussianMixture
+    from sklearn.mixture import GaussianMixture  # type: ignore[no-redef]
 else:
     logging.info("sklearn not available - using simple statistics for threshold estimation")
 
@@ -174,6 +174,8 @@ class IntensityAnalyzer:
 
         for n_components in range(self.n_components_range[0], self.n_components_range[1] + 1):
             try:
+                if GaussianMixture is None:
+                    break
                 gmm = GaussianMixture(
                     n_components=n_components, random_state=42, max_iter=100, n_init=1
                 )
