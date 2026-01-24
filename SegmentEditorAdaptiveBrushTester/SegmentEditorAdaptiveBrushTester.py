@@ -149,6 +149,19 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
 
         manualLayout.addRow(recordingButtonsLayout)
 
+        # New Group button and current group label
+        groupLayout = qt.QHBoxLayout()
+
+        self.newGroupButton = qt.QPushButton(_("New Group"))
+        self.newGroupButton.enabled = False
+        self.newGroupButton.connect("clicked(bool)", self.onNewGroup)
+        groupLayout.addWidget(self.newGroupButton)
+
+        self.currentGroupLabel = qt.QLabel(_("Group: (none)"))
+        groupLayout.addWidget(self.currentGroupLabel)
+
+        manualLayout.addRow(groupLayout)
+
         # Screenshot button
         self.screenshotButton = qt.QPushButton(_("Take Screenshot"))
         self.screenshotButton.enabled = False
@@ -265,6 +278,24 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             self.folderLabel.text = _(f"Folder: {self._test_run_folder.path}")
             self.openFolderButton.enabled = True
 
+        # Set up screenshot capture with base folder
+        self._screenshot_capture.set_base_folder(self._test_run_folder.screenshots_folder)
+
+        # Create initial group (prompt for name)
+        group_name = qt.QInputDialog.getText(
+            slicer.util.mainWindow(),
+            _("New Screenshot Group"),
+            _("Enter group name:"),
+            qt.QLineEdit.Normal,
+            "manual_test",
+        )
+        if group_name:
+            self._screenshot_capture.new_group(group_name)
+            self.currentGroupLabel.text = _(f"Group: {group_name}")
+        else:
+            self._screenshot_capture.new_group("manual_test")
+            self.currentGroupLabel.text = _("Group: manual_test")
+
         from SegmentEditorAdaptiveBrushTesterLib import ActionRecorder
 
         self._action_recorder = ActionRecorder(self._test_run_folder)
@@ -282,7 +313,26 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             self._logAction(f"Recording stopped ({action_count} actions captured)")
             self._action_recorder = None
 
+        # Save screenshot manifest
+        self._screenshot_capture.save_manifest()
+        self._logAction("Screenshot manifest saved")
+
         self._updateRecordingUI(False)
+        self.currentGroupLabel.text = _("Group: (none)")
+
+    def onNewGroup(self):
+        """Create a new screenshot group."""
+        group_name = qt.QInputDialog.getText(
+            slicer.util.mainWindow(),
+            _("New Screenshot Group"),
+            _("Enter group name:"),
+            qt.QLineEdit.Normal,
+            "",
+        )
+        if group_name:
+            self._screenshot_capture.new_group(group_name)
+            self.currentGroupLabel.text = _(f"Group: {group_name}")
+            self._logAction(f"Created new group: {group_name}")
 
     def _updateRecordingUI(self, recording: bool):
         """Update UI for recording state."""
@@ -294,41 +344,35 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             self.recordingLabel.setStyleSheet("")
         self.startRecordingButton.enabled = not recording
         self.stopRecordingButton.enabled = recording
+        self.newGroupButton.enabled = recording
         self.screenshotButton.enabled = recording
         self.addNoteButton.enabled = recording
         self.markPassButton.enabled = recording
         self.markFailButton.enabled = recording
 
     def onTakeScreenshot(self):
-        """Take a screenshot."""
+        """Take a screenshot (auto-numbered within current group)."""
         if not self._test_run_folder:
             return
 
-        self._screenshot_counter += 1
-        screenshot_id = f"manual_{self._screenshot_counter:03d}"
-
-        # Prompt for description (Slicer's PythonQt returns just the text)
+        # Prompt for description (optional, Slicer's PythonQt returns just the text)
         description = qt.QInputDialog.getText(
             slicer.util.mainWindow(),
             _("Screenshot Description"),
-            _("Enter description:"),
+            _("Enter description (optional):"),
             qt.QLineEdit.Normal,
             "",
         )
 
-        if not description:
-            return
-
-        info = self._screenshot_capture.capture_layout(
-            screenshot_id=screenshot_id,
-            description=description,
-            output_folder=self._test_run_folder.screenshots_folder,
-        )
+        # Take screenshot with auto-numbering
+        info = self._screenshot_capture.screenshot(description or "")
 
         if self._action_recorder:
-            self._action_recorder.record_screenshot(screenshot_id, description)
+            self._action_recorder.record_screenshot(
+                f"{info.group}/{info.number:03d}", description or ""
+            )
 
-        self._logAction(f"Screenshot: {info.filename}")
+        self._logAction(f"Screenshot: {info.group}/{info.filename}")
 
     def onAddNote(self):
         """Add a note."""
