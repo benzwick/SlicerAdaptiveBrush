@@ -43,3 +43,6 @@ Thumbs.db
 
 # Test run output
 test_runs/
+
+# Generated screenshots (can be regenerated)
+reference_screenshots/

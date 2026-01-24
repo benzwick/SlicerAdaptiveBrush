@@ -1,0 +1,86 @@
+{
+  "created": "2026-01-24T21:47:44.236996",
+  "volume": {
+    "name": "MRBrainTumor1",
+    "spacing": [
+      0.9375000000000001,
+      0.9375000000000001,
+      1.4000000000000001
+    ],
+    "dimensions": [
+      256,
+      256,
+      112
+    ]
+  },
+  "segment_id": "Tumor",
+  "description": "Tumor segmentation using watershed algorithm. Created through automated optimization comparing 5 algorithms (watershed, geodesic_distance, connected_threshold, region_growing, threshold_brush). Watershed performed best with clean boundary adherence. Edge sensitivity tested from 20-60 with identical results, confirming robustness.",
+  "algorithm": "watershed",
+  "parameters": {
+    "brush_radius_mm": 25.0,
+    "edge_sensitivity": 40
+  },
+  "clicks": [
+    {
+      "ras": [
+        -5.31,
+        34.77,
+        20.83
+      ],
+      "params": {
+        "algorithm": "watershed",
+        "brush_radius_mm": 25.0,
+        "edge_sensitivity": 40
+      }
+    },
+    {
+      "ras": [
+        -5.31,
+        25.12,
+        35.97
+      ],
+      "params": {
+        "algorithm": "watershed",
+        "brush_radius_mm": 25.0,
+        "edge_sensitivity": 40
+      }
+    },
+    {
+      "ras": [
+        -5.31,
+        20.7,
+        22.17
+      ],
+      "params": {
+        "algorithm": "watershed",
+        "brush_radius_mm": 25.0,
+        "edge_sensitivity": 40
+      }
+    },
+    {
+      "ras": [
+        -6.16,
+        38.28,
+        30.61
+      ],
+      "params": {
+        "algorithm": "watershed",
+        "brush_radius_mm": 25.0,
+        "edge_sensitivity": 40
+      }
+    },
+    {
+      "ras": [
+        -1.35,
+        28.65,
+        18.9
+      ],
+      "params": {
+        "algorithm": "watershed",
+        "brush_radius_mm": 25.0,
+        "edge_sensitivity": 40
+      }
+    }
+  ],
+  "voxel_count": 13377
+}
