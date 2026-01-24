@@ -25,12 +25,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Algorithms to test (excluding broken ones)
+# All available algorithms
 ALGORITHMS = [
-    "watershed",
     "connected_threshold",
     "region_growing",
     "threshold_brush",
+    "watershed",
+    "geodesic_distance",
+    "random_walker",
+    "level_set_cpu",  # May produce 0 voxels (known issue)
+    "level_set_gpu",  # May produce 0 voxels (known issue)
 ]
 
 # Default parameters

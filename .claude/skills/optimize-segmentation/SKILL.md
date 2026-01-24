@@ -127,16 +127,18 @@ Create optimization report with:
 4. **Screenshots**
    - Link to screenshots for visual verification
 
-## Working Algorithms
+## Algorithms
 
-| Algorithm | Description | Best For |
-|-----------|-------------|----------|
-| `connected_threshold` | Flood fill within intensity range | Maximum coverage |
-| `threshold_brush` | Threshold + brush mask | Consistent results |
-| `region_growing` | Iterative region expansion | Homogeneous regions |
-| `watershed` | Gradient-based boundaries | Edge-sensitive segmentation |
-
-**DO NOT USE:** `level_set_cpu` - Currently broken (produces 0 voxels)
+| Algorithm | Description | Best For | Status |
+|-----------|-------------|----------|--------|
+| `connected_threshold` | Flood fill within intensity range | Maximum coverage | ✓ Working |
+| `threshold_brush` | Threshold + brush mask | Consistent results | ✓ Working |
+| `region_growing` | Iterative region expansion | Homogeneous regions | ✓ Working |
+| `watershed` | Gradient-based boundaries | Edge-sensitive segmentation | ✓ Working |
+| `geodesic_distance` | Distance-weighted propagation | Complex boundaries | ✓ Working |
+| `random_walker` | Probabilistic label propagation | Uncertain boundaries | ✓ Working |
+| `level_set_cpu` | CPU level set evolution | High precision | ✗ Broken (0 voxels) |
+| `level_set_gpu` | GPU level set evolution | High precision + speed | ✗ Broken (0 voxels) |
 
 ## Parameter Guidelines
 

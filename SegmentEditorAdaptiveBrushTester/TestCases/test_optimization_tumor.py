@@ -37,14 +37,17 @@ TUMOR_CLICK_POINTS = [
     (-1.35, 28.65, 18.90),
 ]
 
-# Algorithms to test
+# All available algorithms
 # Note: level_set requires "level_set_cpu" or "level_set_gpu" suffix
 ALGORITHMS = [
-    "watershed",
-    "level_set_cpu",  # Not "level_set" - that falls through to watershed!
     "connected_threshold",
     "region_growing",
     "threshold_brush",
+    "watershed",
+    "geodesic_distance",
+    "random_walker",
+    "level_set_cpu",  # Currently broken (0 voxels)
+    "level_set_gpu",  # Currently broken (0 voxels)
 ]
 
 # Default parameters for optimization (can be tuned)
