@@ -215,6 +215,171 @@ Copy Slicer session log from:
 - macOS: `~/Library/Application Support/Slicer/Slicer.log`
 - Windows: `%LOCALAPPDATA%/Slicer/Slicer.log`
 
+## Phase 2: Optimization & Regression Testing
+
+Phase 2 extends the framework with ground truth comparison, metrics computation, parameter optimization, and regression testing capabilities.
+
+### New Components
+
+```
+SegmentEditorAdaptiveBrushTester/
+├── SegmentEditorAdaptiveBrushTesterLib/
+│   ├── ... (Phase 1 files)
+│   ├── SegmentationMetrics.py       # Dice, Hausdorff computation
+│   ├── GoldStandardManager.py       # Save/load gold standards
+│   ├── ParameterOptimizer.py        # Optuna-style optimization
+│   └── LabNotebook.py               # Document findings
+├── GoldStandards/                    # Git-tracked gold files
+│   ├── README.md
+│   └── <name>/
+│       ├── gold.seg.nrrd
+│       ├── metadata.json
+│       └── reference_screenshots/
+├── LabNotebooks/                     # Git-tracked findings
+│   └── *.md
+└── TestCases/
+    └── test_regression_gold.py       # Gold standard comparison
+```
+
+### Segmentation Metrics
+
+`SegmentationMetrics` class computes:
+- **Dice coefficient**: Overlap accuracy (0-1)
+- **Hausdorff distance**: Maximum surface distance (mm)
+- **Hausdorff 95%**: 95th percentile surface distance
+- **Volume similarity**: Size comparison
+- **False positive/negative rates**: Over/under-segmentation
+
+```python
+from SegmentEditorAdaptiveBrushTesterLib import SegmentationMetrics
+
+metrics = SegmentationMetrics.compute(
+    test_seg, test_id,
+    gold_seg, gold_id,
+    volume_node
+)
+print(f"Dice: {metrics.dice:.3f}")
+print(f"Hausdorff 95%: {metrics.hausdorff_95:.1f}mm")
+```
+
+### Stroke Metrics Tracker
+
+`StrokeMetricsTracker` monitors per-stroke improvement:
+
+```python
+tracker = StrokeMetricsTracker(gold_seg, gold_id, volume)
+
+for stroke_params in strokes:
+    # Apply stroke...
+    record = tracker.record_stroke(test_seg, test_id, stroke_params)
+    print(f"Stroke {record.stroke}: Dice={record.dice:.3f}")
+
+summary = tracker.get_summary()
+print(f"Strokes to 90%: {summary['strokes_to_90pct']}")
+```
+
+### Gold Standards
+
+Gold standards provide ground truth for regression testing:
+
+```python
+from SegmentEditorAdaptiveBrushTesterLib import GoldStandardManager
+
+manager = GoldStandardManager()
+
+# Save
+manager.save_as_gold(
+    segmentation_node=seg,
+    volume_node=vol,
+    segment_id="Segment_1",
+    name="MRBrainTumor1_tumor",
+    click_locations=clicks,
+    algorithm="watershed",
+    parameters={"edge_sensitivity": 40}
+)
+
+# Load
+gold_seg, metadata = manager.load_gold("MRBrainTumor1_tumor")
+```
+
+### Parameter Optimization
+
+`ParameterOptimizer` supports systematic parameter tuning:
+
+```python
+from SegmentEditorAdaptiveBrushTesterLib import ParameterOptimizer
+
+optimizer = ParameterOptimizer("watershed", "MRBrainTumor1_tumor")
+
+for trial_num in range(20):
+    params = optimizer.suggest_params()
+    # Run trial with params...
+    optimizer.record_trial(params, dice, hd95, strokes, duration, voxels)
+
+best = optimizer.get_best_params()
+optimizer.save_results("optimization_results.json")
+```
+
+### Lab Notebooks
+
+`LabNotebook` documents optimization findings:
+
+```python
+from SegmentEditorAdaptiveBrushTesterLib import LabNotebook
+
+notebook = LabNotebook("Watershed Optimization")
+notebook.add_section("Setup", "Testing on MRBrainTumor1...")
+notebook.add_metrics_table(metrics, ["trial", "dice", "hausdorff_95"])
+notebook.add_conclusion("Optimal edge sensitivity is 40")
+notebook.save()
+```
+
+### Enhanced Debug Logging
+
+SegmentEditorEffect.py now includes structured action logging:
+
+```python
+# Logged actions (to AdaptiveBrush.Actions logger)
+{"action": "algorithm_changed", "params": {"old": "watershed", "new": "level_set_cpu"}, "state": {...}}
+{"action": "radius_changed", "params": {"old": 5.0, "new": 25.0}, "state": {...}}
+{"action": "paint_stroke", "params": {"xy": [512, 384], "ijk": [128, 100, 45], "ras": [...], "view": "Red"}, "state": {...}}
+```
+
+This enables:
+- Automated test generation from manual sessions
+- Debugging algorithm behavior
+- Reproducing user-reported issues
+
+### New Skills
+
+- `create-gold-standard`: Save gold standard from current Slicer session
+- `run-optimization`: Run parameter optimization loop
+- `run-regression`: Test algorithms against gold standards
+
+### New Agents
+
+- `metrics-optimizer`: Analyze optimization trials, suggest parameters
+- `gold-standard-curator`: Maintain gold standards, propose updates
+
+### Regression Testing
+
+Regression tests compare algorithm results against gold standards:
+
+```python
+# test_regression_gold.py
+@register_test(category="regression")
+class TestRegressionGold(TestCase):
+    def run(self, ctx):
+        for gold in manager.list_gold_standards():
+            # Reproduce segmentation
+            # Compare metrics
+            # Flag regressions
+```
+
+Regression thresholds:
+- **Dice:** >= 0.80
+- **Hausdorff 95%:** <= 10.0mm
+
 ## References
 
 - [ADR-008](ADR-008-ci-cd-pipeline.md): CI/CD Pipeline Strategy

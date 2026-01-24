@@ -733,6 +733,96 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         """Return string representation to prevent default recursion."""
         return "SegmentEditorEffect(Adaptive Brush)"
 
+    # -------------------------------------------------------------------------
+    # Action Logging for Test Replay
+    # -------------------------------------------------------------------------
+    # These methods enable structured logging of user actions for:
+    # - Generating test code from manual sessions
+    # - Debugging algorithm behavior
+    # - Reproducing issues reported by users
+
+    def _log_action(self, action_type: str, **kwargs) -> None:
+        """Log an action in structured format for test generation.
+
+        Args:
+            action_type: Type of action (e.g., "algorithm_changed", "paint_stroke").
+            **kwargs: Action-specific parameters.
+        """
+        import json
+        from datetime import datetime
+
+        action = {
+            "timestamp": datetime.now().isoformat(),
+            "action": action_type,
+            "params": kwargs,
+            "state": self._get_state_snapshot(),
+        }
+
+        # Log to dedicated action logger for easy filtering
+        action_logger = logging.getLogger("AdaptiveBrush.Actions")
+        action_logger.info(f"ACTION: {json.dumps(action)}")
+
+    def _get_state_snapshot(self) -> dict:
+        """Capture current effect state for action logging.
+
+        Returns:
+            Dictionary with all effect parameters.
+        """
+        return {
+            # Basic parameters
+            "algorithm": self.algorithm,
+            "radius_mm": self.radiusMm,
+            "edge_sensitivity": self.edgeSensitivity,
+            "threshold_zone": self.thresholdZone,
+            "sphere_mode": self.sphereMode,
+            "erase_mode": self.eraseMode,
+            "sampling_method": self.samplingMethod,
+            "backend": self.backend,
+            # Sampling parameters
+            "gaussian_sigma": self.gaussianSigma,
+            "percentile_low": self.percentileLow,
+            "percentile_high": self.percentileHigh,
+            "std_multiplier": self.stdMultiplier,
+            "include_zone_in_result": self.includeZoneInResult,
+            # Geodesic distance parameters
+            "geodesic_edge_weight": self.geodesicEdgeWeight,
+            "geodesic_distance_scale": self.geodesicDistanceScale,
+            "geodesic_smoothing": self.geodesicSmoothing,
+            # Watershed parameters
+            "watershed_gradient_scale": self.watershedGradientScale,
+            "watershed_smoothing": self.watershedSmoothing,
+            # Level set parameters
+            "level_set_propagation": self.levelSetPropagation,
+            "level_set_curvature": self.levelSetCurvature,
+            "level_set_iterations": self.levelSetIterations,
+            # Region growing parameters
+            "region_growing_multiplier": self.regionGrowingMultiplier,
+            "region_growing_iterations": self.regionGrowingIterations,
+            # Random walker parameters
+            "random_walker_beta": self.randomWalkerBeta,
+            # Morphology parameters
+            "fill_holes": self.fillHoles,
+            "closing_radius": self.closingRadius,
+        }
+
+    def _get_full_state(self) -> dict:
+        """Capture complete effect state including UI state.
+
+        Returns:
+            Dictionary with all effect parameters and UI state.
+        """
+        state = self._get_state_snapshot()
+        state.update(
+            {
+                "is_drawing": self.isDrawing,
+                "last_ijk": self.lastIjk,
+                "current_stroke_erase_mode": self._currentStrokeEraseMode,
+                "preview_mode": self.previewMode,
+                "use_threshold_caching": self.useThresholdCaching,
+            }
+        )
+        return state
+
     def register(self):
         """Register the effect with the segment editor effect factory.
 
@@ -1793,22 +1883,30 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""
+        old_radius = self.radiusMm
         self.radiusMm = value
+        self._log_action("radius_changed", old=old_radius, new=value)
         self.cache.invalidate()
 
     def onSensitivityChanged(self, value):
         """Handle edge sensitivity change."""
+        old_sensitivity = self.edgeSensitivity
         self.edgeSensitivity = value
+        self._log_action("sensitivity_changed", old=old_sensitivity, new=value)
         self.cache.invalidate()
 
     def onZoneChanged(self, value):
         """Handle threshold zone size change."""
+        old_zone = self.thresholdZone
         self.thresholdZone = value
+        self._log_action("zone_changed", old=old_zone, new=value)
         self.cache.invalidate()
 
     def onSamplingMethodChanged(self, index):
         """Handle sampling method change."""
+        old_method = self.samplingMethod
         self.samplingMethod = self.samplingMethodCombo.currentData
+        self._log_action("sampling_method_changed", old=old_method, new=self.samplingMethod)
         self.cache.invalidate()
 
     def onAdvancedParamChanged(self, value=None):
@@ -1836,7 +1934,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
     def onSphereModeChanged(self, checked):
         """Handle 3D mode toggle."""
+        old_mode = self.sphereMode
         self.sphereMode = checked
+        self._log_action("sphere_mode_changed", old=old_mode, new=checked)
         self.cache.invalidate()
 
     def onPreviewModeChanged(self, checked):
@@ -1929,8 +2029,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
+        old_algorithm = self.algorithm
         self.algorithm = self.algorithmCombo.currentData
         logging.info(f"Algorithm changed to: {self.algorithm}")
+        self._log_action("algorithm_changed", old=old_algorithm, new=self.algorithm)
         self.cache.invalidate()
 
         # Update visibility
@@ -2626,11 +2728,42 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             logging.warning("No source volume selected")
             return
 
+        # Get RAS coordinates for logging
+        sliceLogic = viewWidget.sliceLogic()
+        sliceNode = sliceLogic.GetSliceNode()
+        viewName = sliceNode.GetName() if sliceNode else "Unknown"
+
+        # Compute RAS from IJK for logging
+        ras = None
+        ijkToRas = vtk.vtkMatrix4x4()
+        sourceVolumeNode.GetIJKToRASMatrix(ijkToRas)
+        ijkPoint = [ijk[0], ijk[1], ijk[2], 1]
+        rasPoint = [0, 0, 0, 1]
+        ijkToRas.MultiplyPoint(ijkPoint, rasPoint)
+        ras = (rasPoint[0], rasPoint[1], rasPoint[2])
+
+        # Log paint stroke action
+        self._log_action(
+            "paint_stroke",
+            xy=xy,
+            ijk=ijk,
+            ras=ras,
+            view=viewName,
+            erase_mode=self._currentStrokeEraseMode,
+        )
+
         # Compute adaptive mask
+        start_time = time.time()
         try:
             mask = self.computeAdaptiveMask(sourceVolumeNode, ijk, viewWidget)
             if mask is not None:
+                voxels_modified = int(np.sum(mask > 0))
                 self.applyMaskToSegment(mask, erase=self._currentStrokeEraseMode)
+                elapsed_ms = (time.time() - start_time) * 1000
+                logging.debug(
+                    f"Paint stroke: ijk={ijk}, voxels={voxels_modified}, "
+                    f"time={elapsed_ms:.1f}ms, algorithm={self.algorithm}"
+                )
         except Exception as e:
             logging.exception(f"Error computing adaptive mask: {e}")
 
