@@ -430,7 +430,7 @@ class TestAutoThresholdEdgeCases(unittest.TestCase):
 def compute_dice(mask1: np.ndarray, mask2: np.ndarray) -> float:
     """Compute Dice coefficient between two binary masks."""
     intersection = np.sum(mask1 & mask2)
-    return 2 * intersection / (np.sum(mask1) + np.sum(mask2) + 1e-8)
+    return float(2 * intersection / (np.sum(mask1) + np.sum(mask2) + 1e-8))
 
 
 if __name__ == "__main__":

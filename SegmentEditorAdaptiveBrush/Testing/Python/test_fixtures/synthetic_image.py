@@ -4,6 +4,8 @@ These generators create images with known ground truth for validating
 segmentation accuracy.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 
@@ -129,7 +131,7 @@ def create_gradient_image(
 
 def create_noisy_sphere(
     size: tuple[int, int, int] = (50, 50, 50),
-    center: tuple[int, int, int] = None,
+    center: tuple[int, int, int] | None = None,
     radius: float = 15.0,
     inside_mean: float = 200.0,
     outside_mean: float = 50.0,
@@ -179,7 +181,7 @@ def create_noisy_sphere(
 
 def create_concentric_spheres(
     size: tuple[int, int, int] = (50, 50, 50),
-    center: tuple[int, int, int] = None,
+    center: tuple[int, int, int] | None = None,
     radii: tuple[float, ...] = (5.0, 10.0, 15.0),
     intensities: tuple[float, ...] = (250.0, 150.0, 50.0),
     noise_std: float = 5.0,

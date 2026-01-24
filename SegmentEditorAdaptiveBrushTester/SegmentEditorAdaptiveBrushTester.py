@@ -15,7 +15,6 @@ Usage in Slicer Python console:
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 
 import qt
@@ -88,9 +87,7 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
 
         # Import library classes
         from SegmentEditorAdaptiveBrushTesterLib import (
-            ActionRecorder,
             ScreenshotCapture,
-            TestRunFolder,
             TestRunner,
         )
 
@@ -376,9 +373,7 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
     def onOpenFolder(self):
         """Open the output folder in file manager."""
         if self._test_run_folder:
-            qt.QDesktopServices.openUrl(
-                qt.QUrl.fromLocalFile(str(self._test_run_folder.path))
-            )
+            qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(self._test_run_folder.path)))
 
     def _logAction(self, message: str):
         """Log an action to the UI."""

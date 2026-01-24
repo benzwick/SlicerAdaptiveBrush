@@ -7,7 +7,7 @@ calling TestRegistry.register() directly.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from .TestCase import TestCase, TestCaseInfo
@@ -48,7 +48,7 @@ class TestRegistry:
         # (they're class attributes, but we need to handle defaults)
         name = getattr(test_cls, "name", "") or test_cls.__name__
         description = getattr(test_cls, "description", "")
-        cat = category or getattr(test_cls, "category", "general")
+        cat: str = category or getattr(test_cls, "category", None) or "general"
 
         info = TestCaseInfo(
             name=name,
@@ -109,7 +109,7 @@ class TestRegistry:
         Returns:
             Sorted list of category names.
         """
-        categories = set(t.category for t in cls._tests.values())
+        categories = {t.category for t in cls._tests.values()}
         return sorted(categories)
 
     @classmethod
@@ -121,7 +121,7 @@ class TestRegistry:
 
 def register_test(
     category: str = "general",
-) -> callable:
+) -> Callable[[type], type]:
     """Decorator to register a test case class.
 
     Usage:

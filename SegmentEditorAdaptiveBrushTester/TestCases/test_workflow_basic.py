@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 
 import slicer
-
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
 logger = logging.getLogger(__name__)
@@ -52,18 +51,12 @@ class TestWorkflowBasic(TestCase):
         ctx.log(f"Loaded volume: {self.volume_node.GetName()}")
 
         # Create segmentation node
-        self.segmentation_node = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLSegmentationNode"
-        )
+        self.segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
         self.segmentation_node.CreateDefaultDisplayNodes()
-        self.segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(
-            self.volume_node
-        )
+        self.segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(self.volume_node)
 
         # Add a segment
-        self.segment_id = self.segmentation_node.GetSegmentation().AddEmptySegment(
-            "TestSegment"
-        )
+        self.segment_id = self.segmentation_node.GetSegmentation().AddEmptySegment("TestSegment")
 
         ctx.log(f"Created segmentation with segment: {self.segment_id}")
 
@@ -71,9 +64,7 @@ class TestWorkflowBasic(TestCase):
         self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
         self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
 
-        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass(
-            "vtkMRMLSegmentEditorNode"
-        )
+        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
         self.segment_editor_widget.setMRMLSegmentEditorNode(segment_editor_node)
         self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)

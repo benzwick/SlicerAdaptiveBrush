@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .TestCase import TestResult
     from .TestRunner import TestSuiteResult
 
 logger = logging.getLogger(__name__)
@@ -59,9 +58,7 @@ class ReportGenerator:
         lines.append("## Summary")
         lines.append("")
         lines.append(f"**Status:** {status}")
-        lines.append(
-            f"**Tests:** {suite_result.passed_count}/{suite_result.total_count} passed"
-        )
+        lines.append(f"**Tests:** {suite_result.passed_count}/{suite_result.total_count} passed")
         lines.append("")
 
         # Results table
@@ -155,6 +152,10 @@ class ReportGenerator:
         """
         failed_tests = [r for r in suite_result.results if not r.passed]
 
+        failed_tests_list: list[dict] = []
+        performance_issues_list: list[dict] = []
+        screenshots_list: list[dict] = []
+
         summary = {
             "suite_name": suite_result.suite_name,
             "passed": suite_result.passed,
@@ -163,9 +164,9 @@ class ReportGenerator:
             "failed_count": suite_result.failed_count,
             "duration_seconds": suite_result.duration_seconds,
             "output_folder": str(suite_result.output_folder),
-            "failed_tests": [],
-            "performance_issues": [],
-            "screenshots": [],
+            "failed_tests": failed_tests_list,
+            "performance_issues": performance_issues_list,
+            "screenshots": screenshots_list,
         }
 
         # Detail failed tests
@@ -180,14 +181,14 @@ class ReportGenerator:
                 ],
                 "screenshots": r.screenshots,
             }
-            summary["failed_tests"].append(test_summary)
+            failed_tests_list.append(test_summary)
 
         # Check for performance issues (operations > 100ms)
         for r in suite_result.results:
             if r.metrics and r.metrics.get("timings"):
                 for t in r.metrics["timings"]:
                     if t["duration_ms"] > 100:
-                        summary["performance_issues"].append(
+                        performance_issues_list.append(
                             {
                                 "test": r.name,
                                 "operation": t["operation"],
@@ -198,7 +199,7 @@ class ReportGenerator:
         # Collect all screenshots
         for r in suite_result.results:
             for s in r.screenshots:
-                summary["screenshots"].append({"test": r.name, "filename": s})
+                screenshots_list.append({"test": r.name, "filename": s})
 
         return summary
 

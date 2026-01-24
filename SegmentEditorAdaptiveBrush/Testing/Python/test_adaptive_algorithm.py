@@ -51,7 +51,7 @@ def requires_sitk(test_func):
 def compute_dice(mask1: np.ndarray, mask2: np.ndarray) -> float:
     """Compute Dice coefficient between two binary masks."""
     intersection = np.sum((mask1 > 0) & (mask2 > 0))
-    return 2 * intersection / (np.sum(mask1 > 0) + np.sum(mask2 > 0) + 1e-8)
+    return float(2 * intersection / (np.sum(mask1 > 0) + np.sum(mask2 > 0) + 1e-8))
 
 
 class TestConnectedThresholdAlgorithm(unittest.TestCase):

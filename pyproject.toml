@@ -2,6 +2,10 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.packages.find]
+include = ["SegmentEditorAdaptiveBrush*"]
+exclude = ["SegmentEditorAdaptiveBrushTester*"]
+
 [project]
 name = "SlicerAdaptiveBrush"
 version = "0.1.0"
@@ -71,7 +75,7 @@ python_version = "3.9"
 warn_return_any = true
 warn_unused_configs = true
 ignore_missing_imports = true
-exclude = ["Testing/", "build/"]
+exclude = ["Testing/", "build/", "TestCases/"]
 
 # Ruff replaces black, flake8, isort
 [tool.ruff]

@@ -5,6 +5,7 @@ Import test modules here to ensure they are loaded.
 """
 
 # Import test modules to register them
-from . import test_workflow_basic
-from . import test_algorithm_watershed
-from . import test_ui_options_panel
+# Using explicit re-exports to satisfy linter
+from . import test_algorithm_watershed as test_algorithm_watershed
+from . import test_ui_options_panel as test_ui_options_panel
+from . import test_workflow_basic as test_workflow_basic
