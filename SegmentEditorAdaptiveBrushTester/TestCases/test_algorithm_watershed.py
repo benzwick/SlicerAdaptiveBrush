@@ -82,13 +82,29 @@ class TestAlgorithmWatershed(TestCase):
             combo.setCurrentIndex(idx)
         slicer.app.processEvents()
 
-        ctx.screenshot("[setup] MRHead loaded, watershed selected")
+        # Get Red slice widget and show brush circle at center
+        layoutManager = slicer.app.layoutManager()
+        self.red_widget = layoutManager.sliceWidget("Red")
+        view = self.red_widget.sliceView()
+        size = view.renderWindow().GetSize()
+        center_xy = (size[0] // 2, size[1] // 2)
+
+        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
+        view.scheduleRender()
+        slicer.app.processEvents()
+
+        ctx.screenshot("[setup] MRHead loaded, watershed selected, brush visible")
 
     def run(self, ctx: TestContext) -> None:
         """Test watershed with different edge sensitivity values."""
         logger.info("Running watershed algorithm tests")
 
         scripted_effect = self.effect.self()
+
+        # Get center position for brush display
+        view = self.red_widget.sliceView()
+        size = view.renderWindow().GetSize()
+        center_xy = (size[0] // 2, size[1] // 2)
 
         # Test different edge sensitivity values
         sensitivities = [30, 50, 70]
@@ -100,7 +116,12 @@ class TestAlgorithmWatershed(TestCase):
             scripted_effect.sensitivitySlider.value = sensitivity
             slicer.app.processEvents()
 
-            ctx.screenshot(f"[sensitivity_{sensitivity}] Edge sensitivity set")
+            # Show brush circle (update after parameter change)
+            scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
+            view.scheduleRender()
+            slicer.app.processEvents()
+
+            ctx.screenshot(f"[sensitivity_{sensitivity}] Edge sensitivity set, brush visible")
 
             # Record the parameter
             ctx.record_metric(f"edge_sensitivity_{sensitivity}", sensitivity)
@@ -111,11 +132,23 @@ class TestAlgorithmWatershed(TestCase):
         # Enable 3D mode using checkbox
         scripted_effect.sphereModeCheckbox.checked = True
         slicer.app.processEvents()
+
+        # Show brush circle
+        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
+        view.scheduleRender()
+        slicer.app.processEvents()
+
         ctx.screenshot("[3d_mode] 3D brush mode enabled")
 
         # Disable 3D mode
         scripted_effect.sphereModeCheckbox.checked = False
         slicer.app.processEvents()
+
+        # Show brush circle
+        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
+        view.scheduleRender()
+        slicer.app.processEvents()
+
         ctx.screenshot("[2d_mode] 2D brush mode enabled")
 
     def verify(self, ctx: TestContext) -> None:

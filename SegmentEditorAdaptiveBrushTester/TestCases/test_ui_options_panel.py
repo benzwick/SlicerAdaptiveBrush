@@ -1,7 +1,7 @@
 """UI options panel tests for AdaptiveBrush.
 
 Tests the options panel UI:
-1. Capture screenshots of panel state
+1. Capture screenshots of panel state with brush circle visible
 2. Verify widget visibility per algorithm
 3. Test collapsible sections
 """
@@ -14,6 +14,24 @@ import slicer
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
 logger = logging.getLogger(__name__)
+
+
+def _show_brush_at_center(scripted_effect, slice_widget):
+    """Show the brush circle at the center of a slice view.
+
+    This triggers the brush outline to be visible for screenshots.
+    """
+    # Get the center of the slice view in screen coordinates
+    view = slice_widget.sliceView()
+    size = view.renderWindow().GetSize()
+    center_xy = (size[0] // 2, size[1] // 2)
+
+    # Call _updateBrushPreview to make the brush outline visible
+    scripted_effect._updateBrushPreview(center_xy, slice_widget, eraseMode=False)
+
+    # Force render
+    view.scheduleRender()
+    slicer.app.processEvents()
 
 
 @register_test(category="ui")
@@ -69,8 +87,16 @@ class TestUIOptionsPanel(TestCase):
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
+        # Get Red slice widget for showing brush
+        layoutManager = slicer.app.layoutManager()
+        self.red_widget = layoutManager.sliceWidget("Red")
+
         slicer.app.processEvents()
-        ctx.screenshot("[setup] MRHead loaded, Adaptive Brush active")
+
+        # Show brush circle at center of Red view
+        _show_brush_at_center(self.effect.self(), self.red_widget)
+
+        ctx.screenshot("[setup] MRHead loaded, Adaptive Brush active, brush visible")
 
     def run(self, ctx: TestContext) -> None:
         """Test UI state for each algorithm."""
@@ -105,8 +131,11 @@ class TestUIOptionsPanel(TestCase):
             # Force UI update
             slicer.app.processEvents()
 
+            # Show brush circle (re-trigger to update after algorithm change)
+            _show_brush_at_center(scripted_effect, self.red_widget)
+
             # Capture screenshot with algorithm name in description
-            ctx.screenshot(f"[{algo}] Options panel")
+            ctx.screenshot(f"[{algo}] Options panel with brush circle")
 
         # Test Threshold Brush auto-methods
         ctx.log("Testing Threshold Brush auto-methods")
@@ -129,6 +158,10 @@ class TestUIOptionsPanel(TestCase):
             if idx >= 0:
                 method_combo.setCurrentIndex(idx)  # Triggers signal
             slicer.app.processEvents()
+
+            # Show brush circle
+            _show_brush_at_center(scripted_effect, self.red_widget)
+
             ctx.screenshot(f"[threshold_brush_{method_data}] {method_display} method")
 
     def verify(self, ctx: TestContext) -> None:

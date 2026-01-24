@@ -103,13 +103,18 @@ class TestWorkflowBasic(TestCase):
         redLogic.SetSliceOffset(paint_ras[2])
         slicer.app.processEvents()
 
-        ctx.screenshot("[brush] Adaptive Brush activated")
-
         # Convert RAS to screen XY for the Red slice view
         xy = self._rasToXy(paint_ras, redWidget)
         if not xy:
             ctx.log("Could not convert RAS to screen coordinates")
             return
+
+        # Show brush circle at paint location
+        scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
+        redWidget.sliceView().scheduleRender()
+        slicer.app.processEvents()
+
+        ctx.screenshot("[brush] Adaptive Brush activated, brush at paint location")
 
         # Test multiple algorithms
         algorithms_to_test = ["watershed", "connected_threshold", "threshold_brush"]
@@ -124,7 +129,12 @@ class TestWorkflowBasic(TestCase):
                 combo.setCurrentIndex(idx)
             slicer.app.processEvents()
 
-            ctx.screenshot(f"[{algo}] Before painting")
+            # Show brush circle at paint location (re-trigger after algorithm change)
+            scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
+            redWidget.sliceView().scheduleRender()
+            slicer.app.processEvents()
+
+            ctx.screenshot(f"[{algo}] Before painting, brush visible")
 
             ctx.log(f"Painting at RAS {paint_ras} (screen XY {xy})")
 

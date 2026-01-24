@@ -166,7 +166,16 @@ class TestOptimizationTumor(TestCase):
                 combo.setCurrentIndex(idx)
             slicer.app.processEvents()
 
-            ctx.screenshot(f"[{algo}] Algorithm selected, ready to paint")
+            # Navigate to first click point and show brush circle
+            first_ras = TUMOR_CLICK_POINTS[0]
+            redLogic.SetSliceOffset(first_ras[2])
+            first_xy = self._rasToXy(first_ras, redWidget)
+            if first_xy:
+                scripted_effect._updateBrushPreview(first_xy, redWidget, eraseMode=False)
+                redWidget.sliceView().scheduleRender()
+            slicer.app.processEvents()
+
+            ctx.screenshot(f"[{algo}] Algorithm selected, brush at first click point")
 
             # Paint all 5 points into the SAME segment (cumulative)
             total_time = 0.0
@@ -180,6 +189,11 @@ class TestOptimizationTumor(TestCase):
                 if xy is None:
                     ctx.log(f"  Point {i+1}: Could not convert RAS {ras}")
                     continue
+
+                # Show brush at this location before painting
+                scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
+                redWidget.sliceView().scheduleRender()
+                slicer.app.processEvents()
 
                 ctx.log(f"  Point {i+1}: Painting at RAS {ras}")
 
