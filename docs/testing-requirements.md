@@ -274,6 +274,25 @@ Track and report:
 - Execution time (ms)
 - Voxels per millisecond (efficiency)
 
+### Baseline Performance (MRBrainTumor1, 5 clicks, 25mm brush, 40% sensitivity)
+
+| Algorithm | Voxels | Time (ms) | Voxels/ms |
+|-----------|--------|-----------|-----------|
+| connected_threshold | 80,098 | 1,328 | 60.3 |
+| threshold_brush | 16,116 | 1,475 | 10.9 |
+| geodesic_distance | 15,508 | 1,538 | 10.1 |
+| level_set_cpu | 14,034 | 1,474 | 9.5 |
+| level_set_gpu | 14,034 | 1,498 | 9.4 |
+| watershed | 13,383 | 2,831 | 4.7 |
+| region_growing | 11,273 | 1,465 | 7.7 |
+| random_walker | 3,843 | 9,069 | 0.4 |
+
+**Notes:**
+- connected_threshold produces most voxels but may over-segment
+- watershed is slower but provides good boundary detection
+- random_walker is slowest due to sparse linear system solving
+- level_set_cpu/gpu produce identical results (no GPU implementation yet)
+
 ## Known Issues and Solutions
 
 ### Level Set Producing 0 Voxels
