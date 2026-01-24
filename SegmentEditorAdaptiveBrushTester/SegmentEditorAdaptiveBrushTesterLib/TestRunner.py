@@ -138,6 +138,10 @@ class TestRunner:
                 run_name=name,
             )
 
+        # Set up screenshot capture for this test run
+        self._screenshot_capture.set_base_folder(test_run_folder.screenshots_folder)
+        self._screenshot_capture.set_group(name)
+
         # Create test context
         metrics_collector = MetricsCollector()
         ctx = TestContext(
@@ -266,6 +270,9 @@ class TestRunner:
                 "duration_seconds": duration,
             }
         )
+
+        # Save screenshot manifest
+        self._screenshot_capture.save_manifest()
 
         # Log summary
         logger.info(

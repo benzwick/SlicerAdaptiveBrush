@@ -77,65 +77,44 @@ class TestContext:
         """Collected metrics for this test."""
         return self._metrics_collector.get_metrics()
 
-    def screenshot(self, screenshot_id: str, description: str) -> ScreenshotInfo:
-        """Capture a screenshot of the current Slicer state.
+    def screenshot(self, description: str = "") -> ScreenshotInfo:
+        """Capture a screenshot of the current Slicer state (auto-numbered).
 
         Args:
-            screenshot_id: Unique identifier for this screenshot (e.g., "001_before").
             description: Human-readable description of what the screenshot shows.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        logger.info(f"Screenshot: {screenshot_id} - {description}")
-        info = self._screenshot_capture.capture_layout(
-            screenshot_id=screenshot_id,
-            description=description,
-            output_folder=self._test_run_folder.screenshots_folder,
-        )
-        self._screenshots.append(info.filename)
+        info = self._screenshot_capture.screenshot(description)
+        self._screenshots.append(f"{info.group}/{info.filename}")
         return info
 
-    def screenshot_slice_view(
-        self, view: str, screenshot_id: str, description: str
-    ) -> ScreenshotInfo:
-        """Capture a screenshot of a specific slice view.
+    def screenshot_slice_view(self, view: str, description: str = "") -> ScreenshotInfo:
+        """Capture a screenshot of a specific slice view (auto-numbered).
 
         Args:
             view: View name ("Red", "Yellow", "Green").
-            screenshot_id: Unique identifier for this screenshot.
             description: Human-readable description.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        logger.info(f"Screenshot slice {view}: {screenshot_id} - {description}")
-        info = self._screenshot_capture.capture_slice_view(
-            view=view,
-            screenshot_id=screenshot_id,
-            description=description,
-            output_folder=self._test_run_folder.screenshots_folder,
-        )
-        self._screenshots.append(info.filename)
+        info = self._screenshot_capture.capture_slice_view(view, description)
+        self._screenshots.append(f"{info.group}/{info.filename}")
         return info
 
-    def screenshot_3d_view(self, screenshot_id: str, description: str) -> ScreenshotInfo:
-        """Capture a screenshot of the 3D view.
+    def screenshot_3d_view(self, description: str = "") -> ScreenshotInfo:
+        """Capture a screenshot of the 3D view (auto-numbered).
 
         Args:
-            screenshot_id: Unique identifier for this screenshot.
             description: Human-readable description.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        logger.info(f"Screenshot 3D: {screenshot_id} - {description}")
-        info = self._screenshot_capture.capture_3d_view(
-            screenshot_id=screenshot_id,
-            description=description,
-            output_folder=self._test_run_folder.screenshots_folder,
-        )
-        self._screenshots.append(info.filename)
+        info = self._screenshot_capture.capture_3d_view(description)
+        self._screenshots.append(f"{info.group}/{info.filename}")
         return info
 
     def timing(self, operation: str) -> TimingContext:
@@ -164,6 +143,16 @@ class TestContext:
         """
         logger.debug(f"Metric: {name} = {value} {unit}")
         self._metrics_collector.record_metric(name, value, unit)
+
+    def metric(self, name: str, value: float, unit: str = "") -> None:
+        """Record a custom metric (alias for record_metric).
+
+        Args:
+            name: Metric name (e.g., "voxel_count", "dice_coefficient").
+            value: Metric value.
+            unit: Optional unit string (e.g., "voxels", "ms").
+        """
+        self.record_metric(name, value, unit)
 
     def log(self, message: str) -> None:
         """Log a test-specific note.
