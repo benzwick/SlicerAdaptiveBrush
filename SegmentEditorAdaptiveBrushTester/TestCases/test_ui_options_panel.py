@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 import slicer
+import vtk
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,54 @@ class TestUIOptionsPanel(TestCase):
             _show_brush_at_slice_center(scripted_effect, self.red_widget)
 
             ctx.screenshot(f"[threshold_brush_{method_data}] {method_display} method")
+
+        # Test Add vs Erase mode (shows different brush colors)
+        ctx.log("Testing Add vs Erase mode brush colors")
+
+        # Select watershed for this test
+        combo = scripted_effect.algorithmCombo
+        idx = combo.findData("watershed")
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+        slicer.app.processEvents()
+
+        # Show ADD mode (yellow/cyan brush)
+        scripted_effect._updateBrushPreview(
+            self._get_slice_center_xy(), self.red_widget, eraseMode=False
+        )
+        self.red_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+        ctx.screenshot("[add_mode] Add mode - yellow/cyan brush circle")
+
+        # Show ERASE mode (red/orange brush)
+        scripted_effect._updateBrushPreview(
+            self._get_slice_center_xy(), self.red_widget, eraseMode=True
+        )
+        self.red_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+        ctx.screenshot("[erase_mode] Erase mode - red/orange brush circle")
+
+    def _get_slice_center_xy(self):
+        """Get XY coordinates for slice center."""
+        slice_logic = self.red_widget.sliceLogic()
+        slice_node = slice_logic.GetSliceNode()
+
+        slice_to_ras = slice_node.GetSliceToRAS()
+        center_ras = [
+            slice_to_ras.GetElement(0, 3),
+            slice_to_ras.GetElement(1, 3),
+            slice_to_ras.GetElement(2, 3),
+        ]
+
+        xy_to_ras = slice_node.GetXYToRAS()
+        ras_to_xy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(xy_to_ras, ras_to_xy)
+
+        ras_point = [center_ras[0], center_ras[1], center_ras[2], 1]
+        xy_point = [0, 0, 0, 1]
+        ras_to_xy.MultiplyPoint(ras_point, xy_point)
+
+        return (int(xy_point[0]), int(xy_point[1]))
 
     def verify(self, ctx: TestContext) -> None:
         """Verify UI state."""
