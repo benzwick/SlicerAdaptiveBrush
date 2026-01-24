@@ -307,8 +307,8 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
         self._screenshot_counter += 1
         screenshot_id = f"manual_{self._screenshot_counter:03d}"
 
-        # Prompt for description
-        description, ok = qt.QInputDialog.getText(
+        # Prompt for description (Slicer's PythonQt returns just the text)
+        description = qt.QInputDialog.getText(
             slicer.util.mainWindow(),
             _("Screenshot Description"),
             _("Enter description:"),
@@ -316,7 +316,7 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             "",
         )
 
-        if not ok:
+        if not description:
             return
 
         info = self._screenshot_capture.capture_layout(
@@ -344,7 +344,8 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
 
     def onMarkPass(self):
         """Mark current test as pass."""
-        reason, ok = qt.QInputDialog.getText(
+        # Slicer's PythonQt returns just the text, empty string if cancelled
+        reason = qt.QInputDialog.getText(
             slicer.util.mainWindow(),
             _("Pass Reason"),
             _("Enter reason (optional):"),
@@ -352,17 +353,16 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             "",
         )
 
-        if not ok:
-            return
-
+        # Empty string means cancelled or no reason (both ok for pass)
         if self._action_recorder:
-            self._action_recorder.record_pass(reason)
+            self._action_recorder.record_pass(reason if reason else "")
 
         self._logAction(f"PASS: {reason}" if reason else "PASS")
 
     def onMarkFail(self):
         """Mark current test as fail."""
-        reason, ok = qt.QInputDialog.getText(
+        # Slicer's PythonQt returns just the text, empty string if cancelled
+        reason = qt.QInputDialog.getText(
             slicer.util.mainWindow(),
             _("Fail Reason"),
             _("Enter reason:"),
@@ -370,7 +370,7 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
             "",
         )
 
-        if not ok or not reason:
+        if not reason:
             return
 
         if self._action_recorder:
