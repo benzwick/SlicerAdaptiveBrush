@@ -284,7 +284,8 @@ class TestAlgorithmWatershed(TestCase):
         ctx.assert_greater(voxel_count, 100, "Watershed should segment tissue")
 ```
 
-See `docs/adr/ADR-010-testing-framework.md` for full architecture details.
+See `docs/adr/ADR-010-testing-framework.md` for architecture details.
+See `SegmentEditorAdaptiveBrushTester/README.md` for manual testing workflow.
 
 ## Dependencies
 
