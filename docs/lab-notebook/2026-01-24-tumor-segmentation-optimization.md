@@ -365,7 +365,50 @@ Likely causes:
 2. Propagation scaling too low for the threshold range
 3. BinaryThreshold(levelSet, upperThreshold=0) wrong for this filter's output
 
-**Status:** Known bug, deferred to future fix. Use other algorithms.
+**Status:** ~~Known bug, deferred to future fix.~~ **FIXED** (see Session 12)
+
+### Session 12: level_set Bug Fix
+
+**Time:** 19:00 UTC
+**Issue:** level_set_cpu and level_set_gpu produce 0 voxels
+
+#### Root Cause Found
+
+The bug was in the BinaryThreshold call:
+```python
+# BEFORE (BUG)
+result = sitk.BinaryThreshold(levelSet, upperThreshold=0)
+```
+
+`sitk.BinaryThreshold` has default `lowerThreshold=0`, so this creates
+range [0, 0] - only keeping pixels with value EXACTLY 0!
+
+Level sets use negative values for "inside the region", so we need <= 0.
+
+#### Fix Applied
+
+```python
+# AFTER (FIXED)
+levelSetArray = sitk.GetArrayFromImage(levelSet)
+return (levelSetArray <= 0).astype(np.uint8)
+```
+
+#### Results After Fix
+
+| Algorithm | Voxels | Time (ms) | Status |
+|-----------|--------|-----------|--------|
+| connected_threshold | 80,098 | 1,158 | ✓ |
+| threshold_brush | 16,116 | 1,286 | ✓ |
+| geodesic_distance | 15,508 | 1,435 | ✓ |
+| level_set_cpu | 14,034 | 1,351 | ✓ **FIXED** |
+| level_set_gpu | 14,034 | 1,422 | ✓ **FIXED** |
+| watershed | 13,383 | 2,232 | ✓ |
+| region_growing | 11,273 | 980 | ✓ |
+| random_walker | 3,843 | 4,361 | ✓ |
+
+All 8 algorithms now work!
+
+**Commit:** 2d0d77a - fix(algorithm): Fix level_set producing 0 voxels
 
 ---
 
@@ -388,9 +431,12 @@ Likely causes:
 |-----------|------|------|----------|
 | threshold_brush | Consistent, fast | May under-segment | General use |
 | connected_threshold | High coverage | May over-segment | Need maximum recall |
-| region_growing | Balanced | Moderate speed | Homogeneous regions |
-| watershed | Good edges | Sensitive to params | Edge-based segmentation |
-| level_set_cpu | - | BROKEN (0 voxels) | Don't use until fixed |
+| region_growing | Balanced, fastest | Conservative | Homogeneous regions |
+| watershed | Good edges | Slower | Edge-based segmentation |
+| geodesic_distance | Good boundaries | Moderate speed | Complex boundaries |
+| random_walker | Probabilistic | Slow, few voxels | Uncertain boundaries |
+| level_set_cpu | High precision | Moderate speed | Smooth boundaries |
+| level_set_gpu | High precision | Moderate speed | Smooth boundaries (GPU) |
 
 ### 4. Recommended Parameters
 For brain tumor (MRBrainTumor1):
