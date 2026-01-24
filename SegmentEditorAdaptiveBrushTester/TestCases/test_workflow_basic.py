@@ -136,9 +136,10 @@ class TestWorkflowBasic(TestCase):
         sliceLogic = sliceWidget.sliceLogic()
         sliceNode = sliceLogic.GetSliceNode()
 
-        # Get RAS to XY matrix
+        # Get XY to RAS matrix and invert it
+        xyToRas = sliceNode.GetXYToRAS()
         rasToXy = vtk.vtkMatrix4x4()
-        sliceNode.GetXYToRAS().Invert(rasToXy)
+        vtk.vtkMatrix4x4.Invert(xyToRas, rasToXy)
 
         rasPoint = [ras[0], ras[1], ras[2], 1]
         xyPoint = [0, 0, 0, 1]
