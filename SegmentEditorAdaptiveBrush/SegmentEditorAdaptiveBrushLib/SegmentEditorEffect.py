@@ -2801,8 +2801,14 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             mask = self._geodesicDistance(roi, localSeed, thresholds, params)
         elif algorithm == "random_walker":
             mask = self._randomWalker(roi, localSeed, thresholds, params)
-        else:  # Default: watershed
+        elif algorithm == "watershed":
             mask = self._watershed(roi, localSeed, thresholds, params)
+        else:
+            raise ValueError(
+                f"Unknown algorithm: '{algorithm}'. "
+                f"Valid algorithms: connected_threshold, level_set_gpu, level_set_cpu, "
+                f"region_growing, threshold_brush, geodesic_distance, random_walker, watershed"
+            )
 
         # Apply circular brush mask as MAXIMUM extent for ALL algorithms
         # Adaptive algorithms use edges to stop earlier, but should never exceed brush radius
