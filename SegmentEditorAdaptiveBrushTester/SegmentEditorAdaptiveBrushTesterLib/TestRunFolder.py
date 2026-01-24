@@ -204,7 +204,7 @@ class TestRunFolder:
         """
         import slicer
 
-        slicer_log = Path(slicer.app.errorLogModel().filePath())
+        slicer_log = Path(slicer.app.errorLogModel().filePath)
 
         if not slicer_log.exists():
             logger.warning(f"Slicer log not found: {slicer_log}")
