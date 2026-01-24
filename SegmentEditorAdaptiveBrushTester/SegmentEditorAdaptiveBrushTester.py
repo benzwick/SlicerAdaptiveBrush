@@ -271,19 +271,27 @@ class SegmentEditorAdaptiveBrushTesterWidget(ScriptedLoadableModuleWidget):
         self._action_recorder.start()
 
         self._updateRecordingUI(True)
-        self._logAction("Recording started")
+        self._logAction("Recording started (auto-capture enabled)")
+        self._logAction("Paint events will be recorded automatically")
 
     def onStopRecording(self):
         """Stop recording manual actions."""
         if self._action_recorder:
+            action_count = self._action_recorder.action_count
             self._action_recorder.stop()
-            self._logAction("Recording stopped")
+            self._logAction(f"Recording stopped ({action_count} actions captured)")
+            self._action_recorder = None
 
         self._updateRecordingUI(False)
 
     def _updateRecordingUI(self, recording: bool):
         """Update UI for recording state."""
-        self.recordingLabel.text = _("Recording: On" if recording else "Recording: Off")
+        if recording:
+            self.recordingLabel.text = _("Recording: ● On (auto-capture)")
+            self.recordingLabel.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        else:
+            self.recordingLabel.text = _("Recording: Off")
+            self.recordingLabel.setStyleSheet("")
         self.startRecordingButton.enabled = not recording
         self.stopRecordingButton.enabled = recording
         self.screenshotButton.enabled = recording
