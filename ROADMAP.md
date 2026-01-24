@@ -100,12 +100,29 @@
 - [x] CI status badge in README
 - [x] Extension packaging workflow
 
-## Version 0.12.0 - Slicer Integration Testing
+## Version 0.12.0 - Slicer Testing Framework
 
-- [ ] GitHub Action: install extension into Slicer
-- [ ] Run effect on Slicer sample data (MRHead, CTChest, etc.)
-- [ ] Verify extension installs and all Slicer tests pass
-- [ ] Record-and-replay: convert recorded Slicer sessions to test scripts
+- [ ] SegmentEditorAdaptiveBrushTester module
+  - [ ] TestRunner with registered test cases
+  - [ ] TestCase base class and TestContext utilities
+  - [ ] TestRegistry for test case discovery
+- [ ] Screenshot capture utilities (slice views, 3D, widgets)
+- [ ] Metrics collection (timing, quality metrics)
+- [ ] Interactive testing panel (manual recording, notes)
+- [ ] Test run output organization (results, screenshots, logs)
+- [ ] Claude Code skills for test execution and review
+  - [ ] run-slicer-tests: launch Slicer and run test suite
+  - [ ] review-test-results: analyze test output with agents
+  - [ ] add-test-case: create new test cases from template
+- [ ] Claude Code agents for improvement workflows
+  - [ ] test-reviewer: analyze results and suggest improvements
+  - [ ] bug-fixer: diagnose failures and propose fixes
+  - [ ] algorithm-improver: optimize based on metrics
+  - [ ] ui-improver: review screenshots for UI issues
+- [ ] Initial test cases
+  - [ ] test_workflow_basic.py
+  - [ ] test_algorithm_watershed.py
+  - [ ] test_ui_options_panel.py
 
 ## Version 0.13.0 - Living Documentation
 

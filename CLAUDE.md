@@ -203,6 +203,88 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-003**: Testing strategy
 - **ADR-004**: Caching strategy for performance
 - **ADR-005**: Mouse and keyboard controls
+- **ADR-010**: Slicer testing framework architecture
+
+## Slicer Testing Framework
+
+The **SegmentEditorAdaptiveBrushTester** module provides comprehensive testing inside Slicer.
+
+### Running Slicer Tests
+
+```bash
+# Configure Slicer path (copy .env.example to .env)
+cp .env.example .env
+# Edit .env to set SLICER_PATH
+
+# Use the run-slicer-tests skill
+/run-slicer-tests                    # Run all tests
+/run-slicer-tests algorithms         # Run algorithm tests only
+/run-slicer-tests ui                 # Run UI tests only
+```
+
+### Test Output
+
+Test runs are saved to `test_runs/` (git-ignored):
+
+```
+test_runs/2026-01-24_143025_algorithms/
+├── metadata.json          # Run config, summary
+├── results.json           # Test results
+├── metrics.json           # Performance metrics
+├── manual_actions.jsonl   # Recorded manual testing
+├── screenshots/
+│   ├── manifest.json      # Screenshot descriptions
+│   └── *.png              # Captured screenshots
+└── logs/
+    ├── test_run.log       # Test execution log
+    └── slicer_session.log # Slicer log copy
+```
+
+### Claude Code Skills
+
+- **/run-slicer-tests**: Launch Slicer, run test suite, leave open for manual testing
+- **/review-test-results**: Analyze test output with specialized agent
+- **/add-test-case**: Create new test case from template
+
+### Claude Code Agents
+
+- **test-reviewer**: Reviews results, suggests improvements
+- **bug-fixer**: Analyzes failures, proposes fixes
+- **algorithm-improver**: Reviews metrics, suggests optimizations
+- **ui-improver**: Reviews screenshots, suggests UI improvements
+
+### Writing Test Cases
+
+Test cases inherit from `TestCase` and use Slicer API directly:
+
+```python
+from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
+
+@register_test(category="algorithm")
+class TestAlgorithmWatershed(TestCase):
+    name = "algorithm_watershed"
+    description = "Test watershed algorithm on brain tissue"
+
+    def setup(self, ctx: TestContext):
+        import SampleData
+        self.volume = SampleData.downloadSample("MRHead")
+        self.segmentation = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLSegmentationNode"
+        )
+
+    def run(self, ctx: TestContext):
+        ctx.screenshot("001_before", "Before painting")
+        with ctx.timing("watershed_stroke"):
+            # Call effect methods directly
+            self._paint_at_ijk(128, 100, 90)
+        ctx.screenshot("002_after", "After painting")
+
+    def verify(self, ctx: TestContext):
+        voxel_count = self._count_voxels()
+        ctx.assert_greater(voxel_count, 100, "Watershed should segment tissue")
+```
+
+See `docs/adr/ADR-010-testing-framework.md` for full architecture details.
 
 ## Dependencies
 

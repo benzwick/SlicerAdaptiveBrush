@@ -19,6 +19,7 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-007](ADR-007-dependency-management.md) | Optional Dependency Management | Accepted |
 | [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Proposed |
 | [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Proposed |
+| [ADR-010](ADR-010-testing-framework.md) | Slicer Testing Framework Architecture | Accepted |
 
 ## Template
 

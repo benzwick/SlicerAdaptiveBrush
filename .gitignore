@@ -37,3 +37,9 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local configuration
+.env
+
+# Test run output
+test_runs/
