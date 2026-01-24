@@ -119,6 +119,8 @@ class TestOptimizationTumor(TestCase):
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
+        # Screenshot in sample data folder
+        ctx.set_screenshot_group("MRBrainTumor1", "initial")
         ctx.screenshot("Initial state - MRBrainTumor1 loaded")
 
     def run(self, ctx: TestContext) -> None:
@@ -146,6 +148,9 @@ class TestOptimizationTumor(TestCase):
 
         # Test each algorithm - clean slate for each
         for algo in ALGORITHMS:
+            # Set screenshot group for this algorithm
+            ctx.set_screenshot_group("MRBrainTumor1", algo)
+
             ctx.log(f"\n{'='*50}")
             ctx.log(f"Testing algorithm: {algo}")
             ctx.log(f"{'='*50}")
@@ -213,8 +218,10 @@ class TestOptimizationTumor(TestCase):
             ctx.metric(f"{algo}_total_time_ms", total_time * 1000)
 
             # Screenshot after all points for this algorithm
-            ctx.screenshot(f"{algo} - 5 cumulative clicks")
+            ctx.screenshot("5 cumulative clicks")
 
+        # Final summary screenshot
+        ctx.set_screenshot_group("MRBrainTumor1", "summary")
         ctx.screenshot("All algorithms tested")
 
     def _rasToXy(self, ras, sliceWidget):
@@ -289,7 +296,8 @@ class TestOptimizationTumor(TestCase):
         total_all = sum(r["total_voxels"] for r in self.results)
         ctx.assert_greater(total_all, 0, "Should have segmented some voxels")
 
-        ctx.screenshot("Optimization complete - all algorithms compared")
+        ctx.set_screenshot_group("MRBrainTumor1", "summary")
+        ctx.screenshot("Optimization complete")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up."""

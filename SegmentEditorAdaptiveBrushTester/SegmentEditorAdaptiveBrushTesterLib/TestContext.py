@@ -77,6 +77,23 @@ class TestContext:
         """Collected metrics for this test."""
         return self._metrics_collector.get_metrics()
 
+    def set_screenshot_group(self, *path_parts: str) -> None:
+        """Set the screenshot group (subfolder) for subsequent screenshots.
+
+        Supports hierarchical paths for organizing screenshots by sample data,
+        algorithm, etc.
+
+        Usage:
+            ctx.set_screenshot_group("MRBrainTumor1", "connected_threshold")
+            ctx.screenshot("After 5 clicks")  # -> MRBrainTumor1/connected_threshold/001.png
+
+        Args:
+            *path_parts: Path components to join (e.g., "MRBrainTumor1", "watershed").
+        """
+        group_name = "/".join(path_parts)
+        self._screenshot_capture.set_group(group_name)
+        logger.debug(f"Screenshot group set to: {group_name}")
+
     def screenshot(self, description: str = "") -> ScreenshotInfo:
         """Capture a screenshot of the current Slicer state (auto-numbered).
 
