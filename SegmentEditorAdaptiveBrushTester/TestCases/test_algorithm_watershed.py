@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 
 import slicer
+import vtk
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
 logger = logging.getLogger(__name__)
@@ -82,29 +83,58 @@ class TestAlgorithmWatershed(TestCase):
             combo.setCurrentIndex(idx)
         slicer.app.processEvents()
 
-        # Get Red slice widget and show brush circle at center
+        # Get Red slice widget
         layoutManager = slicer.app.layoutManager()
         self.red_widget = layoutManager.sliceWidget("Red")
-        view = self.red_widget.sliceView()
-        size = view.renderWindow().GetSize()
-        center_xy = (size[0] // 2, size[1] // 2)
+        red_logic = self.red_widget.sliceLogic()
 
-        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
-        view.scheduleRender()
+        # Set a larger brush radius for visibility in screenshots
+        scripted_effect.radiusSlider.value = 25.0
+        slicer.app.processEvents()
+
+        # Navigate to center of volume
+        red_logic.SetSliceOffset(0)
+        slicer.app.processEvents()
+
+        # Get center XY using RAS conversion
+        self.center_xy = self._get_slice_center_xy(self.red_widget)
+
+        # Show brush at center
+        scripted_effect._updateBrushPreview(self.center_xy, self.red_widget, eraseMode=False)
+        self.red_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         ctx.screenshot("[setup] MRHead loaded, watershed selected, brush visible")
+
+    def _get_slice_center_xy(self, slice_widget):
+        """Get XY coordinates for the center of a slice view using RAS conversion."""
+        slice_logic = slice_widget.sliceLogic()
+        slice_node = slice_logic.GetSliceNode()
+
+        # Get slice center in RAS
+        slice_to_ras = slice_node.GetSliceToRAS()
+        center_ras = [
+            slice_to_ras.GetElement(0, 3),
+            slice_to_ras.GetElement(1, 3),
+            slice_to_ras.GetElement(2, 3),
+        ]
+
+        # Convert RAS to XY
+        xy_to_ras = slice_node.GetXYToRAS()
+        ras_to_xy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(xy_to_ras, ras_to_xy)
+
+        ras_point = [center_ras[0], center_ras[1], center_ras[2], 1]
+        xy_point = [0, 0, 0, 1]
+        ras_to_xy.MultiplyPoint(ras_point, xy_point)
+
+        return (int(xy_point[0]), int(xy_point[1]))
 
     def run(self, ctx: TestContext) -> None:
         """Test watershed with different edge sensitivity values."""
         logger.info("Running watershed algorithm tests")
 
         scripted_effect = self.effect.self()
-
-        # Get center position for brush display
-        view = self.red_widget.sliceView()
-        size = view.renderWindow().GetSize()
-        center_xy = (size[0] // 2, size[1] // 2)
 
         # Test different edge sensitivity values
         sensitivities = [30, 50, 70]
@@ -117,8 +147,8 @@ class TestAlgorithmWatershed(TestCase):
             slicer.app.processEvents()
 
             # Show brush circle (update after parameter change)
-            scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
-            view.scheduleRender()
+            scripted_effect._updateBrushPreview(self.center_xy, self.red_widget, eraseMode=False)
+            self.red_widget.sliceView().forceRender()
             slicer.app.processEvents()
 
             ctx.screenshot(f"[sensitivity_{sensitivity}] Edge sensitivity set, brush visible")
@@ -134,8 +164,8 @@ class TestAlgorithmWatershed(TestCase):
         slicer.app.processEvents()
 
         # Show brush circle
-        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
-        view.scheduleRender()
+        scripted_effect._updateBrushPreview(self.center_xy, self.red_widget, eraseMode=False)
+        self.red_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         ctx.screenshot("[3d_mode] 3D brush mode enabled")
@@ -145,8 +175,8 @@ class TestAlgorithmWatershed(TestCase):
         slicer.app.processEvents()
 
         # Show brush circle
-        scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
-        view.scheduleRender()
+        scripted_effect._updateBrushPreview(self.center_xy, self.red_widget, eraseMode=False)
+        self.red_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         ctx.screenshot("[2d_mode] 2D brush mode enabled")

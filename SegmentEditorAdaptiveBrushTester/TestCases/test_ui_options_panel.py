@@ -16,21 +16,53 @@ from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_
 logger = logging.getLogger(__name__)
 
 
-def _show_brush_at_center(scripted_effect, slice_widget):
-    """Show the brush circle at the center of a slice view.
+def _show_brush_at_slice_center(scripted_effect, slice_widget):
+    """Show the brush circle at the center of a slice view using RAS coordinates.
 
     This triggers the brush outline to be visible for screenshots.
+    Uses RAS-to-XY conversion like the painting code does.
     """
-    # Get the center of the slice view in screen coordinates
-    view = slice_widget.sliceView()
-    size = view.renderWindow().GetSize()
-    center_xy = (size[0] // 2, size[1] // 2)
+    import vtk
 
-    # Call _updateBrushPreview to make the brush outline visible
+    slice_logic = slice_widget.sliceLogic()
+    slice_node = slice_logic.GetSliceNode()
+    view_name = slice_node.GetName()
+
+    # Get the current slice center in RAS coordinates
+    # This gives us a point that's definitely visible in the slice
+    slice_to_ras = slice_node.GetSliceToRAS()
+    # The slice center in RAS is the origin of the slice-to-RAS transform
+    center_ras = [
+        slice_to_ras.GetElement(0, 3),
+        slice_to_ras.GetElement(1, 3),
+        slice_to_ras.GetElement(2, 3),
+    ]
+
+    # Convert RAS to XY (slice view coordinates)
+    xy_to_ras = slice_node.GetXYToRAS()
+    ras_to_xy = vtk.vtkMatrix4x4()
+    vtk.vtkMatrix4x4.Invert(xy_to_ras, ras_to_xy)
+
+    ras_point = [center_ras[0], center_ras[1], center_ras[2], 1]
+    xy_point = [0, 0, 0, 1]
+    ras_to_xy.MultiplyPoint(ras_point, xy_point)
+
+    center_xy = (int(xy_point[0]), int(xy_point[1]))
+
+    logger.info(f"Brush preview: view={view_name}, ras={center_ras}, xy={center_xy}")
+
+    # Check if pipelines exist
+    num_pipelines = len(scripted_effect.outlinePipelines)
+    if num_pipelines == 0:
+        logger.warning("No outline pipelines exist - creating them")
+        scripted_effect._createOutlinePipelines()
+
+    # Call _updateBrushPreview to position and show the brush outline
     scripted_effect._updateBrushPreview(center_xy, slice_widget, eraseMode=False)
 
     # Force render
-    view.scheduleRender()
+    view = slice_widget.sliceView()
+    view.forceRender()
     slicer.app.processEvents()
 
 
@@ -90,11 +122,20 @@ class TestUIOptionsPanel(TestCase):
         # Get Red slice widget for showing brush
         layoutManager = slicer.app.layoutManager()
         self.red_widget = layoutManager.sliceWidget("Red")
+        red_logic = self.red_widget.sliceLogic()
 
+        # Navigate to middle of volume (like workflow_basic does)
+        # This ensures the slice view is properly initialized
+        red_logic.SetSliceOffset(0)  # Navigate to center of volume
+        slicer.app.processEvents()
+
+        # Set a larger brush radius to make it clearly visible
+        scripted_effect = self.effect.self()
+        scripted_effect.radiusSlider.value = 25.0  # 25mm radius
         slicer.app.processEvents()
 
         # Show brush circle at center of Red view
-        _show_brush_at_center(self.effect.self(), self.red_widget)
+        _show_brush_at_slice_center(scripted_effect, self.red_widget)
 
         ctx.screenshot("[setup] MRHead loaded, Adaptive Brush active, brush visible")
 
@@ -132,7 +173,7 @@ class TestUIOptionsPanel(TestCase):
             slicer.app.processEvents()
 
             # Show brush circle (re-trigger to update after algorithm change)
-            _show_brush_at_center(scripted_effect, self.red_widget)
+            _show_brush_at_slice_center(scripted_effect, self.red_widget)
 
             # Capture screenshot with algorithm name in description
             ctx.screenshot(f"[{algo}] Options panel with brush circle")
@@ -160,7 +201,7 @@ class TestUIOptionsPanel(TestCase):
             slicer.app.processEvents()
 
             # Show brush circle
-            _show_brush_at_center(scripted_effect, self.red_widget)
+            _show_brush_at_slice_center(scripted_effect, self.red_widget)
 
             ctx.screenshot(f"[threshold_brush_{method_data}] {method_display} method")
 
