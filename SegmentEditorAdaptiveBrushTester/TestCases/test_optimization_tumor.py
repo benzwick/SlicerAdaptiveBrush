@@ -193,7 +193,7 @@ class TestOptimizationTumor(TestCase):
                 combo.setCurrentIndex(idx)
             slicer.app.processEvents()
 
-            # Navigate to first click point and show brush circle
+            # Navigate to first click point and show brush circle for algorithm screenshot
             first_ras = TUMOR_CLICK_POINTS[0]
             redLogic.SetSliceOffset(first_ras[2])
             first_xy = self._rasToXy(first_ras, self.redWidget)
@@ -202,11 +202,12 @@ class TestOptimizationTumor(TestCase):
                 self.redWidget.sliceView().forceRender()
             slicer.app.processEvents()
 
-            ctx.screenshot(f"[{algo}] Algorithm selected, brush at first click point")
+            ctx.screenshot(f"[{algo}] Algorithm selected, ready to paint")
 
             # Paint all 5 points into the SAME segment (cumulative)
             total_time = 0.0
-            last_xy = None
+            import time
+
             for i, ras in enumerate(TUMOR_CLICK_POINTS):
                 # Navigate to click location
                 redLogic.SetSliceOffset(ras[2])
@@ -218,8 +219,6 @@ class TestOptimizationTumor(TestCase):
                     ctx.log(f"  Point {i+1}: Could not convert RAS {ras}")
                     continue
 
-                last_xy = xy
-
                 # Show brush at this location before painting
                 scripted_effect._updateBrushPreview(xy, self.redWidget, eraseMode=False)
                 self.redWidget.sliceView().forceRender()
@@ -228,8 +227,6 @@ class TestOptimizationTumor(TestCase):
                 ctx.log(f"  Point {i+1}: Painting at RAS {ras}")
 
                 # Paint (cumulative into same segment)
-                import time
-
                 start = time.time()
                 scripted_effect.scriptedEffect.saveStateForUndo()
                 scripted_effect.isDrawing = True
@@ -240,6 +237,15 @@ class TestOptimizationTumor(TestCase):
                 total_time += elapsed
 
                 slicer.app.processEvents()
+
+                # Show brush and take screenshot after this stroke
+                scripted_effect._updateBrushPreview(xy, self.redWidget, eraseMode=False)
+                self.redWidget.sliceView().forceRender()
+                slicer.app.processEvents()
+
+                # Count voxels so far and capture result
+                voxels_so_far = self._count_segment_voxels(segment_id)
+                ctx.screenshot(f"[{algo}_click{i+1}] Click {i+1}: {voxels_so_far:,} voxels total")
 
             # Count total voxels after all 5 points
             voxel_count = self._count_segment_voxels(segment_id)
@@ -259,15 +265,6 @@ class TestOptimizationTumor(TestCase):
 
             ctx.metric(f"{algo}_total_voxels", voxel_count)
             ctx.metric(f"{algo}_total_time_ms", total_time * 1000)
-
-            # Show brush circle for result screenshot
-            if last_xy:
-                scripted_effect._updateBrushPreview(last_xy, self.redWidget, eraseMode=False)
-                self.redWidget.sliceView().forceRender()
-                slicer.app.processEvents()
-
-            # Screenshot after all points for this algorithm
-            ctx.screenshot(f"[{algo}] Result: {voxel_count:,} voxels from 5 clicks")
 
         # Show brush for summary screenshot
         first_ras = TUMOR_CLICK_POINTS[0]
