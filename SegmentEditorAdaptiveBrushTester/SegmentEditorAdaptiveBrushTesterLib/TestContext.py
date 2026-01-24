@@ -115,7 +115,8 @@ class TestContext:
             ScreenshotInfo with path and metadata.
         """
         info = self._screenshot_capture.screenshot(description)
-        self._screenshots.append(f"{info.group}/{info.filename}")
+        # Store just the filename - manifest has group/test context
+        self._screenshots.append(info.filename)
         return info
 
     def screenshot_slice_view(self, view: str, description: str = "") -> ScreenshotInfo:
@@ -129,7 +130,7 @@ class TestContext:
             ScreenshotInfo with path and metadata.
         """
         info = self._screenshot_capture.capture_slice_view(view, description)
-        self._screenshots.append(f"{info.group}/{info.filename}")
+        self._screenshots.append(info.filename)
         return info
 
     def screenshot_3d_view(self, description: str = "") -> ScreenshotInfo:
@@ -142,7 +143,7 @@ class TestContext:
             ScreenshotInfo with path and metadata.
         """
         info = self._screenshot_capture.capture_3d_view(description)
-        self._screenshots.append(f"{info.group}/{info.filename}")
+        self._screenshots.append(info.filename)
         return info
 
     def timing(self, operation: str) -> TimingContext:
