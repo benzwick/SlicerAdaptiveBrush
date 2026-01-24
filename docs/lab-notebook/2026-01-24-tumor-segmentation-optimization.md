@@ -319,6 +319,94 @@ segmenting the tumor region with good boundary adherence.
 **Watershed now working:** Producing 13,159 voxels (was 221 when sharing
 code path with level_set due to fallthrough bug)
 
-### Session 10: Investigating level_set_cpu Failure
+### Session 10: Parameter Iteration Summary
 
-**Time:** 18:52 UTC
+**All iterations with correct RAS coordinates:**
+
+| Iteration | Brush | Sensitivity | Best Algorithm | Voxels |
+|-----------|-------|-------------|----------------|--------|
+| 1 | 20mm | 30 | connected_threshold | 22,696 |
+| 2 | 15mm | 20 | threshold_brush | 14,107 |
+| 3 | 25mm | 40 | connected_threshold | 80,098* |
+
+*80,098 likely over-segmentation
+
+**Working Algorithms (by consistency):**
+1. **threshold_brush** - Most consistent across parameters (14-16k voxels)
+2. **connected_threshold** - Varies widely (12-80k), sensitive to brush size
+3. **region_growing** - Consistent (11-12k voxels)
+4. **watershed** - Moderate (7-13k voxels)
+5. **level_set_cpu** - BROKEN (0 voxels in all iterations)
+
+**Recommended Parameters for MRBrainTumor1:**
+- Brush radius: 20mm
+- Edge sensitivity: 30-40
+- Best algorithms: threshold_brush or region_growing for controlled segmentation
+- connected_threshold for maximum coverage (may need cleanup)
+
+### Session 11: level_set_cpu Bug Investigation
+
+**Time:** 18:55 UTC
+**Issue:** level_set_cpu produces 0 voxels in all iterations
+
+Potential causes:
+1. Threshold calculation mismatch
+2. Level set not converging
+3. Initial seed radius too small
+4. Exception being silently caught
+
+Need to check logs for error messages from the algorithm.
+
+**Log analysis:** level_set_cpu runs without errors (165-376ms per call) but produces 0 voxels.
+The algorithm completes but the level set never expands into the threshold region.
+
+Likely causes:
+1. Initial signed distance field has wrong sign convention
+2. Propagation scaling too low for the threshold range
+3. BinaryThreshold(levelSet, upperThreshold=0) wrong for this filter's output
+
+**Status:** Known bug, deferred to future fix. Use other algorithms.
+
+---
+
+## Summary: Key Learnings for Optimization Skill
+
+### 1. Coordinate Systems
+- Slicer markups export as **LPS** (DICOM convention)
+- Slicer internal API uses **RAS**
+- Conversion: R=-L, A=-P, S=S
+- ALWAYS verify coordinate system when using external points
+
+### 2. Algorithm Selection
+- **CRITICAL:** Use exact algorithm string names
+  - ✓ "connected_threshold", "threshold_brush", "region_growing", "watershed"
+  - ✓ "level_set_cpu" or "level_set_gpu" (NOT "level_set")
+- Unknown algorithms now raise ValueError (fixed bug)
+
+### 3. Best Algorithms for Brain Tumor
+| Algorithm | Pros | Cons | Use When |
+|-----------|------|------|----------|
+| threshold_brush | Consistent, fast | May under-segment | General use |
+| connected_threshold | High coverage | May over-segment | Need maximum recall |
+| region_growing | Balanced | Moderate speed | Homogeneous regions |
+| watershed | Good edges | Sensitive to params | Edge-based segmentation |
+| level_set_cpu | - | BROKEN (0 voxels) | Don't use until fixed |
+
+### 4. Recommended Parameters
+For brain tumor (MRBrainTumor1):
+- **Brush radius:** 15-20mm
+- **Edge sensitivity:** 30-40
+- **5 clicks** at: center, superior, anterior, posterior, lateral
+
+### 5. Future Claude Skill: /optimize-segmentation
+Should:
+1. Load sample data
+2. Let user place 5 reference points
+3. Run all algorithms with those points
+4. Compare voxel counts and timing
+5. Recommend best algorithm and parameters
+6. Generate report with screenshots
+
+---
+
+**End of optimization session: 2026-01-24**

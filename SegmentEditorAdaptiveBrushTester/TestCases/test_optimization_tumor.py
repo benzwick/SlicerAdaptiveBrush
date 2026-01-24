@@ -48,10 +48,10 @@ ALGORITHMS = [
 ]
 
 # Default parameters for optimization (can be tuned)
-# ITERATION 2: Lower sensitivity, larger brush
+# ITERATION 4: Larger brush, mid sensitivity
 OPTIMIZATION_PARAMS = {
-    "brush_radius_mm": 20.0,  # Larger brush for tumor (was 15)
-    "edge_sensitivity": 30,  # Lower to let algorithms propagate further (was 50)
+    "brush_radius_mm": 25.0,  # Larger brush to capture more tumor
+    "edge_sensitivity": 40,  # Mid-range sensitivity
     "inner_radius_ratio": 0.3,  # Sampling zone ratio
 }
 
