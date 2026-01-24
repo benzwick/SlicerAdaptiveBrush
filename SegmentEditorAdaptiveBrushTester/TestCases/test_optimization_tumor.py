@@ -72,6 +72,7 @@ class TestOptimizationTumor(TestCase):
         self.segmentation_node = None
         self.segment_editor_widget = None
         self.effect = None
+        self.redWidget = None
         self.results: list[dict] = []
 
     def setup(self, ctx: TestContext) -> None:
@@ -121,6 +122,27 @@ class TestOptimizationTumor(TestCase):
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
+        # Get slice widget and set up for brush visibility
+        layoutManager = slicer.app.layoutManager()
+        self.redWidget = layoutManager.sliceWidget("Red")
+        redLogic = self.redWidget.sliceLogic()
+
+        # Set brush radius for visibility in screenshots
+        scripted_effect = self.effect.self()
+        scripted_effect.radiusSlider.value = OPTIMIZATION_PARAMS["brush_radius_mm"]
+        slicer.app.processEvents()
+
+        # Navigate to first tumor point and show brush circle
+        first_ras = TUMOR_CLICK_POINTS[0]
+        redLogic.SetSliceOffset(first_ras[2])
+        slicer.app.processEvents()
+
+        first_xy = self._rasToXy(first_ras, self.redWidget)
+        if first_xy:
+            scripted_effect._updateBrushPreview(first_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
+            slicer.app.processEvents()
+
         ctx.screenshot("[setup] MRBrainTumor1 loaded, Adaptive Brush active")
 
     def run(self, ctx: TestContext) -> None:
@@ -139,10 +161,8 @@ class TestOptimizationTumor(TestCase):
         scripted_effect.sensitivitySlider.value = edge_sensitivity
         ctx.log(f"Edge sensitivity set to {edge_sensitivity}")
 
-        # Get slice widget for coordinate conversion
-        layoutManager = slicer.app.layoutManager()
-        redWidget = layoutManager.sliceWidget("Red")
-        redLogic = redWidget.sliceLogic()
+        # Use the slice widget from setup
+        redLogic = self.redWidget.sliceLogic()
 
         # Test each algorithm - clean slate for each
         for algo in ALGORITHMS:
@@ -158,6 +178,13 @@ class TestOptimizationTumor(TestCase):
             segment_name = "Tumor"
             segment_id = segmentation.AddEmptySegment(segment_name)
             self.segment_editor_widget.setCurrentSegmentID(segment_id)
+            slicer.app.processEvents()
+
+            # Re-activate Adaptive Brush (segment removal may have deactivated it)
+            self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
+            self.effect = self.segment_editor_widget.activeEffect()
+            scripted_effect = self.effect.self()
+            slicer.app.processEvents()
 
             # Select algorithm using the combo box (like a user would)
             combo = scripted_effect.algorithmCombo
@@ -169,30 +196,33 @@ class TestOptimizationTumor(TestCase):
             # Navigate to first click point and show brush circle
             first_ras = TUMOR_CLICK_POINTS[0]
             redLogic.SetSliceOffset(first_ras[2])
-            first_xy = self._rasToXy(first_ras, redWidget)
+            first_xy = self._rasToXy(first_ras, self.redWidget)
             if first_xy:
-                scripted_effect._updateBrushPreview(first_xy, redWidget, eraseMode=False)
-                redWidget.sliceView().scheduleRender()
+                scripted_effect._updateBrushPreview(first_xy, self.redWidget, eraseMode=False)
+                self.redWidget.sliceView().forceRender()
             slicer.app.processEvents()
 
             ctx.screenshot(f"[{algo}] Algorithm selected, brush at first click point")
 
             # Paint all 5 points into the SAME segment (cumulative)
             total_time = 0.0
+            last_xy = None
             for i, ras in enumerate(TUMOR_CLICK_POINTS):
                 # Navigate to click location
                 redLogic.SetSliceOffset(ras[2])
                 slicer.app.processEvents()
 
                 # Convert RAS to XY
-                xy = self._rasToXy(ras, redWidget)
+                xy = self._rasToXy(ras, self.redWidget)
                 if xy is None:
                     ctx.log(f"  Point {i+1}: Could not convert RAS {ras}")
                     continue
 
+                last_xy = xy
+
                 # Show brush at this location before painting
-                scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
-                redWidget.sliceView().scheduleRender()
+                scripted_effect._updateBrushPreview(xy, self.redWidget, eraseMode=False)
+                self.redWidget.sliceView().forceRender()
                 slicer.app.processEvents()
 
                 ctx.log(f"  Point {i+1}: Painting at RAS {ras}")
@@ -204,7 +234,7 @@ class TestOptimizationTumor(TestCase):
                 scripted_effect.scriptedEffect.saveStateForUndo()
                 scripted_effect.isDrawing = True
                 scripted_effect._currentStrokeEraseMode = False
-                scripted_effect.processPoint(xy, redWidget)
+                scripted_effect.processPoint(xy, self.redWidget)
                 scripted_effect.isDrawing = False
                 elapsed = time.time() - start
                 total_time += elapsed
@@ -230,8 +260,23 @@ class TestOptimizationTumor(TestCase):
             ctx.metric(f"{algo}_total_voxels", voxel_count)
             ctx.metric(f"{algo}_total_time_ms", total_time * 1000)
 
+            # Show brush circle for result screenshot
+            if last_xy:
+                scripted_effect._updateBrushPreview(last_xy, self.redWidget, eraseMode=False)
+                self.redWidget.sliceView().forceRender()
+                slicer.app.processEvents()
+
             # Screenshot after all points for this algorithm
             ctx.screenshot(f"[{algo}] Result: {voxel_count:,} voxels from 5 clicks")
+
+        # Show brush for summary screenshot
+        first_ras = TUMOR_CLICK_POINTS[0]
+        redLogic.SetSliceOffset(first_ras[2])
+        first_xy = self._rasToXy(first_ras, self.redWidget)
+        if first_xy:
+            scripted_effect._updateBrushPreview(first_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
+            slicer.app.processEvents()
 
         ctx.screenshot("[summary] All algorithms tested")
 
@@ -306,6 +351,17 @@ class TestOptimizationTumor(TestCase):
         # Assert we got some segmentation
         total_all = sum(r["total_voxels"] for r in self.results)
         ctx.assert_greater(total_all, 0, "Should have segmented some voxels")
+
+        # Show brush for verify screenshot
+        if self.redWidget and self.effect:
+            first_ras = TUMOR_CLICK_POINTS[0]
+            self.redWidget.sliceLogic().SetSliceOffset(first_ras[2])
+            first_xy = self._rasToXy(first_ras, self.redWidget)
+            if first_xy:
+                scripted_effect = self.effect.self()
+                scripted_effect._updateBrushPreview(first_xy, self.redWidget, eraseMode=False)
+                self.redWidget.sliceView().forceRender()
+                slicer.app.processEvents()
 
         ctx.screenshot(f"[verify] Best: {best_algo} with {best_voxels:,} voxels")
 

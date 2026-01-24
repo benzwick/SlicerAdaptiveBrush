@@ -302,10 +302,26 @@ Track and report:
 ### Brush Circle Not Visible
 - **Cause**: Outline only appears on mouse EnterEvent
 - **Solution**: Call `_updateBrushPreview()` before screenshots
+- **Additional**: Use `forceRender()` not `scheduleRender()` for immediate effect
 
 ### Algorithm Fallthrough Bug
 - **Cause**: Missing return statements in algorithm switch
 - **Solution**: Always return result or raise error for unknown algorithm
+
+### Effect Panel Disappears After Segment Operations
+- **Cause**: Calling `segmentation.RemoveAllSegments()` or similar segment operations can deactivate the effect or collapse the panel
+- **Solution**: Re-activate the effect after segment operations:
+  ```python
+  segmentation.RemoveAllSegments()
+  segment_id = segmentation.AddEmptySegment("NewSegment")
+  segment_editor_widget.setCurrentSegmentID(segment_id)
+  slicer.app.processEvents()
+
+  # Re-activate effect (segment removal may have deactivated it)
+  segment_editor_widget.setActiveEffectByName("Adaptive Brush")
+  effect = segment_editor_widget.activeEffect()
+  slicer.app.processEvents()
+  ```
 
 ## Documentation Generation
 

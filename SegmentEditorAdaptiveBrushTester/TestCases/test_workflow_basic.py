@@ -32,6 +32,10 @@ class TestWorkflowBasic(TestCase):
         self.segmentation_node = None
         self.segment_editor_widget = None
         self.segment_id = None
+        self.effect = None
+        self.redWidget = None
+        self.paint_ras = None
+        self.paint_xy = None
 
     def setup(self, ctx: TestContext) -> None:
         """Load sample data and create segmentation."""
@@ -73,46 +77,52 @@ class TestWorkflowBasic(TestCase):
         self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
         slicer.app.processEvents()
 
-        ctx.screenshot("[setup] MRBrainTumor1 loaded, segmentation created")
-
-    def run(self, ctx: TestContext) -> None:
-        """Activate Adaptive Brush and paint with each algorithm."""
-        logger.info("Running basic workflow test")
-
-        # Activate Adaptive Brush effect
+        # Activate Adaptive Brush effect (do this in setup so controls are visible)
         self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
-        effect = self.segment_editor_widget.activeEffect()
+        self.effect = self.segment_editor_widget.activeEffect()
 
-        if effect is None:
+        if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
         ctx.log("Activated Adaptive Brush effect")
 
-        # Get the scripted effect
-        scripted_effect = effect.self()
+        # Get the scripted effect and set brush radius for visibility
+        scripted_effect = self.effect.self()
+        scripted_effect.radiusSlider.value = 25.0  # 25mm for visibility
+        slicer.app.processEvents()
 
-        # Get the Red slice widget for painting
+        # Get the Red slice widget
         layoutManager = slicer.app.layoutManager()
-        redWidget = layoutManager.sliceWidget("Red")
-        redLogic = redWidget.sliceLogic()
+        self.redWidget = layoutManager.sliceWidget("Red")
+        redLogic = self.redWidget.sliceLogic()
 
         # Paint location in RAS (near tumor in MRBrainTumor1)
-        paint_ras = [5.6, -29.5, 28.4]
+        self.paint_ras = [5.6, -29.5, 28.4]
 
         # Navigate Red slice to this location
-        redLogic.SetSliceOffset(paint_ras[2])
+        redLogic.SetSliceOffset(self.paint_ras[2])
         slicer.app.processEvents()
 
         # Convert RAS to screen XY for the Red slice view
-        xy = self._rasToXy(paint_ras, redWidget)
-        if not xy:
-            ctx.log("Could not convert RAS to screen coordinates")
-            return
+        self.paint_xy = self._rasToXy(self.paint_ras, self.redWidget)
 
         # Show brush circle at paint location
-        scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
-        redWidget.sliceView().scheduleRender()
-        slicer.app.processEvents()
+        if self.paint_xy:
+            scripted_effect._updateBrushPreview(self.paint_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
+            slicer.app.processEvents()
+
+        ctx.screenshot("[setup] MRBrainTumor1 loaded, Adaptive Brush active, brush visible")
+
+    def run(self, ctx: TestContext) -> None:
+        """Paint with each algorithm."""
+        logger.info("Running basic workflow test")
+
+        scripted_effect = self.effect.self()
+
+        if not self.paint_xy:
+            ctx.log("Could not convert RAS to screen coordinates")
+            return
 
         ctx.screenshot("[brush] Adaptive Brush activated, brush at paint location")
 
@@ -130,24 +140,35 @@ class TestWorkflowBasic(TestCase):
             slicer.app.processEvents()
 
             # Show brush circle at paint location (re-trigger after algorithm change)
-            scripted_effect._updateBrushPreview(xy, redWidget, eraseMode=False)
-            redWidget.sliceView().scheduleRender()
+            scripted_effect._updateBrushPreview(self.paint_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
             slicer.app.processEvents()
 
             ctx.screenshot(f"[{algo}] Before painting, brush visible")
 
-            ctx.log(f"Painting at RAS {paint_ras} (screen XY {xy})")
+            ctx.log(f"Painting at RAS {self.paint_ras} (screen XY {self.paint_xy})")
 
             with ctx.timing(f"paint_{algo}"):
                 # Simulate brush stroke
                 scripted_effect.scriptedEffect.saveStateForUndo()
                 scripted_effect.isDrawing = True
                 scripted_effect._currentStrokeEraseMode = False
-                scripted_effect.processPoint(xy, redWidget)
+                scripted_effect.processPoint(self.paint_xy, self.redWidget)
                 scripted_effect.isDrawing = False
 
             slicer.app.processEvents()
+
+            # Show brush circle after painting for result screenshot
+            scripted_effect._updateBrushPreview(self.paint_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
+            slicer.app.processEvents()
+
             ctx.screenshot(f"[{algo}] After paint stroke")
+
+        # Show brush for final screenshot
+        scripted_effect._updateBrushPreview(self.paint_xy, self.redWidget, eraseMode=False)
+        self.redWidget.sliceView().forceRender()
+        slicer.app.processEvents()
 
         ctx.screenshot("[complete] All algorithms tested")
 
@@ -181,6 +202,13 @@ class TestWorkflowBasic(TestCase):
             "Adaptive Brush",
             "Active effect should be Adaptive Brush",
         )
+
+        # Show brush for verify screenshot
+        if self.paint_xy and self.redWidget and self.effect:
+            scripted_effect = self.effect.self()
+            scripted_effect._updateBrushPreview(self.paint_xy, self.redWidget, eraseMode=False)
+            self.redWidget.sliceView().forceRender()
+            slicer.app.processEvents()
 
         # Verify segmentation node exists
         ctx.assert_is_not_none(
