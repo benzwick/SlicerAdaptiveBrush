@@ -33,8 +33,8 @@ ALGORITHMS = [
     "watershed",
     "geodesic_distance",
     "random_walker",
-    "level_set_cpu",  # May produce 0 voxels (known issue)
-    "level_set_gpu",  # May produce 0 voxels (known issue)
+    "level_set_cpu",
+    "level_set_gpu",
 ]
 
 # Default parameters

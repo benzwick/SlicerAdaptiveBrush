@@ -46,8 +46,8 @@ ALGORITHMS = [
     "watershed",
     "geodesic_distance",
     "random_walker",
-    "level_set_cpu",  # Currently broken (0 voxels)
-    "level_set_gpu",  # Currently broken (0 voxels)
+    "level_set_cpu",
+    "level_set_gpu",
 ]
 
 # Default parameters for optimization (can be tuned)

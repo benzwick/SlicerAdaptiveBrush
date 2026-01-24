@@ -3064,8 +3064,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             levelSet = lsFilter.Execute(seedImage, smoothed)
 
             # Threshold: inside is negative in level set convention
-            result = sitk.BinaryThreshold(levelSet, upperThreshold=0)
-            return sitk.GetArrayFromImage(result).astype(np.uint8)
+            # BinaryThreshold with only upperThreshold=0 has lowerThreshold default of 0,
+            # creating range [0,0] which only keeps exactly 0. We need <= 0.
+            levelSetArray = sitk.GetArrayFromImage(levelSet)
+            return (levelSetArray <= 0).astype(np.uint8)
 
         except Exception as e:
             logging.error(f"Level set failed: {e}")
