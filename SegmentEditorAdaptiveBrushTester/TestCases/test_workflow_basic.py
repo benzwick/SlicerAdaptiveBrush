@@ -1,7 +1,7 @@
 """Basic workflow test for AdaptiveBrush.
 
 Tests the basic workflow:
-1. Load sample data
+1. Load sample data (MRBrainTumour1 for better contrast)
 2. Create segmentation
 3. Activate Adaptive Brush
 4. Paint with different algorithms
@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 import slicer
+import vtk
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
 logger = logging.getLogger(__name__)
@@ -39,14 +40,14 @@ class TestWorkflowBasic(TestCase):
         # Clear scene
         slicer.mrmlScene.Clear(0)
 
-        # Load MRHead sample data
+        # Load MRBrainTumour1 sample data (has tumor with good contrast)
         import SampleData
 
-        ctx.log("Loading MRHead sample data")
-        self.volume_node = SampleData.downloadSample("MRHead")
+        ctx.log("Loading MRBrainTumor1 sample data")
+        self.volume_node = SampleData.downloadSample("MRBrainTumor1")
 
         if self.volume_node is None:
-            raise RuntimeError("Failed to load MRHead sample data")
+            raise RuntimeError("Failed to load MRBrainTumor1 sample data")
 
         ctx.log(f"Loaded volume: {self.volume_node.GetName()}")
 
@@ -70,8 +71,7 @@ class TestWorkflowBasic(TestCase):
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
         self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
 
-        # Take initial screenshot
-        ctx.screenshot("001_setup_complete", "After loading MRHead and creating segmentation")
+        ctx.screenshot("After loading MRBrainTumor1 and creating segmentation")
 
     def run(self, ctx: TestContext) -> None:
         """Activate Adaptive Brush and paint with each algorithm."""
@@ -85,38 +85,66 @@ class TestWorkflowBasic(TestCase):
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
         ctx.log("Activated Adaptive Brush effect")
-        ctx.screenshot("002_effect_activated", "Adaptive Brush effect activated")
 
         # Get the scripted effect
         scripted_effect = effect.self()
 
-        # Test each algorithm
-        algorithms = ["watershed", "connected_threshold", "region_growing"]
+        # Get the Red slice widget for painting
+        layoutManager = slicer.app.layoutManager()
+        redWidget = layoutManager.sliceWidget("Red")
+        redLogic = redWidget.sliceLogic()
 
-        for algo in algorithms:
-            ctx.log(f"Testing algorithm: {algo}")
+        # Paint location in RAS (near tumor in MRBrainTumor1)
+        paint_ras = [5.6, -29.5, 28.4]
 
-            # Set algorithm via instance variable and update UI
-            scripted_effect.algorithm = algo
-            scripted_effect._updateAlgorithmParamsVisibility()
+        # Navigate Red slice to this location
+        redLogic.SetSliceOffset(paint_ras[2])
+        slicer.app.processEvents()
+
+        ctx.screenshot("Adaptive Brush effect activated")
+
+        # Test watershed algorithm with actual painting
+        ctx.log("Testing algorithm: watershed")
+        scripted_effect.algorithm = "watershed"
+        scripted_effect._updateAlgorithmParamsVisibility()
+        slicer.app.processEvents()
+
+        ctx.screenshot("Options panel with watershed selected")
+
+        # Convert RAS to screen XY for the Red slice view
+        xy = self._rasToXy(paint_ras, redWidget)
+        if xy:
+            ctx.log(f"Painting at RAS {paint_ras} (screen XY {xy})")
+
+            with ctx.timing("paint_watershed"):
+                # Simulate brush stroke start
+                scripted_effect.scriptedEffect.saveStateForUndo()
+                scripted_effect.isDrawing = True
+                scripted_effect._currentStrokeEraseMode = False
+                scripted_effect.processPoint(xy, redWidget)
+                scripted_effect.isDrawing = False
+
             slicer.app.processEvents()
+            ctx.screenshot("After painting with watershed")
+        else:
+            ctx.log("Could not convert RAS to screen coordinates")
 
-            # Take screenshot of options panel
-            ctx.screenshot(
-                f"003_{algo}_panel",
-                f"Options panel with {algo} algorithm selected",
-            )
+        ctx.screenshot("Workflow test complete")
 
-            # Paint at a point in the brain (approximate center)
-            # IJK coordinates for brain tissue in MRHead
-            ijk = [128, 128, 90]
+    def _rasToXy(self, ras, sliceWidget):
+        """Convert RAS coordinates to screen XY for a slice widget."""
+        sliceLogic = sliceWidget.sliceLogic()
+        sliceNode = sliceLogic.GetSliceNode()
 
-            with ctx.timing(f"paint_{algo}"):
-                # Note: In a real test, we would simulate a mouse click
-                # For now, we just verify the effect is configured correctly
-                ctx.log(f"Would paint at IJK {ijk} with {algo}")
+        # Get RAS to XY matrix
+        rasToXy = vtk.vtkMatrix4x4()
+        sliceNode.GetXYToRAS().Invert(rasToXy)
 
-        ctx.screenshot("004_after_all_algorithms", "After testing all algorithms")
+        rasPoint = [ras[0], ras[1], ras[2], 1]
+        xyPoint = [0, 0, 0, 1]
+        rasToXy.MultiplyPoint(rasPoint, xyPoint)
+
+        return (int(xyPoint[0]), int(xyPoint[1]))
 
     def verify(self, ctx: TestContext) -> None:
         """Verify the workflow completed successfully."""
@@ -139,14 +167,25 @@ class TestWorkflowBasic(TestCase):
             "Segmentation node should exist",
         )
 
-        # Verify segment exists
+        # Verify segment exists and has voxels
         segmentation = self.segmentation_node.GetSegmentation()
-        ctx.assert_is_not_none(
-            segmentation.GetSegment(self.segment_id),
-            "Test segment should exist",
-        )
+        segment = segmentation.GetSegment(self.segment_id)
+        ctx.assert_is_not_none(segment, "Test segment should exist")
 
-        ctx.screenshot("005_verification_complete", "Verification complete")
+        # Check if segment has any voxels (painting worked)
+        import numpy as np
+
+        labelmap = slicer.util.arrayFromSegmentBinaryLabelmap(
+            self.segmentation_node, self.segment_id, self.volume_node
+        )
+        voxel_count = int(np.sum(labelmap > 0))
+        ctx.metric("segmented_voxels", voxel_count)
+        ctx.log(f"Segmented {voxel_count} voxels")
+
+        # We expect some segmentation if painting worked
+        ctx.assert_greater(voxel_count, 0, "Should have segmented some voxels")
+
+        ctx.screenshot("Verification complete")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""

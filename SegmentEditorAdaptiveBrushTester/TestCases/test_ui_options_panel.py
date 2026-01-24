@@ -67,7 +67,7 @@ class TestUIOptionsPanel(TestCase):
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
-        ctx.screenshot("001_ui_initial", "Initial UI state with Adaptive Brush active")
+        ctx.screenshot("Initial UI state with Adaptive Brush active")
 
     def run(self, ctx: TestContext) -> None:
         """Test UI state for each algorithm."""
@@ -95,10 +95,7 @@ class TestUIOptionsPanel(TestCase):
             slicer.app.processEvents()
 
             # Capture screenshot
-            ctx.screenshot(
-                f"002_{algo}_panel",
-                f"Options panel with {algo} selected",
-            )
+            ctx.screenshot(f"Options panel with {algo} selected")
 
         # Test Threshold Brush auto-methods
         ctx.log("Testing Threshold Brush auto-methods")
@@ -114,10 +111,7 @@ class TestUIOptionsPanel(TestCase):
             if idx >= 0:
                 scripted_effect.thresholdMethodCombo.setCurrentIndex(idx)
             slicer.app.processEvents()
-            ctx.screenshot(
-                f"003_threshold_{method_data}",
-                f"Threshold Brush with {method_display} method",
-            )
+            ctx.screenshot(f"Threshold Brush with {method_display} method")
 
     def verify(self, ctx: TestContext) -> None:
         """Verify UI state."""
@@ -142,7 +136,7 @@ class TestUIOptionsPanel(TestCase):
             "Algorithm should be set",
         )
 
-        ctx.screenshot("004_ui_verified", "UI verification complete")
+        ctx.screenshot("UI verification complete")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""

@@ -77,7 +77,7 @@ class TestAlgorithmWatershed(TestCase):
         scripted_effect._updateAlgorithmParamsVisibility()
         slicer.app.processEvents()
 
-        ctx.screenshot("001_watershed_setup", "Watershed algorithm ready")
+        ctx.screenshot("Watershed algorithm ready")
 
     def run(self, ctx: TestContext) -> None:
         """Test watershed with different edge sensitivity values."""
@@ -96,10 +96,7 @@ class TestAlgorithmWatershed(TestCase):
             scripted_effect.sensitivitySlider.value = int(sensitivity * 100)
             slicer.app.processEvents()
 
-            ctx.screenshot(
-                f"002_sensitivity_{int(sensitivity * 100)}",
-                f"Edge sensitivity set to {sensitivity}",
-            )
+            ctx.screenshot(f"Edge sensitivity set to {sensitivity}")
 
             # Record the parameter
             ctx.record_metric(f"edge_sensitivity_{int(sensitivity * 100)}", sensitivity)
@@ -111,13 +108,13 @@ class TestAlgorithmWatershed(TestCase):
         scripted_effect.sphereMode = True
         scripted_effect.sphereModeCheckbox.checked = True
         slicer.app.processEvents()
-        ctx.screenshot("003_3d_mode", "3D brush mode enabled")
+        ctx.screenshot("3D brush mode enabled")
 
         # Disable 3D mode
         scripted_effect.sphereMode = False
         scripted_effect.sphereModeCheckbox.checked = False
         slicer.app.processEvents()
-        ctx.screenshot("004_2d_mode", "2D brush mode enabled")
+        ctx.screenshot("2D brush mode enabled")
 
     def verify(self, ctx: TestContext) -> None:
         """Verify watershed algorithm configuration."""
@@ -152,7 +149,7 @@ class TestAlgorithmWatershed(TestCase):
             "Edge sensitivity should be <= 100",
         )
 
-        ctx.screenshot("005_watershed_verified", "Watershed algorithm verified")
+        ctx.screenshot("Watershed algorithm verified")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""
