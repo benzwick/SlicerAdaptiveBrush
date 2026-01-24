@@ -202,20 +202,9 @@ class TestRunFolder:
         Returns:
             Path to copied log file, or None if not found.
         """
-        # Find Slicer log based on platform
-        system = platform.system()
-        if system == "Linux":
-            slicer_log = Path.home() / ".config" / "Slicer" / "Slicer.log"
-        elif system == "Darwin":  # macOS
-            slicer_log = Path.home() / "Library" / "Application Support" / "Slicer" / "Slicer.log"
-        elif system == "Windows":
-            import os
+        import slicer
 
-            local_app_data = os.environ.get("LOCALAPPDATA", "")
-            slicer_log = Path(local_app_data) / "Slicer" / "Slicer.log"
-        else:
-            logger.warning(f"Unknown platform for Slicer log: {system}")
-            return None
+        slicer_log = Path(slicer.app.applicationLogFilePath())
 
         if not slicer_log.exists():
             logger.warning(f"Slicer log not found: {slicer_log}")

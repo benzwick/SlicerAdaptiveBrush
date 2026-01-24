@@ -96,8 +96,10 @@ class TestWorkflowBasic(TestCase):
         for algo in algorithms:
             ctx.log(f"Testing algorithm: {algo}")
 
-            # Set algorithm
-            scripted_effect.setParameter("Algorithm", algo)
+            # Set algorithm via instance variable and update UI
+            scripted_effect.algorithm = algo
+            scripted_effect._updateAlgorithmParamsVisibility()
+            slicer.app.processEvents()
 
             # Take screenshot of options panel
             ctx.screenshot(

@@ -87,8 +87,9 @@ class TestUIOptionsPanel(TestCase):
         for algo in algorithms:
             ctx.log(f"Testing UI for algorithm: {algo}")
 
-            # Switch algorithm
-            scripted_effect.setParameter("Algorithm", algo)
+            # Switch algorithm via instance variable
+            scripted_effect.algorithm = algo
+            scripted_effect._updateAlgorithmParamsVisibility()
 
             # Force UI update
             slicer.app.processEvents()
@@ -101,15 +102,21 @@ class TestUIOptionsPanel(TestCase):
 
         # Test Threshold Brush auto-methods
         ctx.log("Testing Threshold Brush auto-methods")
-        scripted_effect.setParameter("Algorithm", "threshold_brush")
+        scripted_effect.algorithm = "threshold_brush"
+        scripted_effect._updateAlgorithmParamsVisibility()
+        slicer.app.processEvents()
 
-        auto_methods = ["Otsu", "Huang", "Triangle", "Li"]
-        for method in auto_methods:
-            scripted_effect.setParameter("ThresholdMethod", method)
+        # Map method names to combo data values
+        method_map = {"Otsu": "otsu", "Huang": "huang", "Triangle": "triangle", "Li": "li"}
+        for method_display, method_data in method_map.items():
+            # Find and set the combo index
+            idx = scripted_effect.thresholdMethodCombo.findData(method_data)
+            if idx >= 0:
+                scripted_effect.thresholdMethodCombo.setCurrentIndex(idx)
             slicer.app.processEvents()
             ctx.screenshot(
-                f"003_threshold_{method.lower()}",
-                f"Threshold Brush with {method} method",
+                f"003_threshold_{method_data}",
+                f"Threshold Brush with {method_display} method",
             )
 
     def verify(self, ctx: TestContext) -> None:
@@ -129,11 +136,10 @@ class TestUIOptionsPanel(TestCase):
             "Scripted effect should be accessible",
         )
 
-        # Verify algorithm selector exists by checking parameter
-        algorithm = scripted_effect.parameter("Algorithm")
+        # Verify algorithm selector exists by checking instance variable
         ctx.assert_is_not_none(
-            algorithm,
-            "Algorithm parameter should exist",
+            scripted_effect.algorithm,
+            "Algorithm should be set",
         )
 
         ctx.screenshot("004_ui_verified", "UI verification complete")

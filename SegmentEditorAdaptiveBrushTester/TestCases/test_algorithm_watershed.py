@@ -73,7 +73,9 @@ class TestAlgorithmWatershed(TestCase):
 
         # Set to watershed algorithm
         scripted_effect = self.effect.self()
-        scripted_effect.setParameter("Algorithm", "watershed")
+        scripted_effect.algorithm = "watershed"
+        scripted_effect._updateAlgorithmParamsVisibility()
+        slicer.app.processEvents()
 
         ctx.screenshot("001_watershed_setup", "Watershed algorithm ready")
 
@@ -89,8 +91,10 @@ class TestAlgorithmWatershed(TestCase):
         for sensitivity in sensitivities:
             ctx.log(f"Testing edge sensitivity: {sensitivity}")
 
-            # Set sensitivity
-            scripted_effect.setParameter("EdgeSensitivity", str(sensitivity))
+            # Set sensitivity (0-1 range, slider uses 0-100)
+            scripted_effect.edgeSensitivity = int(sensitivity * 100)
+            scripted_effect.sensitivitySlider.value = int(sensitivity * 100)
+            slicer.app.processEvents()
 
             ctx.screenshot(
                 f"002_sensitivity_{int(sensitivity * 100)}",
@@ -104,11 +108,15 @@ class TestAlgorithmWatershed(TestCase):
         ctx.log("Testing 3D mode toggle")
 
         # Enable 3D mode
-        scripted_effect.setParameter("BrushMode", "3d")
+        scripted_effect.sphereMode = True
+        scripted_effect.sphereModeCheckbox.checked = True
+        slicer.app.processEvents()
         ctx.screenshot("003_3d_mode", "3D brush mode enabled")
 
         # Disable 3D mode
-        scripted_effect.setParameter("BrushMode", "2d")
+        scripted_effect.sphereMode = False
+        scripted_effect.sphereModeCheckbox.checked = False
+        slicer.app.processEvents()
         ctx.screenshot("004_2d_mode", "2D brush mode enabled")
 
     def verify(self, ctx: TestContext) -> None:
@@ -118,35 +126,31 @@ class TestAlgorithmWatershed(TestCase):
         scripted_effect = self.effect.self()
 
         # Verify algorithm is set to watershed
-        algorithm = scripted_effect.parameter("Algorithm")
         ctx.assert_equal(
-            algorithm,
+            scripted_effect.algorithm,
             "watershed",
             "Algorithm should be set to watershed",
         )
 
         # Verify edge sensitivity parameter exists
-        sensitivity = scripted_effect.parameter("EdgeSensitivity")
+        sensitivity = scripted_effect.edgeSensitivity
         ctx.assert_is_not_none(
             sensitivity,
             "Edge sensitivity parameter should exist",
         )
 
-        # Verify sensitivity is in valid range
-        try:
-            sensitivity_val = float(sensitivity)
-            ctx.assert_greater_equal(
-                sensitivity_val,
-                0.0,
-                "Edge sensitivity should be >= 0",
-            )
-            ctx.assert_less_equal(
-                sensitivity_val,
-                1.0,
-                "Edge sensitivity should be <= 1",
-            )
-        except (ValueError, TypeError):
-            ctx.assert_true(False, f"Edge sensitivity should be a number, got: {sensitivity}")
+        # Verify sensitivity is in valid range (0-100)
+        sensitivity_val = float(sensitivity)
+        ctx.assert_greater_equal(
+            sensitivity_val,
+            0.0,
+            "Edge sensitivity should be >= 0",
+        )
+        ctx.assert_less_equal(
+            sensitivity_val,
+            100.0,
+            "Edge sensitivity should be <= 100",
+        )
 
         ctx.screenshot("005_watershed_verified", "Watershed algorithm verified")
 
