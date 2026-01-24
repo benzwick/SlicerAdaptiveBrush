@@ -55,14 +55,17 @@ class TestAlgorithmWatershed(TestCase):
         # Add a segment
         self.segment_id = self.segmentation_node.GetSegmentation().AddEmptySegment("WatershedTest")
 
-        # Set up segment editor
-        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
-        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
-        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segment_editor_widget.setMRMLSegmentEditorNode(segment_editor_node)
+        # Switch to Segment Editor module to see GUI
+        slicer.util.selectModule("SegmentEditor")
+        slicer.app.processEvents()
+
+        # Use the actual module's segment editor widget
+        segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation().self()
+        self.segment_editor_widget = segment_editor_module.editor
         self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
         self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
+        slicer.app.processEvents()
 
         # Activate Adaptive Brush
         self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
@@ -71,13 +74,15 @@ class TestAlgorithmWatershed(TestCase):
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
-        # Set to watershed algorithm
+        # Select watershed algorithm using combo box
         scripted_effect = self.effect.self()
-        scripted_effect.algorithm = "watershed"
-        scripted_effect._updateAlgorithmParamsVisibility()
+        combo = scripted_effect.algorithmCombo
+        idx = combo.findData("watershed")
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
         slicer.app.processEvents()
 
-        ctx.screenshot("Watershed algorithm ready")
+        ctx.screenshot("[setup] MRHead loaded, watershed selected")
 
     def run(self, ctx: TestContext) -> None:
         """Test watershed with different edge sensitivity values."""
@@ -86,35 +91,32 @@ class TestAlgorithmWatershed(TestCase):
         scripted_effect = self.effect.self()
 
         # Test different edge sensitivity values
-        sensitivities = [0.3, 0.5, 0.7]
+        sensitivities = [30, 50, 70]
 
         for sensitivity in sensitivities:
             ctx.log(f"Testing edge sensitivity: {sensitivity}")
 
-            # Set sensitivity (0-1 range, slider uses 0-100)
-            scripted_effect.edgeSensitivity = int(sensitivity * 100)
-            scripted_effect.sensitivitySlider.value = int(sensitivity * 100)
+            # Set sensitivity using the slider (like a user would)
+            scripted_effect.sensitivitySlider.value = sensitivity
             slicer.app.processEvents()
 
-            ctx.screenshot(f"Edge sensitivity set to {sensitivity}")
+            ctx.screenshot(f"[sensitivity_{sensitivity}] Edge sensitivity set")
 
             # Record the parameter
-            ctx.record_metric(f"edge_sensitivity_{int(sensitivity * 100)}", sensitivity)
+            ctx.record_metric(f"edge_sensitivity_{sensitivity}", sensitivity)
 
         # Test 3D mode toggle
         ctx.log("Testing 3D mode toggle")
 
-        # Enable 3D mode
-        scripted_effect.sphereMode = True
+        # Enable 3D mode using checkbox
         scripted_effect.sphereModeCheckbox.checked = True
         slicer.app.processEvents()
-        ctx.screenshot("3D brush mode enabled")
+        ctx.screenshot("[3d_mode] 3D brush mode enabled")
 
         # Disable 3D mode
-        scripted_effect.sphereMode = False
         scripted_effect.sphereModeCheckbox.checked = False
         slicer.app.processEvents()
-        ctx.screenshot("2D brush mode enabled")
+        ctx.screenshot("[2d_mode] 2D brush mode enabled")
 
     def verify(self, ctx: TestContext) -> None:
         """Verify watershed algorithm configuration."""
@@ -149,7 +151,7 @@ class TestAlgorithmWatershed(TestCase):
             "Edge sensitivity should be <= 100",
         )
 
-        ctx.screenshot("Watershed algorithm verified")
+        ctx.screenshot("[verify] Watershed algorithm verified")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""

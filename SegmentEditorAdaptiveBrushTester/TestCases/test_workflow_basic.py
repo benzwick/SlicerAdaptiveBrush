@@ -61,17 +61,19 @@ class TestWorkflowBasic(TestCase):
 
         ctx.log(f"Created segmentation with segment: {self.segment_id}")
 
-        # Set up segment editor widget
-        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
-        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
+        # Switch to Segment Editor module to see GUI
+        slicer.util.selectModule("SegmentEditor")
+        slicer.app.processEvents()
 
-        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segment_editor_widget.setMRMLSegmentEditorNode(segment_editor_node)
+        # Use the actual module's segment editor widget (visible in GUI)
+        segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation().self()
+        self.segment_editor_widget = segment_editor_module.editor
         self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
         self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
+        slicer.app.processEvents()
 
-        ctx.screenshot("After loading MRBrainTumor1 and creating segmentation")
+        ctx.screenshot("[setup] MRBrainTumor1 loaded, segmentation created")
 
     def run(self, ctx: TestContext) -> None:
         """Activate Adaptive Brush and paint with each algorithm."""
@@ -101,23 +103,33 @@ class TestWorkflowBasic(TestCase):
         redLogic.SetSliceOffset(paint_ras[2])
         slicer.app.processEvents()
 
-        ctx.screenshot("Adaptive Brush effect activated")
-
-        # Test watershed algorithm with actual painting
-        ctx.log("Testing algorithm: watershed")
-        scripted_effect.algorithm = "watershed"
-        scripted_effect._updateAlgorithmParamsVisibility()
-        slicer.app.processEvents()
-
-        ctx.screenshot("Options panel with watershed selected")
+        ctx.screenshot("[brush] Adaptive Brush activated")
 
         # Convert RAS to screen XY for the Red slice view
         xy = self._rasToXy(paint_ras, redWidget)
-        if xy:
+        if not xy:
+            ctx.log("Could not convert RAS to screen coordinates")
+            return
+
+        # Test multiple algorithms
+        algorithms_to_test = ["watershed", "connected_threshold", "threshold_brush"]
+
+        for algo in algorithms_to_test:
+            ctx.log(f"\nTesting algorithm: {algo}")
+
+            # Select algorithm using the combo box (like a user would)
+            combo = scripted_effect.algorithmCombo
+            idx = combo.findData(algo)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
+            slicer.app.processEvents()
+
+            ctx.screenshot(f"[{algo}] Before painting")
+
             ctx.log(f"Painting at RAS {paint_ras} (screen XY {xy})")
 
-            with ctx.timing("paint_watershed"):
-                # Simulate brush stroke start
+            with ctx.timing(f"paint_{algo}"):
+                # Simulate brush stroke
                 scripted_effect.scriptedEffect.saveStateForUndo()
                 scripted_effect.isDrawing = True
                 scripted_effect._currentStrokeEraseMode = False
@@ -125,11 +137,9 @@ class TestWorkflowBasic(TestCase):
                 scripted_effect.isDrawing = False
 
             slicer.app.processEvents()
-            ctx.screenshot("After painting with watershed")
-        else:
-            ctx.log("Could not convert RAS to screen coordinates")
+            ctx.screenshot(f"[{algo}] After paint stroke")
 
-        ctx.screenshot("Workflow test complete")
+        ctx.screenshot("[complete] All algorithms tested")
 
     def _rasToXy(self, ras, sliceWidget):
         """Convert RAS coordinates to screen XY for a slice widget."""
@@ -186,7 +196,7 @@ class TestWorkflowBasic(TestCase):
         # We expect some segmentation if painting worked
         ctx.assert_greater(voxel_count, 0, "Should have segmented some voxels")
 
-        ctx.screenshot("Verification complete")
+        ctx.screenshot(f"[verify] {voxel_count:,} voxels segmented")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""

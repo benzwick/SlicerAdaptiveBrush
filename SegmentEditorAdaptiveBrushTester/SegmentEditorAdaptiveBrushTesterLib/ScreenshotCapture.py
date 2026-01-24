@@ -1,8 +1,8 @@
 """Screenshot capture utilities for Slicer views.
 
 Captures screenshots of slice views, 3D views, layouts, and widgets.
-Screenshots are organized into groups (subdirectories) with auto-incrementing numbers.
-Descriptions are stored in a manifest file.
+Screenshots can be organized into groups (subdirectories) or saved in flat mode
+with all screenshots in a single folder. Descriptions are stored in a manifest file.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class ScreenshotInfo:
 
 @dataclass
 class ScreenshotGroup:
-    """A group of screenshots (stored in a subdirectory)."""
+    """A group of screenshots (stored in a subdirectory or logically grouped)."""
 
     name: str
     path: Path
@@ -63,40 +63,46 @@ class ScreenshotGroup:
 
 
 class ScreenshotCapture:
-    """Capture screenshots organized into groups with auto-numbering.
+    """Capture screenshots with auto-numbering.
 
-    Screenshots are organized into subdirectories (groups). Each group
-    has its own auto-incrementing counter. Descriptions are stored in
-    a manifest.json file.
+    Can operate in two modes:
+    - Flat mode (default): All screenshots go in one folder with global numbering.
+      Group names are stored in manifest only, not as folders.
+    - Grouped mode: Screenshots organized into subdirectories per group.
 
-    Usage:
-        capture = ScreenshotCapture(base_folder=Path("./screenshots"))
+    Usage (flat mode):
+        capture = ScreenshotCapture(base_folder=Path("./screenshots"), flat_mode=True)
 
-        # Start a group for a test
+        # Set test name (for manifest organization)
         capture.set_group("workflow_basic")
 
-        # Take screenshots (auto-numbered)
-        info = capture.screenshot("Initial state")  # -> 001.png
-        info = capture.screenshot("After painting")  # -> 002.png
+        # Take screenshots (global auto-numbering)
+        info = capture.screenshot("[setup] Initial state")  # -> 001.png
+        info = capture.screenshot("[paint] After painting")  # -> 002.png
 
-        # Start a new manual test group
-        capture.new_group("manual_tumor_test")
-        info = capture.screenshot("Found tumor region")  # -> 001.png
+        # Change test
+        capture.set_group("algorithm_watershed")
+        info = capture.screenshot("[setup] Watershed ready")  # -> 003.png
 
         # Save manifest with all descriptions
         capture.save_manifest()
     """
 
-    def __init__(self, base_folder: Path | None = None) -> None:
+    def __init__(self, base_folder: Path | None = None, flat_mode: bool = True) -> None:
         """Initialize screenshot capture.
 
         Args:
-            base_folder: Base folder for screenshots. Groups are subdirectories.
+            base_folder: Base folder for screenshots.
+            flat_mode: If True (default), all screenshots go in base_folder with
+                global numbering. Group names are for manifest organization only.
+                If False, each group gets its own subdirectory.
         """
         self._base_folder = base_folder
+        self._flat_mode = flat_mode
         self._groups: dict[str, ScreenshotGroup] = {}
         self._current_group: ScreenshotGroup | None = None
         self._all_screenshots: list[ScreenshotInfo] = []
+        self._global_counter: int = 0  # For flat mode
 
     def set_base_folder(self, base_folder: Path) -> None:
         """Set the base folder for screenshots."""
@@ -106,8 +112,12 @@ class ScreenshotCapture:
     def set_group(self, name: str) -> ScreenshotGroup:
         """Set the current screenshot group (creates if needed).
 
+        In flat mode, the group name is for manifest organization only.
+        In grouped mode, creates a subdirectory.
+
         Args:
-            name: Group name (used as subdirectory name).
+            name: Group name (used as subdirectory name in grouped mode,
+                  or just for manifest organization in flat mode).
 
         Returns:
             The ScreenshotGroup object.
@@ -116,10 +126,15 @@ class ScreenshotCapture:
             raise RuntimeError("Base folder not set. Call set_base_folder first.")
 
         if name not in self._groups:
-            group_path = self._base_folder / name
-            group_path.mkdir(parents=True, exist_ok=True)
+            if self._flat_mode:
+                # In flat mode, all screenshots go in base folder
+                group_path = self._base_folder
+            else:
+                # In grouped mode, create subdirectory
+                group_path = self._base_folder / name
+                group_path.mkdir(parents=True, exist_ok=True)
             self._groups[name] = ScreenshotGroup(name=name, path=group_path)
-            logger.info(f"Created screenshot group: {name}")
+            logger.info(f"Set screenshot group: {name}")
 
         self._current_group = self._groups[name]
         return self._current_group
@@ -128,12 +143,11 @@ class ScreenshotCapture:
         """Create a new screenshot group and make it current.
 
         Args:
-            name: Group name (used as subdirectory name).
+            name: Group name.
 
         Returns:
             The new ScreenshotGroup object.
         """
-        # Force creation of new group even if name exists (add suffix)
         if self._base_folder is None:
             raise RuntimeError("Base folder not set. Call set_base_folder first.")
 
@@ -144,6 +158,11 @@ class ScreenshotCapture:
             counter += 1
 
         return self.set_group(name)
+
+    def _next_global_number(self) -> int:
+        """Get the next global screenshot number (for flat mode)."""
+        self._global_counter += 1
+        return self._global_counter
 
     @property
     def current_group(self) -> ScreenshotGroup | None:
@@ -173,7 +192,13 @@ class ScreenshotCapture:
         import slicer
 
         group = self._ensure_group()
-        number = group.next_number()
+
+        # Use global numbering in flat mode, per-group numbering otherwise
+        if self._flat_mode:
+            number = self._next_global_number()
+        else:
+            number = group.next_number()
+
         filename = f"{number:03d}.png"
         filepath = group.path / filename
 
@@ -196,7 +221,7 @@ class ScreenshotCapture:
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {group.name}/{filename}: {description}")
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
         return info
 
     def capture_slice_view(self, view: str, description: str = "") -> ScreenshotInfo:
@@ -212,7 +237,12 @@ class ScreenshotCapture:
         import slicer
 
         group = self._ensure_group()
-        number = group.next_number()
+
+        if self._flat_mode:
+            number = self._next_global_number()
+        else:
+            number = group.next_number()
+
         filename = f"{number:03d}_{view.lower()}.png"
         filepath = group.path / filename
 
@@ -240,7 +270,7 @@ class ScreenshotCapture:
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {group.name}/{filename}: {description}")
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
         return info
 
     def capture_3d_view(self, description: str = "", view_node_index: int = 0) -> ScreenshotInfo:
@@ -256,7 +286,12 @@ class ScreenshotCapture:
         import slicer
 
         group = self._ensure_group()
-        number = group.next_number()
+
+        if self._flat_mode:
+            number = self._next_global_number()
+        else:
+            number = group.next_number()
+
         filename = f"{number:03d}_3d.png"
         filepath = group.path / filename
 
@@ -283,7 +318,7 @@ class ScreenshotCapture:
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {group.name}/{filename}: {description}")
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
         return info
 
     def capture_widget(self, widget, description: str = "") -> ScreenshotInfo:
@@ -297,7 +332,12 @@ class ScreenshotCapture:
             ScreenshotInfo with path and metadata.
         """
         group = self._ensure_group()
-        number = group.next_number()
+
+        if self._flat_mode:
+            number = self._next_global_number()
+        else:
+            number = group.next_number()
+
         filename = f"{number:03d}_widget.png"
         filepath = group.path / filename
 
@@ -318,7 +358,7 @@ class ScreenshotCapture:
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {group.name}/{filename}: {description}")
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
         return info
 
     def _ensure_group(self) -> ScreenshotGroup:
@@ -332,6 +372,9 @@ class ScreenshotCapture:
     def save_manifest(self) -> Path:
         """Save manifest with all screenshot descriptions.
 
+        In flat mode, shows all screenshots in order with their test group.
+        In grouped mode, organizes by group subdirectory.
+
         Returns:
             Path to the manifest file.
         """
@@ -340,19 +383,37 @@ class ScreenshotCapture:
 
         manifest_path = self._base_folder / "manifest.json"
 
-        # Organize by group
-        groups_dict: dict[str, dict] = {}
-        for group_name, group in self._groups.items():
-            groups_dict[group_name] = {
-                "count": len(group.screenshots),
-                "screenshots": [s.to_dict() for s in group.screenshots],
+        if self._flat_mode:
+            # Flat mode: list all screenshots in order with group info
+            manifest = {
+                "generated": datetime.now().isoformat(),
+                "mode": "flat",
+                "total_screenshots": len(self._all_screenshots),
+                "screenshots": [s.to_dict() for s in self._all_screenshots],
+                # Also provide by-group view for reference
+                "by_test": {
+                    group_name: {
+                        "count": len(group.screenshots),
+                        "screenshot_numbers": [s.number for s in group.screenshots],
+                    }
+                    for group_name, group in self._groups.items()
+                },
             }
+        else:
+            # Grouped mode: organize by subdirectory
+            groups_dict: dict[str, dict] = {}
+            for group_name, group in self._groups.items():
+                groups_dict[group_name] = {
+                    "count": len(group.screenshots),
+                    "screenshots": [s.to_dict() for s in group.screenshots],
+                }
 
-        manifest = {
-            "generated": datetime.now().isoformat(),
-            "total_screenshots": len(self._all_screenshots),
-            "groups": groups_dict,
-        }
+            manifest = {
+                "generated": datetime.now().isoformat(),
+                "mode": "grouped",
+                "total_screenshots": len(self._all_screenshots),
+                "groups": groups_dict,
+            }
 
         with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)

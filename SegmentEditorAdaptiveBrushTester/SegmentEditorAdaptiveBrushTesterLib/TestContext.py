@@ -56,6 +56,7 @@ class TestContext:
         self._metrics_collector = metrics_collector
         self._assertions: list[Assertion] = []
         self._screenshots: list[str] = []
+        self._screenshot_context: dict = {}
 
     @property
     def output_folder(self) -> Path:
@@ -77,22 +78,32 @@ class TestContext:
         """Collected metrics for this test."""
         return self._metrics_collector.get_metrics()
 
-    def set_screenshot_group(self, *path_parts: str) -> None:
-        """Set the screenshot group (subfolder) for subsequent screenshots.
+    def set_screenshot_context(
+        self,
+        sample_data: str | None = None,
+        algorithm: str | None = None,
+        stage: str | None = None,
+    ) -> None:
+        """Set context metadata for subsequent screenshots.
 
-        Supports hierarchical paths for organizing screenshots by sample data,
-        algorithm, etc.
+        This metadata is stored in the manifest to document what each
+        screenshot shows, without creating nested folders.
 
         Usage:
-            ctx.set_screenshot_group("MRBrainTumor1", "connected_threshold")
-            ctx.screenshot("After 5 clicks")  # -> MRBrainTumor1/connected_threshold/001.png
+            ctx.set_screenshot_context(sample_data="MRBrainTumor1", algorithm="watershed")
+            ctx.screenshot("After 5 clicks")  # -> test_name/001.png with metadata
 
         Args:
-            *path_parts: Path components to join (e.g., "MRBrainTumor1", "watershed").
+            sample_data: Name of sample data being used.
+            algorithm: Name of algorithm being tested.
+            stage: Stage of the test (e.g., "setup", "before_paint", "after_paint").
         """
-        group_name = "/".join(path_parts)
-        self._screenshot_capture.set_group(group_name)
-        logger.debug(f"Screenshot group set to: {group_name}")
+        self._screenshot_context = {
+            "sample_data": sample_data,
+            "algorithm": algorithm,
+            "stage": stage,
+        }
+        logger.debug(f"Screenshot context: {self._screenshot_context}")
 
     def screenshot(self, description: str = "") -> ScreenshotInfo:
         """Capture a screenshot of the current Slicer state (auto-numbered).

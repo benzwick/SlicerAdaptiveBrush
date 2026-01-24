@@ -103,25 +103,25 @@ class TestOptimizationTumor(TestCase):
         self.segmentation_node.CreateDefaultDisplayNodes()
         self.segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(self.volume_node)
 
-        # Set up segment editor widget
-        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
-        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
+        # Switch to Segment Editor module to see GUI
+        slicer.util.selectModule("SegmentEditor")
+        slicer.app.processEvents()
 
-        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segment_editor_widget.setMRMLSegmentEditorNode(segment_editor_node)
+        # Use the actual module's segment editor widget (not a hidden one)
+        segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation().self()
+        self.segment_editor_widget = segment_editor_module.editor
         self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
+        slicer.app.processEvents()
 
-        # Activate Adaptive Brush
+        # Activate Adaptive Brush by clicking the effect button
         self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
         self.effect = self.segment_editor_widget.activeEffect()
 
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
-        # Screenshot in sample data folder
-        ctx.set_screenshot_group("MRBrainTumor1", "initial")
-        ctx.screenshot("Initial state - MRBrainTumor1 loaded")
+        ctx.screenshot("[setup] MRBrainTumor1 loaded, Adaptive Brush active")
 
     def run(self, ctx: TestContext) -> None:
         """Test each algorithm with multiple click points."""
@@ -129,15 +129,13 @@ class TestOptimizationTumor(TestCase):
 
         scripted_effect = self.effect.self()
 
-        # Set brush radius
+        # Set brush radius using the slider widget (like a user would)
         brush_radius = OPTIMIZATION_PARAMS["brush_radius_mm"]
-        scripted_effect.radiusMm = brush_radius
         scripted_effect.radiusSlider.value = brush_radius
         ctx.log(f"Brush radius set to {brush_radius}mm")
 
-        # Set edge sensitivity
+        # Set edge sensitivity using the slider widget
         edge_sensitivity = OPTIMIZATION_PARAMS["edge_sensitivity"]
-        scripted_effect.edgeSensitivity = edge_sensitivity
         scripted_effect.sensitivitySlider.value = edge_sensitivity
         ctx.log(f"Edge sensitivity set to {edge_sensitivity}")
 
@@ -148,9 +146,6 @@ class TestOptimizationTumor(TestCase):
 
         # Test each algorithm - clean slate for each
         for algo in ALGORITHMS:
-            # Set screenshot group for this algorithm
-            ctx.set_screenshot_group("MRBrainTumor1", algo)
-
             ctx.log(f"\n{'='*50}")
             ctx.log(f"Testing algorithm: {algo}")
             ctx.log(f"{'='*50}")
@@ -164,10 +159,14 @@ class TestOptimizationTumor(TestCase):
             segment_id = segmentation.AddEmptySegment(segment_name)
             self.segment_editor_widget.setCurrentSegmentID(segment_id)
 
-            # Set algorithm
-            scripted_effect.algorithm = algo
-            scripted_effect._updateAlgorithmParamsVisibility()
+            # Select algorithm using the combo box (like a user would)
+            combo = scripted_effect.algorithmCombo
+            idx = combo.findData(algo)
+            if idx >= 0:
+                combo.setCurrentIndex(idx)
             slicer.app.processEvents()
+
+            ctx.screenshot(f"[{algo}] Algorithm selected, ready to paint")
 
             # Paint all 5 points into the SAME segment (cumulative)
             total_time = 0.0
@@ -218,11 +217,9 @@ class TestOptimizationTumor(TestCase):
             ctx.metric(f"{algo}_total_time_ms", total_time * 1000)
 
             # Screenshot after all points for this algorithm
-            ctx.screenshot("5 cumulative clicks")
+            ctx.screenshot(f"[{algo}] Result: {voxel_count:,} voxels from 5 clicks")
 
-        # Final summary screenshot
-        ctx.set_screenshot_group("MRBrainTumor1", "summary")
-        ctx.screenshot("All algorithms tested")
+        ctx.screenshot("[summary] All algorithms tested")
 
     def _rasToXy(self, ras, sliceWidget):
         """Convert RAS coordinates to screen XY for a slice widget."""
@@ -296,8 +293,7 @@ class TestOptimizationTumor(TestCase):
         total_all = sum(r["total_voxels"] for r in self.results)
         ctx.assert_greater(total_all, 0, "Should have segmented some voxels")
 
-        ctx.set_screenshot_group("MRBrainTumor1", "summary")
-        ctx.screenshot("Optimization complete")
+        ctx.screenshot(f"[verify] Best: {best_algo} with {best_voxels:,} voxels")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up."""

@@ -51,23 +51,26 @@ class TestUIOptionsPanel(TestCase):
         self.segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(self.volume_node)
         self.segment_id = self.segmentation_node.GetSegmentation().AddEmptySegment("UITest")
 
-        # Set up segment editor
-        self.segment_editor_widget = slicer.qMRMLSegmentEditorWidget()
-        self.segment_editor_widget.setMRMLScene(slicer.mrmlScene)
-        segment_editor_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode")
-        self.segment_editor_widget.setMRMLSegmentEditorNode(segment_editor_node)
-        self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
-        self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
-        self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
+        # Switch to Segment Editor module so we can see the UI
+        slicer.util.selectModule("SegmentEditor")
+        slicer.app.processEvents()
+
+        # Now use the actual segment editor widget from the module
+        segment_editor_module_widget = slicer.modules.segmenteditor.widgetRepresentation().self()
+        segment_editor_module_widget.editor.setSegmentationNode(self.segmentation_node)
+        segment_editor_module_widget.editor.setSourceVolumeNode(self.volume_node)
+        segment_editor_module_widget.editor.setCurrentSegmentID(self.segment_id)
 
         # Activate Adaptive Brush
-        self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
-        self.effect = self.segment_editor_widget.activeEffect()
+        segment_editor_module_widget.editor.setActiveEffectByName("Adaptive Brush")
+        self.effect = segment_editor_module_widget.editor.activeEffect()
+        self.segment_editor_widget = segment_editor_module_widget.editor
 
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
 
-        ctx.screenshot("Initial UI state with Adaptive Brush active")
+        slicer.app.processEvents()
+        ctx.screenshot("[setup] MRHead loaded, Adaptive Brush active")
 
     def run(self, ctx: TestContext) -> None:
         """Test UI state for each algorithm."""
@@ -75,43 +78,58 @@ class TestUIOptionsPanel(TestCase):
 
         scripted_effect = self.effect.self()
 
-        # List of algorithms to test
+        # List of algorithms to test (use correct names)
         algorithms = [
             "watershed",
-            "level_set",
+            "level_set_cpu",
             "connected_threshold",
             "region_growing",
             "threshold_brush",
+            "geodesic_distance",
+            "random_walker",
         ]
 
         for algo in algorithms:
             ctx.log(f"Testing UI for algorithm: {algo}")
 
-            # Switch algorithm via instance variable
-            scripted_effect.algorithm = algo
-            scripted_effect._updateAlgorithmParamsVisibility()
+            # Use the combo box like a user would - find and select the algorithm
+            combo = scripted_effect.algorithmCombo
+            idx = combo.findData(algo)
+            if idx >= 0:
+                ctx.log(f"  Selecting '{combo.itemText(idx)}' (index {idx})")
+                combo.setCurrentIndex(idx)  # This triggers onAlgorithmChanged signal
+            else:
+                ctx.log(f"  WARNING: Algorithm '{algo}' not found in combo box")
+                continue
 
             # Force UI update
             slicer.app.processEvents()
 
-            # Capture screenshot
-            ctx.screenshot(f"Options panel with {algo} selected")
+            # Capture screenshot with algorithm name in description
+            ctx.screenshot(f"[{algo}] Options panel")
 
         # Test Threshold Brush auto-methods
         ctx.log("Testing Threshold Brush auto-methods")
-        scripted_effect.algorithm = "threshold_brush"
-        scripted_effect._updateAlgorithmParamsVisibility()
+
+        # First select threshold_brush using combo
+        combo = scripted_effect.algorithmCombo
+        idx = combo.findData("threshold_brush")
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
         slicer.app.processEvents()
 
         # Map method names to combo data values
         method_map = {"Otsu": "otsu", "Huang": "huang", "Triangle": "triangle", "Li": "li"}
         for method_display, method_data in method_map.items():
-            # Find and set the combo index
-            idx = scripted_effect.thresholdMethodCombo.findData(method_data)
+            ctx.log(f"  Selecting threshold method: {method_display}")
+
+            # Use the combo box like a user would
+            method_combo = scripted_effect.thresholdMethodCombo
+            idx = method_combo.findData(method_data)
             if idx >= 0:
-                scripted_effect.thresholdMethodCombo.setCurrentIndex(idx)
+                method_combo.setCurrentIndex(idx)  # Triggers signal
             slicer.app.processEvents()
-            ctx.screenshot(f"Threshold Brush with {method_display} method")
+            ctx.screenshot(f"[threshold_brush_{method_data}] {method_display} method")
 
     def verify(self, ctx: TestContext) -> None:
         """Verify UI state."""
@@ -136,7 +154,7 @@ class TestUIOptionsPanel(TestCase):
             "Algorithm should be set",
         )
 
-        ctx.screenshot("UI verification complete")
+        ctx.screenshot("[verify] UI verification complete")
 
     def teardown(self, ctx: TestContext) -> None:
         """Clean up after test."""
