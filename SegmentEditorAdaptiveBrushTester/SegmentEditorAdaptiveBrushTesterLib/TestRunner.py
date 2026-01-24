@@ -83,8 +83,8 @@ class TestRunner:
                          ./test_runs in the extension directory.
         """
         if output_base is None:
-            # Default to test_runs/ in the extension directory
-            output_base = Path(__file__).parent.parent.parent.parent / "test_runs"
+            # Default to test_runs/ in the project root (where .git is)
+            output_base = Path(__file__).parent.parent.parent / "test_runs"
         self._output_base = output_base
         self._screenshot_capture = ScreenshotCapture()
         logger.info(f"TestRunner initialized with output base: {output_base}")
