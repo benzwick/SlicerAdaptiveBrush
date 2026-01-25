@@ -905,8 +905,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
     def setupOptionsFrame(self):
         """Create the effect options UI."""
         # ----- Brush Settings -----
-        brushCollapsible = ctk.ctkCollapsibleButton()
-        brushCollapsible.text = _("Brush Settings")
+        self.brushCollapsible = ctk.ctkCollapsibleButton()
+        self.brushCollapsible.text = _("Brush Settings")
+        brushCollapsible = self.brushCollapsible  # Local alias for compatibility
         self.scriptedEffect.addOptionsWidget(brushCollapsible)
         brushLayout = qt.QFormLayout(brushCollapsible)
 
@@ -1418,10 +1419,11 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.randomWalkerParamsGroup.setVisible(False)
 
         # ----- Sampling & Post-processing -----
-        samplingCollapsible = ctk.ctkCollapsibleButton()
-        samplingCollapsible.text = _("Sampling & Post-processing")
-        samplingCollapsible.collapsed = True
-        self.scriptedEffect.addOptionsWidget(samplingCollapsible)
+        self.samplingCollapsible = ctk.ctkCollapsibleButton()
+        self.samplingCollapsible.text = _("Sampling & Post-processing")
+        self.samplingCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(self.samplingCollapsible)
+        samplingCollapsible = self.samplingCollapsible  # Local alias for compatibility
         samplingLayout = qt.QFormLayout(samplingCollapsible)
 
         # --- Sampling Parameters ---
@@ -1574,10 +1576,11 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         samplingLayout.addRow(self.cachingCheckbox)
 
         # ----- Display Settings -----
-        displayCollapsible = ctk.ctkCollapsibleButton()
-        displayCollapsible.text = _("Display Settings")
-        displayCollapsible.collapsed = True
-        self.scriptedEffect.addOptionsWidget(displayCollapsible)
+        self.displayCollapsible = ctk.ctkCollapsibleButton()
+        self.displayCollapsible.text = _("Display Settings")
+        self.displayCollapsible.collapsed = True
+        self.scriptedEffect.addOptionsWidget(self.displayCollapsible)
+        displayCollapsible = self.displayCollapsible  # Local alias for compatibility
         displayLayout = qt.QFormLayout(displayCollapsible)
 
         # Crosshair enable checkbox

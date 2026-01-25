@@ -481,8 +481,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             action_recipe.save(json_path)
 
             slicer.util.infoDisplay(
-                f"Converted recipe saved to:\n{json_path}\n"
-                f"({len(action_recipe)} actions recorded)"
+                f"Converted recipe saved to:\n{json_path}\n({len(action_recipe)} actions recorded)"
             )
 
             # Refresh recipe list

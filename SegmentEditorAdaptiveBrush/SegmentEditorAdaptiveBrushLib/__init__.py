@@ -19,5 +19,6 @@ __all__ = [
     "ParameterRecommender",
     "WizardSampler",
     "WizardUI",
+    "EmbeddedWizardUI",
     "ParameterWizard",
 ]

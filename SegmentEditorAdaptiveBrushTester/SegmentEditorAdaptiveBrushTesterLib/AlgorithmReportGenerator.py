@@ -89,8 +89,7 @@ Algorithms analyzed: {len(self.comparison.profiles)}
 
         if fastest:
             lines.append(
-                f"**Fastest:** {fastest.display_name} "
-                f"(~{fastest.performance.mean_time_ms:.0f}ms)"
+                f"**Fastest:** {fastest.display_name} (~{fastest.performance.mean_time_ms:.0f}ms)"
             )
 
         if self.comparison.recommended_default:

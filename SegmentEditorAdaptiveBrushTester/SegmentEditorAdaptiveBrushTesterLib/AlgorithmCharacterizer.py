@@ -531,9 +531,7 @@ class AlgorithmCharacterizer:
 
         # Fastest
         fastest = min(profiles, key=lambda p: p.performance.mean_time_ms)
-        notes.append(
-            f"Fastest: {fastest.display_name} " f"(~{fastest.performance.mean_time_ms:.0f}ms)"
-        )
+        notes.append(f"Fastest: {fastest.display_name} (~{fastest.performance.mean_time_ms:.0f}ms)")
 
         return " | ".join(notes)
 

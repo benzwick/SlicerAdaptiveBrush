@@ -166,9 +166,9 @@ class TestOptimizationTumor(TestCase):
 
         # Test each algorithm - clean slate for each
         for algo in ALGORITHMS:
-            ctx.log(f"\n{'='*50}")
+            ctx.log(f"\n{'=' * 50}")
             ctx.log(f"Testing algorithm: {algo}")
-            ctx.log(f"{'='*50}")
+            ctx.log(f"{'=' * 50}")
 
             # Remove all existing segments for clean comparison
             segmentation = self.segmentation_node.GetSegmentation()
@@ -216,7 +216,7 @@ class TestOptimizationTumor(TestCase):
                 # Convert RAS to XY
                 xy = self._rasToXy(ras, self.redWidget)
                 if xy is None:
-                    ctx.log(f"  Point {i+1}: Could not convert RAS {ras}")
+                    ctx.log(f"  Point {i + 1}: Could not convert RAS {ras}")
                     continue
 
                 # Show brush at this location before painting
@@ -224,7 +224,7 @@ class TestOptimizationTumor(TestCase):
                 self.redWidget.sliceView().forceRender()
                 slicer.app.processEvents()
 
-                ctx.log(f"  Point {i+1}: Painting at RAS {ras}")
+                ctx.log(f"  Point {i + 1}: Painting at RAS {ras}")
 
                 # Paint (cumulative into same segment)
                 start = time.time()
@@ -245,11 +245,13 @@ class TestOptimizationTumor(TestCase):
 
                 # Count voxels so far and capture result
                 voxels_so_far = self._count_segment_voxels(segment_id)
-                ctx.screenshot(f"[{algo}_click{i+1}] Click {i+1}: {voxels_so_far:,} voxels total")
+                ctx.screenshot(
+                    f"[{algo}_click{i + 1}] Click {i + 1}: {voxels_so_far:,} voxels total"
+                )
 
             # Count total voxels after all 5 points
             voxel_count = self._count_segment_voxels(segment_id)
-            ctx.log(f"  TOTAL for {algo}: {voxel_count} voxels in {total_time*1000:.0f}ms")
+            ctx.log(f"  TOTAL for {algo}: {voxel_count} voxels in {total_time * 1000:.0f}ms")
 
             # Record result
             self.results.append(
@@ -336,7 +338,7 @@ class TestOptimizationTumor(TestCase):
             ctx.log(f"{algo}:")
             ctx.log(f"  Voxels: {voxels:,}")
             ctx.log(f"  Time: {time_ms:.0f}ms")
-            ctx.log(f"  Voxels/ms: {voxels/time_ms:.1f}" if time_ms > 0 else "  Voxels/ms: N/A")
+            ctx.log(f"  Voxels/ms: {voxels / time_ms:.1f}" if time_ms > 0 else "  Voxels/ms: N/A")
 
             if voxels > best_voxels:
                 best_voxels = voxels

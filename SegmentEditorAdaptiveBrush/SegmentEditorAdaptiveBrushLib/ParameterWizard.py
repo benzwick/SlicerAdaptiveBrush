@@ -5,16 +5,14 @@ analysis, and recommendation components.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 import numpy as np
+from EmbeddedWizardUI import EmbeddedWizardPanel
 from ParameterRecommender import ParameterRecommender
 from WizardAnalyzer import WizardAnalyzer
 from WizardDataStructures import WizardRecommendation, WizardSamples
 from WizardSampler import WizardSampler
-
-if TYPE_CHECKING:
-    from WizardUI import WizardPanel
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +21,7 @@ class ParameterWizard:
     """Coordinates the Quick Select Parameters wizard workflow.
 
     This class manages the interaction between:
-    - The wizard UI (WizardPanel)
+    - The embedded wizard UI (EmbeddedWizardPanel)
     - Interactive sampling (WizardSampler)
     - Analysis (WizardAnalyzer)
     - Recommendations (ParameterRecommender)
@@ -40,25 +38,23 @@ class ParameterWizard:
         self.analyzer = WizardAnalyzer()
         self.recommender = ParameterRecommender()
 
-        self._wizard_panel: Optional[WizardPanel] = None
+        self._embedded_panel: Optional[EmbeddedWizardPanel] = None
         self._fg_sampler: Optional[WizardSampler] = None
         self._bg_sampler: Optional[WizardSampler] = None
         self._boundary_sampler: Optional[WizardSampler] = None
         self._current_sampler: Optional[WizardSampler] = None
-        self._current_page = 0
+        self._hidden_widgets: list = []
 
     def start(self) -> None:
-        """Launch the wizard dialog."""
+        """Launch the wizard by embedding it in the options frame."""
         try:
-            import slicer
-            from WizardUI import WizardPanel
-
             # Get source volume
             volume_node = self._get_source_volume()
             if not volume_node:
                 self._show_error("No source volume found. Please select a volume first.")
                 return
 
+            self.samples = WizardSamples()
             self.samples.volume_node = volume_node
 
             # Set wizard active flag to prevent main effect from handling events
@@ -70,26 +66,64 @@ class ParameterWizard:
             self._bg_sampler = WizardSampler(volume_node, self._on_background_sampled)
             self._boundary_sampler = WizardSampler(volume_node, self._on_boundary_traced)
 
-            # Create wizard panel with Slicer main window as parent for proper window management
-            main_window = slicer.util.mainWindow()
-            self._wizard_panel = WizardPanel(parent=main_window)
-            self._wizard_panel.setWindowFlags(
-                self._wizard_panel.windowFlags() | 0x00000008  # Qt.WindowStaysOnTopHint
+            # Hide the normal effect controls
+            self._hide_normal_controls()
+
+            # Create and show embedded wizard panel
+            self._embedded_panel = EmbeddedWizardPanel(
+                on_page_changed=self._on_page_changed,
+                on_finished=self._on_wizard_finished,
             )
-            self._connect_wizard_signals()
-            self._wizard_panel.show()
-            self._wizard_panel.raise_()  # Bring to front
-            self._wizard_panel.activateWindow()  # Give focus
+            wizard_widget = self._embedded_panel.build_ui()
+
+            if wizard_widget:
+                # Add wizard panel to the options frame
+                self.effect.scriptedEffect.addOptionsWidget(wizard_widget)
+                logger.info("Wizard panel embedded in options frame")
 
             # Start foreground sampling
             self._activate_foreground_sampling()
 
-            logger.info("Wizard panel displayed")
-
         except Exception as e:
             logger.exception("Failed to start wizard")
-            self.effect._wizardActive = False
+            self._cleanup()
             self._show_error(f"Failed to start wizard: {e}")
+
+    def _hide_normal_controls(self) -> None:
+        """Hide the normal effect controls while wizard is active."""
+        try:
+            # Get all child widgets of the options frame and hide them
+            # We'll store references to restore them later
+            self._hidden_widgets = []
+
+            # Hide collapsible sections by storing their visibility
+            widgets_to_hide = [
+                getattr(self.effect, "brushCollapsible", None),
+                getattr(self.effect, "algorithmParamsCollapsible", None),
+                getattr(self.effect, "samplingCollapsible", None),
+                getattr(self.effect, "displayCollapsible", None),
+            ]
+
+            for widget in widgets_to_hide:
+                if widget is not None:
+                    self._hidden_widgets.append((widget, widget.visible))
+                    widget.hide()
+
+            logger.debug(f"Hidden {len(self._hidden_widgets)} control sections")
+
+        except Exception as e:
+            logger.warning(f"Error hiding normal controls: {e}")
+
+    def _restore_normal_controls(self) -> None:
+        """Restore the normal effect controls."""
+        try:
+            for widget, was_visible in self._hidden_widgets:
+                if was_visible:
+                    widget.show()
+            self._hidden_widgets = []
+            logger.debug("Restored normal controls")
+        except Exception as e:
+            logger.warning(f"Error restoring controls: {e}")
 
     def _get_source_volume(self) -> Any:
         """Get the source volume node from the effect."""
@@ -101,37 +135,24 @@ class ParameterWizard:
             logger.warning(f"Failed to get source volume: {e}")
         return None
 
-    def _connect_wizard_signals(self) -> None:
-        """Connect wizard panel signals."""
-        if not self._wizard_panel:
-            return
-
-        try:
-            self._wizard_panel.currentIdChanged.connect(self._on_page_changed)
-            self._wizard_panel.finished.connect(self._on_wizard_finished)
-        except Exception as e:
-            logger.warning(f"Failed to connect wizard signals: {e}")
-
     def _on_page_changed(self, page_id: int) -> None:
         """Handle wizard page changes."""
-        self._current_page = page_id
-
         # Deactivate current sampler
         if self._current_sampler:
             self._current_sampler.deactivate()
             self._current_sampler = None
 
         # Activate appropriate sampler based on page
-        if page_id == 0:
+        if page_id == EmbeddedWizardPanel.STEP_FOREGROUND:
             self._activate_foreground_sampling()
-        elif page_id == 1:
+        elif page_id == EmbeddedWizardPanel.STEP_BACKGROUND:
             self._activate_background_sampling()
-        elif page_id == 2:
+        elif page_id == EmbeddedWizardPanel.STEP_BOUNDARY:
             self._activate_boundary_sampling()
-        elif page_id == 3:
+        elif page_id == EmbeddedWizardPanel.STEP_QUESTIONS:
             # Questions page - no sampling
             pass
-        elif page_id == 4:
+        elif page_id == EmbeddedWizardPanel.STEP_RESULTS:
             # Results page - generate recommendation
             self._generate_and_display_recommendation()
 
@@ -207,9 +228,9 @@ class ParameterWizard:
             )
 
         # Update UI
-        if self._wizard_panel:
-            self._wizard_panel.foreground_page.update_sample_count(
-                len(self.samples.foreground_points)
+        if self._embedded_panel:
+            self._embedded_panel.update_sample_count(
+                "foreground", len(self.samples.foreground_points)
             )
 
         logger.debug(f"Foreground samples: {len(self.samples.foreground_points)}")
@@ -233,9 +254,9 @@ class ParameterWizard:
                 [self.samples.background_intensities, intensities]
             )
 
-        if self._wizard_panel:
-            self._wizard_panel.background_page.update_sample_count(
-                len(self.samples.background_points)
+        if self._embedded_panel:
+            self._embedded_panel.update_sample_count(
+                "background", len(self.samples.background_points)
             )
 
         logger.debug(f"Background samples: {len(self.samples.background_points)}")
@@ -252,23 +273,14 @@ class ParameterWizard:
         """
         self.samples.boundary_points.extend(points)
 
-        if self._wizard_panel:
-            self._wizard_panel.boundary_page.update_sample_count(len(self.samples.boundary_points))
+        if self._embedded_panel:
+            self._embedded_panel.update_sample_count("boundary", len(self.samples.boundary_points))
 
         logger.debug(f"Boundary points: {len(self.samples.boundary_points)}")
 
     def _on_boundary_traced(self, points: list, intensities: np.ndarray) -> None:
         """Internal callback wrapper (ignores intensities for boundary)."""
         self.on_boundary_traced(points)
-
-    def on_questions_answered(self, answers: dict) -> None:
-        """Called when user answers modality/structure questions.
-
-        Args:
-            answers: Dictionary with 'modality', 'structure_type', 'priority'.
-        """
-        # Answers are retrieved from the questions page when generating recommendation
-        pass
 
     def generate_recommendation(self) -> WizardRecommendation:
         """Generate final recommendation from all inputs.
@@ -285,8 +297,8 @@ class ParameterWizard:
 
         # Get user answers
         answers = {}
-        if self._wizard_panel:
-            answers = self._wizard_panel.get_questions_answers()
+        if self._embedded_panel:
+            answers = self._embedded_panel.get_answers()
 
         # Generate recommendation
         recommendation = self.recommender.recommend(
@@ -304,8 +316,13 @@ class ParameterWizard:
         try:
             recommendation = self.generate_recommendation()
 
-            if self._wizard_panel:
-                self._wizard_panel.set_recommendation(recommendation)
+            if self._embedded_panel:
+                self._embedded_panel.set_recommendation(recommendation)
+
+            logger.info(
+                f"Generated recommendation: algorithm={recommendation.algorithm}, "
+                f"confidence={recommendation.confidence:.2f}"
+            )
 
         except Exception as e:
             logger.exception("Failed to generate recommendation")
@@ -355,15 +372,26 @@ class ParameterWizard:
             logger.exception("Failed to apply recommendation")
             self._show_error(f"Failed to apply parameters: {e}")
 
-    def _on_wizard_finished(self, result: int) -> None:
-        """Handle wizard dialog finished.
+    def _on_wizard_finished(self, accepted: bool) -> None:
+        """Handle wizard completion.
 
         Args:
-            result: Dialog result (1 = accepted, 0 = rejected).
+            accepted: True if user clicked Apply, False if cancelled.
         """
-        logger.info(f"Wizard finished with result: {result}")
+        logger.info(f"Wizard finished: accepted={accepted}")
 
-        # Clean up samplers
+        # Apply recommendation if accepted
+        if accepted and self._embedded_panel:
+            recommendation = self._embedded_panel.get_recommendation()
+            if recommendation:
+                self.apply_recommendation(recommendation)
+
+        # Clean up
+        self._cleanup()
+
+    def _cleanup(self) -> None:
+        """Clean up wizard state and restore normal controls."""
+        # Deactivate samplers
         if self._fg_sampler:
             self._fg_sampler.deactivate()
         if self._bg_sampler:
@@ -373,16 +401,15 @@ class ParameterWizard:
 
         self._current_sampler = None
 
-        # Apply if accepted
-        if result == 1 and self._wizard_panel is not None:  # QDialog.Accepted
-            try:
-                recommendation = self._wizard_panel.results_page.get_recommendation()
-                if recommendation:
-                    self.apply_recommendation(recommendation)
-            except Exception:
-                logger.exception("Failed to apply wizard results")
+        # Hide and delete wizard panel
+        if self._embedded_panel:
+            self._embedded_panel.hide()
+            if self._embedded_panel.container:
+                self._embedded_panel.container.deleteLater()
+            self._embedded_panel = None
 
-        self._wizard_panel = None
+        # Restore normal controls
+        self._restore_normal_controls()
 
         # Re-enable main effect event handling
         self.effect._wizardActive = False
