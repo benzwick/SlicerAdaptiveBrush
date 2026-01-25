@@ -24,7 +24,7 @@ The project needs a systematic way to:
 
 ### Previous Approach
 
-The existing `ParameterOptimizer` class (from ADR-010 Phase 2) provides basic random search and grid search. It lacks:
+A basic random/grid search approach was considered but lacks:
 
 - Smart sampling that learns from previous trials
 - Early stopping/pruning of bad trials
@@ -54,8 +54,7 @@ Optuna wins for: easiest API, best visualization, FAnova importance, HyperbandPr
 SegmentEditorAdaptiveBrushTester/
 ├── SegmentEditorAdaptiveBrushTesterLib/
 │   ├── OptunaOptimizer.py       # Optuna integration
-│   ├── OptimizationConfig.py    # YAML config loader
-│   └── ParameterOptimizer.py    # EXISTING (backward compat)
+│   └── OptimizationConfig.py    # YAML config loader
 ├── configs/                      # Optimization configs
 │   ├── default.yaml
 │   ├── tumor_optimization.yaml
@@ -268,10 +267,6 @@ dev = [
     "pyyaml>=6.0",
 ]
 ```
-
-### Backward Compatibility
-
-The existing `ParameterOptimizer` class remains for simple use cases. `OptunaOptimizer` is recommended for serious optimization.
 
 ### Visualization
 

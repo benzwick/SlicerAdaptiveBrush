@@ -227,15 +227,14 @@ SegmentEditorAdaptiveBrushTester/
 │   ├── ... (Phase 1 files)
 │   ├── SegmentationMetrics.py       # Dice, Hausdorff computation
 │   ├── GoldStandardManager.py       # Save/load gold standards
-│   ├── ParameterOptimizer.py        # Optuna-style optimization
-│   └── LabNotebook.py               # Document findings
+│   └── OptunaOptimizer.py           # Smart parameter optimization (see ADR-011)
 ├── GoldStandards/                    # Git-tracked gold files
 │   ├── README.md
 │   └── <name>/
 │       ├── gold.seg.nrrd
 │       ├── metadata.json
 │       └── reference_screenshots/
-├── LabNotebooks/                     # Git-tracked findings
+├── LabNotebooks/                     # Documentation from optimization
 │   └── *.md
 └── TestCases/
     └── test_regression_gold.py       # Gold standard comparison
@@ -304,35 +303,30 @@ gold_seg, metadata = manager.load_gold("MRBrainTumor1_tumor")
 
 ### Parameter Optimization
 
-`ParameterOptimizer` supports systematic parameter tuning:
+Parameter optimization is now handled by `OptunaOptimizer` (see ADR-011 for details):
 
 ```python
-from SegmentEditorAdaptiveBrushTesterLib import ParameterOptimizer
+from SegmentEditorAdaptiveBrushTesterLib import OptunaOptimizer, OptimizationConfig
 
-optimizer = ParameterOptimizer("watershed", "MRBrainTumor1_tumor")
+config = OptimizationConfig.load("configs/tumor_optimization.yaml")
+optimizer = OptunaOptimizer(config, output_dir)
+results = optimizer.optimize()
 
-for trial_num in range(20):
-    params = optimizer.suggest_params()
-    # Run trial with params...
-    optimizer.record_trial(params, dice, hd95, strokes, duration, voxels)
-
-best = optimizer.get_best_params()
-optimizer.save_results("optimization_results.json")
+print(f"Best Dice: {results.best_trial.value:.3f}")
+print(f"Best params: {results.best_trial.params}")
 ```
+
+Key features:
+- TPE (Tree-structured Parzen Estimator) for smart parameter suggestion
+- HyperbandPruner for early stopping of poor trials
+- FAnova for parameter importance analysis
+- SQLite persistence for study resumption
 
 ### Lab Notebooks
 
-`LabNotebook` documents optimization findings:
-
-```python
-from SegmentEditorAdaptiveBrushTesterLib import LabNotebook
-
-notebook = LabNotebook("Watershed Optimization")
-notebook.add_section("Setup", "Testing on MRBrainTumor1...")
-notebook.add_metrics_table(metrics, ["trial", "dice", "hausdorff_95"])
-notebook.add_conclusion("Optimal edge sensitivity is 40")
-notebook.save()
-```
+The `LabNotebooks/` folder stores documentation from optimization runs.
+These are generated manually or by optimization scripts to document
+findings, parameter choices, and recommendations.
 
 ### Enhanced Debug Logging
 
