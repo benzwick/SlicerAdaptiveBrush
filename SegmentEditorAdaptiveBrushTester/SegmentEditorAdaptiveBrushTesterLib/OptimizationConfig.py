@@ -13,9 +13,42 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    YAML_AVAILABLE = True
+except ImportError:
+    YAML_AVAILABLE = False
+    yaml = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_yaml() -> bool:
+    """Ensure PyYAML is available, installing if needed.
+
+    Returns:
+        True if yaml is available, False if installation failed.
+    """
+    global YAML_AVAILABLE, yaml
+
+    if YAML_AVAILABLE:
+        return True
+
+    try:
+        import slicer
+
+        logger.info("Installing PyYAML...")
+        slicer.util.pip_install("pyyaml")
+        import yaml as _yaml
+
+        yaml = _yaml
+        YAML_AVAILABLE = True
+        logger.info("PyYAML installed successfully")
+        return True
+    except Exception as e:
+        logger.warning(f"Could not install PyYAML: {e}")
+        return False
 
 
 @dataclass
@@ -143,7 +176,13 @@ class OptimizationConfig:
         Raises:
             FileNotFoundError: If config file doesn't exist.
             ValueError: If config is invalid.
+            ImportError: If PyYAML is not installed.
         """
+        if not _ensure_yaml():
+            raise ImportError(
+                "PyYAML is required for loading config files. Install with: pip install pyyaml"
+            )
+
         config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -328,7 +367,15 @@ class OptimizationConfig:
 
         Args:
             output_path: Path where to save config.
+
+        Raises:
+            ImportError: If PyYAML is not installed.
         """
+        if not _ensure_yaml():
+            raise ImportError(
+                "PyYAML is required for saving config files. Install with: pip install pyyaml"
+            )
+
         output_path = Path(output_path)
         with open(output_path, "w") as f:
             yaml.dump(self.to_dict(), f, default_flow_style=False, sort_keys=False)
