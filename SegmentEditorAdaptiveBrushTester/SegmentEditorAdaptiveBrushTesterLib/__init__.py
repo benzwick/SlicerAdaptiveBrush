@@ -4,10 +4,37 @@ This package provides the testing framework for SlicerAdaptiveBrush.
 """
 
 from .ActionRecorder import ActionRecorder
+from .AlgorithmCharacterizer import AlgorithmCharacterizer
+from .AlgorithmProfile import (
+    ALGORITHM_DISPLAY_NAMES,
+    AlgorithmComparison,
+    AlgorithmProfile,
+    ExampleScreenshot,
+    OptimalPreset,
+    PerformanceMetrics,
+    get_display_name,
+)
+from .AlgorithmReportGenerator import AlgorithmReportGenerator, generate_algorithm_report
 from .GoldStandardManager import GoldStandardManager
 from .LabNotebook import LabNotebook
 from .MetricsCollector import MetricsCollector, TimingContext
+from .OptimizationConfig import OptimizationConfig, ParameterSpec, RecipeSpec, create_default_config
+from .OptunaOptimizer import (
+    OPTUNA_AVAILABLE,
+    OptimizationResults,
+    OptunaOptimizer,
+    OptunaTrialResult,
+)
 from .ParameterOptimizer import OptimizationTrial, ParameterOptimizer, ParameterSpace
+from .Recipe import Action, Recipe
+from .RecipeRecorder import (
+    RecipeRecorder,
+    get_global_recorder,
+    is_recording,
+    start_recording,
+    stop_recording,
+)
+from .RecipeRunner import ActionResult, RecipeResult, RecipeRunner
 from .ReportGenerator import ReportGenerator
 from .ScreenshotCapture import ScreenshotCapture, ScreenshotInfo
 from .SegmentationMetrics import MetricsResult, SegmentationMetrics, StrokeMetricsTracker
@@ -46,4 +73,35 @@ __all__ = [
     "OptimizationTrial",
     # Lab notebooks (Phase 2)
     "LabNotebook",
+    # Recipes (v0.13.0)
+    "Action",
+    "Recipe",
+    "RecipeRunner",
+    "RecipeResult",
+    "ActionResult",
+    "RecipeRecorder",
+    "get_global_recorder",
+    "start_recording",
+    "stop_recording",
+    "is_recording",
+    # Optuna optimization (v0.13.0)
+    "OptimizationConfig",
+    "ParameterSpec",
+    "RecipeSpec",
+    "create_default_config",
+    "OptunaOptimizer",
+    "OptunaTrialResult",
+    "OptimizationResults",
+    "OPTUNA_AVAILABLE",
+    # Algorithm characterization (v0.13.0)
+    "AlgorithmProfile",
+    "AlgorithmComparison",
+    "AlgorithmCharacterizer",
+    "AlgorithmReportGenerator",
+    "PerformanceMetrics",
+    "OptimalPreset",
+    "ExampleScreenshot",
+    "ALGORITHM_DISPLAY_NAMES",
+    "get_display_name",
+    "generate_algorithm_report",
 ]

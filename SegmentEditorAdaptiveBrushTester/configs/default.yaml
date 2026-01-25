@@ -1,0 +1,90 @@
+# Default Optimization Configuration
+# ==================================
+# General-purpose configuration for algorithm parameter optimization.
+# Use this as a starting point for custom configurations.
+
+version: "1.0"
+name: "Default Optimization"
+description: "General-purpose parameter optimization configuration"
+
+settings:
+  n_trials: 50
+  timeout_minutes: null  # No timeout
+  pruning: true
+  pruner: "hyperband"      # hyperband, median, none
+  sampler: "tpe"           # tpe, random, cmaes
+  primary_metric: "dice"   # dice, hausdorff_95
+  save_segmentations: true
+  save_screenshots: true
+
+# Recipe to optimize
+recipes:
+  - path: "recipes/brain_tumor_1.py"
+    gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
+
+# Parameter search space
+parameter_space:
+  # Global parameters (same value for all actions)
+  global:
+    edge_sensitivity:
+      type: int
+      range: [20, 80]
+      step: 10
+    threshold_zone:
+      type: int
+      range: [30, 70]
+      step: 10
+
+  # Algorithm substitution
+  algorithm_substitution:
+    enabled: true
+    candidates:
+      - watershed
+      - level_set_cpu
+      - connected_threshold
+      - region_growing
+
+  # Algorithm-specific parameters
+  algorithms:
+    watershed:
+      watershedGradientScale:
+        type: float
+        range: [0.5, 2.5]
+      watershedSmoothing:
+        type: float
+        range: [0.2, 1.0]
+
+    level_set_cpu:
+      levelSetIterations:
+        type: int
+        range: [30, 150]
+        step: 20
+      levelSetPropagation:
+        type: float
+        range: [0.5, 2.0]
+      levelSetCurvature:
+        type: float
+        range: [0.5, 2.0]
+
+    region_growing:
+      regionGrowingMultiplier:
+        type: float
+        range: [1.5, 3.5]
+
+    threshold_brush:
+      thresholdMethod:
+        type: categorical
+        choices: [otsu, huang, triangle, maximum_entropy, isodata, li]
+
+    random_walker:
+      randomWalkerBeta:
+        type: int
+        range: [50, 500]
+        step: 50
+
+output:
+  reports:
+    - json
+    - markdown
+  algorithm_profiles: true
+  comparison_table: true

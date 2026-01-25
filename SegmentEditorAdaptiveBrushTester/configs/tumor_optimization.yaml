@@ -1,0 +1,73 @@
+# Tumor Optimization Configuration
+# =================================
+# Optimized configuration for brain tumor segmentation in MRBrainTumor1.
+# Focuses on watershed and level set algorithms which perform best for tumors.
+
+version: "1.0"
+name: "MRBrainTumor1 Tumor Optimization"
+description: "Find optimal parameters for brain tumor segmentation"
+
+settings:
+  n_trials: 100
+  timeout_minutes: 60
+  pruning: true
+  pruner: "hyperband"
+  sampler: "tpe"
+  primary_metric: "dice"
+  save_segmentations: true
+  save_screenshots: true
+
+recipes:
+  - path: "recipes/brain_tumor_1.py"
+    gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
+    weight: 1.0
+
+parameter_space:
+  global:
+    edge_sensitivity:
+      type: int
+      range: [30, 70]
+      step: 5
+    threshold_zone:
+      type: int
+      range: [40, 60]
+      step: 5
+    brush_radius_mm:
+      type: float
+      range: [15.0, 35.0]
+      step: 5.0
+
+  algorithm_substitution:
+    enabled: true
+    candidates:
+      - watershed
+      - level_set_cpu
+
+  algorithms:
+    watershed:
+      watershedGradientScale:
+        type: float
+        range: [1.0, 2.0]
+      watershedSmoothing:
+        type: float
+        range: [0.3, 0.8]
+
+    level_set_cpu:
+      levelSetIterations:
+        type: int
+        range: [50, 100]
+        step: 10
+      levelSetPropagation:
+        type: float
+        range: [0.8, 1.5]
+      levelSetCurvature:
+        type: float
+        range: [0.8, 1.5]
+
+output:
+  reports:
+    - json
+    - markdown
+    - html
+  algorithm_profiles: true
+  comparison_table: true

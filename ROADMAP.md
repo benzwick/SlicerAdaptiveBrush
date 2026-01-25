@@ -100,31 +100,75 @@
 - [x] CI status badge in README
 - [x] Extension packaging workflow
 
-## Version 0.12.0 - Slicer Testing Framework
+## Version 0.12.0 - Slicer Testing Framework ✓
 
-- [ ] SegmentEditorAdaptiveBrushTester module
-  - [ ] TestRunner with registered test cases
-  - [ ] TestCase base class and TestContext utilities
-  - [ ] TestRegistry for test case discovery
-- [ ] Screenshot capture utilities (slice views, 3D, widgets)
-- [ ] Metrics collection (timing, quality metrics)
-- [ ] Interactive testing panel (manual recording, notes)
-- [ ] Test run output organization (results, screenshots, logs)
-- [ ] Claude Code skills for test execution and review
-  - [ ] run-slicer-tests: launch Slicer and run test suite
-  - [ ] review-test-results: analyze test output with agents
+- [x] SegmentEditorAdaptiveBrushTester module
+  - [x] TestRunner with registered test cases
+  - [x] TestCase base class and TestContext utilities
+  - [x] TestRegistry for test case discovery
+- [x] Screenshot capture utilities (slice views, 3D, widgets)
+- [x] Metrics collection (timing, quality metrics)
+- [x] Interactive testing panel (manual recording, notes)
+- [x] Test run output organization (results, screenshots, logs)
+- [x] Claude Code skills for test execution and review
+  - [x] run-slicer-tests: launch Slicer and run test suite
+  - [x] review-test-results: analyze test output with agents
   - [ ] add-test-case: create new test cases from template
 - [ ] Claude Code agents for improvement workflows
   - [ ] test-reviewer: analyze results and suggest improvements
   - [ ] bug-fixer: diagnose failures and propose fixes
   - [ ] algorithm-improver: optimize based on metrics
   - [ ] ui-improver: review screenshots for UI issues
-- [ ] Initial test cases
-  - [ ] test_workflow_basic.py
-  - [ ] test_algorithm_watershed.py
-  - [ ] test_ui_options_panel.py
+- [x] Initial test cases
+  - [x] test_workflow_basic.py
+  - [x] test_algorithm_watershed.py
+  - [x] test_ui_options_panel.py
+  - [x] test_optimization_tumor.py
+  - [x] test_regression_gold.py
 
-## Version 0.13.0 - Living Documentation
+## Version 0.13.0 - Smart Optimization Framework
+
+- [x] Segmentation Recipes (ADR-013)
+  - [x] Recipe class for complete segmentation workflows
+  - [x] Action class for individual operations (adaptive_brush, paint, threshold, etc.)
+  - [x] RecipeRunner for executing recipes in Slicer
+  - [x] RecipeRecorder for capturing manual sessions
+  - [x] Example recipes (brain_tumor_1.py, template.py)
+
+- [x] Optuna Integration (ADR-011)
+  - [x] OptunaOptimizer with TPE sampler
+  - [x] HyperbandPruner for early stopping (~4x speedup)
+  - [x] Hierarchical parameter suggestion (algorithm-specific)
+  - [x] FAnova parameter importance analysis
+  - [x] SQLite persistence for study resumption
+
+- [x] YAML Configuration
+  - [x] OptimizationConfig for reproducible runs
+  - [x] Parameter space definition
+  - [x] Algorithm substitution support
+  - [x] Example configs (default.yaml, tumor_optimization.yaml, quick_test.yaml)
+
+- [x] Algorithm Characterization
+  - [x] AlgorithmProfile with performance metrics
+  - [x] AlgorithmCharacterizer for profile generation
+  - [x] AlgorithmReportGenerator for markdown reports
+  - [x] Strengths, weaknesses, and use case recommendations
+
+- [ ] Results Review Module (ADR-012)
+  - [ ] SegmentEditorAdaptiveBrushReviewer Slicer module
+  - [ ] Dual segmentation display (gold vs test)
+  - [ ] Screenshot thumbnail viewer
+  - [ ] Save-as-gold-standard functionality
+  - [ ] Visual comparison modes (outline, transparent, fill)
+
+- [ ] Documentation
+  - [x] ADR-011: Optimization Framework
+  - [x] ADR-012: Results Review Module
+  - [x] ADR-013: Segmentation Recipes
+  - [ ] User guide for recipe creation
+  - [ ] Optimization tutorial
+
+## Version 0.15.0 - Living Documentation
 
 - [ ] Test scripts generate screenshots automatically
 - [ ] Documentation written to match test coverage

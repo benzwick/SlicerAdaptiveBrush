@@ -1,0 +1,51 @@
+# Quick Test Configuration
+# ========================
+# Minimal configuration for testing the optimization framework.
+# Uses few trials and limited parameter ranges for fast iteration.
+
+version: "1.0"
+name: "Quick Test"
+description: "Fast optimization for testing and debugging"
+
+settings:
+  n_trials: 10
+  timeout_minutes: 5
+  pruning: false
+  pruner: "none"
+  sampler: "random"
+  primary_metric: "dice"
+  save_segmentations: false
+  save_screenshots: false
+
+recipes:
+  - path: "recipes/brain_tumor_1.py"
+    gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
+
+parameter_space:
+  global:
+    edge_sensitivity:
+      type: int
+      range: [30, 60]
+      step: 15
+    threshold_zone:
+      type: int
+      range: [40, 60]
+      step: 10
+
+  algorithm_substitution:
+    enabled: true
+    candidates:
+      - watershed
+      - connected_threshold
+
+  algorithms:
+    watershed:
+      watershedGradientScale:
+        type: float
+        range: [1.0, 2.0]
+
+output:
+  reports:
+    - json
+  algorithm_profiles: false
+  comparison_table: false
