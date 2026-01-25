@@ -12,7 +12,6 @@ import qt
 import slicer
 from SegmentEditorAdaptiveBrushReviewerLib import (
     ResultsLoader,
-    ScreenshotViewer,
     VisualizationController,
 )
 from slicer.ScriptedLoadableModule import (
@@ -55,7 +54,6 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.logic = None
         self.results_loader = None
         self.viz_controller = None
-        self.screenshot_viewer = None
         self.current_run = None
         self.current_trial = None
         self.selected_screenshot_path = None
@@ -68,7 +66,6 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.logic = SegmentEditorAdaptiveBrushReviewerLogic()
         self.results_loader = ResultsLoader()
         self.viz_controller = VisualizationController()
-        self.screenshot_viewer = ScreenshotViewer()
 
         # Create UI
         self._create_run_selection_section()

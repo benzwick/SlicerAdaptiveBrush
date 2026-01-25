@@ -16,7 +16,6 @@ from .AlgorithmProfile import (
 )
 from .AlgorithmReportGenerator import AlgorithmReportGenerator, generate_algorithm_report
 from .GoldStandardManager import GoldStandardManager
-from .LabNotebook import LabNotebook
 from .MetricsCollector import MetricsCollector, TimingContext
 from .OptimizationConfig import OptimizationConfig, ParameterSpec, RecipeSpec, create_default_config
 from .OptunaOptimizer import (
@@ -25,7 +24,6 @@ from .OptunaOptimizer import (
     OptunaOptimizer,
     OptunaTrialResult,
 )
-from .ParameterOptimizer import OptimizationTrial, ParameterOptimizer, ParameterSpace
 from .Recipe import Recipe, list_recipes
 from .RecipeRecorder import (
     RecipeRecorder,
@@ -71,14 +69,8 @@ __all__ = [
     "SegmentationMetrics",
     "MetricsResult",
     "StrokeMetricsTracker",
-    # Gold standards (Phase 2)
+    # Gold standards
     "GoldStandardManager",
-    # Parameter optimization (Phase 2)
-    "ParameterOptimizer",
-    "ParameterSpace",
-    "OptimizationTrial",
-    # Lab notebooks (Phase 2)
-    "LabNotebook",
     # Recipes (v0.13.0)
     "Recipe",
     "RecipeRunner",
