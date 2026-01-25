@@ -8,6 +8,7 @@ This is a T1+Gd contrast-enhanced MRI with a ring-enhancing tumor.
 # Metadata for the test runner
 sample_data = "MRBrainTumor1"
 segment_name = "Tumor"
+gold_standard = "MRBrainTumor1_tumor"  # For regression testing
 
 
 def run(effect):

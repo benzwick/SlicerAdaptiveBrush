@@ -36,6 +36,7 @@ class Recipe:
         path: Path to the recipe file.
         sample_data: Slicer SampleData name to load.
         segment_name: Name for the segment to create.
+        gold_standard: Name of gold standard to compare against (optional).
         run: The run(effect) function to execute.
         module: The loaded Python module.
     """
@@ -44,6 +45,7 @@ class Recipe:
     path: Path
     sample_data: str
     segment_name: str
+    gold_standard: str | None
     run: Callable[[Any], None]
     module: ModuleType
 
@@ -79,6 +81,7 @@ class Recipe:
 
         sample_data = getattr(module, "sample_data", "")
         segment_name = getattr(module, "segment_name", "Segment")
+        gold_standard = getattr(module, "gold_standard", None)
 
         logger.info(f"Loaded recipe: {path.stem}")
 
@@ -87,6 +90,7 @@ class Recipe:
             path=path,
             sample_data=sample_data,
             segment_name=segment_name,
+            gold_standard=gold_standard,
             run=module.run,
             module=module,
         )

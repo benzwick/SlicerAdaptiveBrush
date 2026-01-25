@@ -35,6 +35,12 @@ from .RecipeRecorder import (
     stop_recording,
 )
 from .RecipeRunner import RecipeResult, RecipeRunner, run_recipe
+from .RecipeTestRunner import (
+    RecipeTestResult,
+    RecipeTestRunner,
+    RecipeTestSuiteResult,
+    run_recipe_tests,
+)
 from .ReportGenerator import ReportGenerator
 from .ScreenshotCapture import ScreenshotCapture, ScreenshotInfo
 from .SegmentationMetrics import MetricsResult, SegmentationMetrics, StrokeMetricsTracker
@@ -84,6 +90,11 @@ __all__ = [
     "start_recording",
     "stop_recording",
     "is_recording",
+    # Recipe testing (v0.13.0)
+    "RecipeTestRunner",
+    "RecipeTestResult",
+    "RecipeTestSuiteResult",
+    "run_recipe_tests",
     # Optuna optimization (v0.13.0)
     "OptimizationConfig",
     "ParameterSpec",

@@ -1892,42 +1892,44 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             logging.warning(f"Could not convert RAS {ras} to XY coordinates")
             return
 
+        logging.debug(f"paintAt: RAS={ras} -> XY={xy}")
+
         # Apply the brush stroke
-        self.paintApply(xy, erase)
+        self.scriptedEffect.saveStateForUndo()
+        self.isDrawing = True
+        self._currentStrokeEraseMode = erase
+        self.processPoint(xy, sliceWidget)
+        self.isDrawing = False
         slicer.app.processEvents()
 
         logging.debug(f"paintAt RAS=({r}, {a}, {s}), erase={erase}")
 
     def _rasToXy(self, ras, sliceWidget):
-        """Convert RAS coordinates to XY in slice widget.
+        """Convert RAS coordinates to screen XY in slice widget.
 
         Args:
             ras: (R, A, S) coordinates.
             sliceWidget: The slice widget.
 
         Returns:
-            (x, y) coordinates or None if conversion fails.
+            (x, y) screen coordinates or None if conversion fails.
         """
         import vtk
 
         sliceLogic = sliceWidget.sliceLogic()
         sliceNode = sliceLogic.GetSliceNode()
 
-        # Get the slice-to-RAS matrix and invert it
-        sliceToRas = sliceNode.GetSliceToRAS()
-        rasToSlice = vtk.vtkMatrix4x4()
-        vtk.vtkMatrix4x4.Invert(sliceToRas, rasToSlice)
+        # Get XY to RAS matrix and invert it to get RAS to XY
+        xyToRas = sliceNode.GetXYToRAS()
+        rasToXy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(xyToRas, rasToXy)
 
-        # Transform RAS to slice XYZ
+        # Transform RAS to screen XY
         rasPoint = [ras[0], ras[1], ras[2], 1.0]
-        slicePoint = rasToSlice.MultiplyPoint(rasPoint)
+        xyPoint = [0, 0, 0, 1]
+        rasToXy.MultiplyPoint(rasPoint, xyPoint)
 
-        # Get XY from slice coordinates
-        # The slice view XY is the first two components
-        x = slicePoint[0]
-        y = slicePoint[1]
-
-        return (x, y)
+        return (int(xyPoint[0]), int(xyPoint[1]))
 
     @property
     def brushRadiusMm(self) -> float:

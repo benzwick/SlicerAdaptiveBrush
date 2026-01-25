@@ -32,19 +32,23 @@ fi
 # Parse arguments
 SCRIPT_TO_RUN=""
 BACKGROUND=false
+SCRIPT_ARGS=()
 
 show_help() {
     echo "Run a Python script inside 3D Slicer"
     echo ""
-    echo "Usage: $0 <script.py> [--background]"
+    echo "Usage: $0 <script.py> [--background] [script args...]"
     echo ""
     echo "Options:"
     echo "  --background    Run Slicer in background, don't block terminal"
     echo "  --help, -h      Show this help message"
     echo ""
+    echo "All other arguments are passed to the Python script."
+    echo ""
     echo "Examples:"
     echo "  $0 scripts/comprehensive_optimization.py"
-    echo "  $0 scripts/create_gold_standard.py --background"
+    echo "  $0 scripts/run_tests.py --exit"
+    echo "  $0 scripts/run_tests.py --exit regression"
 }
 
 for arg in "$@"; do
@@ -57,7 +61,11 @@ for arg in "$@"; do
             BACKGROUND=true
             ;;
         *)
-            SCRIPT_TO_RUN="$arg"
+            if [[ -z "$SCRIPT_TO_RUN" && "$arg" == *.py ]]; then
+                SCRIPT_TO_RUN="$arg"
+            else
+                SCRIPT_ARGS+=("$arg")
+            fi
             ;;
     esac
 done
@@ -93,9 +101,9 @@ echo "Log: $LOG_FILE"
 cd "$PROJECT_DIR"
 
 if [[ "$BACKGROUND" == true ]]; then
-    "$SLICER_PATH" --python-script "$SCRIPT_TO_RUN" > "$LOG_FILE" 2>&1 &
+    "$SLICER_PATH" --python-script "$SCRIPT_TO_RUN" "${SCRIPT_ARGS[@]}" > "$LOG_FILE" 2>&1 &
     echo "Started in background, PID: $!"
     echo "Monitor with: tail -f $LOG_FILE"
 else
-    "$SLICER_PATH" --python-script "$SCRIPT_TO_RUN" 2>&1 | tee "$LOG_FILE"
+    "$SLICER_PATH" --python-script "$SCRIPT_TO_RUN" "${SCRIPT_ARGS[@]}" 2>&1 | tee "$LOG_FILE"
 fi
