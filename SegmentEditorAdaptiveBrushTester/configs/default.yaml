@@ -24,7 +24,7 @@ recipes:
 
 # Parameter search space
 parameter_space:
-  # Global parameters (same value for all actions)
+  # Common parameters (apply to all algorithms)
   global:
     edge_sensitivity:
       type: int
@@ -34,53 +34,55 @@ parameter_space:
       type: int
       range: [30, 70]
       step: 10
+    brush_radius_mm:
+      type: float
+      range: [10.0, 40.0]
+      step: 5.0
 
-  # Algorithm substitution
+  # Algorithm selection (separate from presets)
   algorithm_substitution:
     enabled: true
     candidates:
+      - geodesic_distance
       - watershed
       - level_set_cpu
-      - connected_threshold
-      - region_growing
+      - random_walker
 
-  # Algorithm-specific parameters
+  # Algorithm-specific parameters (tuned per algorithm)
   algorithms:
+    geodesic_distance:
+      geodesic_edge_weight:
+        type: float
+        range: [4.0, 15.0]
+      geodesic_smoothing:
+        type: float
+        range: [0.2, 1.0]
+
     watershed:
-      watershedGradientScale:
+      watershed_gradient_scale:
         type: float
         range: [0.5, 2.5]
-      watershedSmoothing:
+      watershed_smoothing:
         type: float
         range: [0.2, 1.0]
 
     level_set_cpu:
-      levelSetIterations:
+      level_set_iterations:
         type: int
         range: [30, 150]
         step: 20
-      levelSetPropagation:
+      level_set_propagation:
         type: float
         range: [0.5, 2.0]
-      levelSetCurvature:
+      level_set_curvature:
         type: float
         range: [0.5, 2.0]
-
-    region_growing:
-      regionGrowingMultiplier:
-        type: float
-        range: [1.5, 3.5]
-
-    threshold_brush:
-      thresholdMethod:
-        type: categorical
-        choices: [otsu, huang, triangle, maximum_entropy, isodata, li]
 
     random_walker:
-      randomWalkerBeta:
-        type: int
-        range: [50, 500]
-        step: 50
+      random_walker_beta:
+        type: float
+        range: [50.0, 200.0]
+        step: 25.0
 
 output:
   reports:

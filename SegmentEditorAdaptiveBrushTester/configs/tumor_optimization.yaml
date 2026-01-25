@@ -1,7 +1,7 @@
 # Tumor Optimization Configuration
 # =================================
 # Optimized configuration for brain tumor segmentation in MRBrainTumor1.
-# Focuses on watershed and level set algorithms which perform best for tumors.
+# Focuses on algorithms that work well for enhancing tumors.
 
 version: "1.0"
 name: "MRBrainTumor1 Tumor Optimization"
@@ -23,6 +23,7 @@ recipes:
     weight: 1.0
 
 parameter_space:
+  # Common parameters optimized for tumor segmentation
   global:
     edge_sensitivity:
       type: int
@@ -30,39 +31,44 @@ parameter_space:
       step: 5
     threshold_zone:
       type: int
-      range: [40, 60]
+      range: [40, 70]
       step: 5
     brush_radius_mm:
       type: float
       range: [15.0, 35.0]
       step: 5.0
 
+  # Algorithm selection (separate from modality presets)
   algorithm_substitution:
     enabled: true
     candidates:
+      - geodesic_distance
+      - random_walker
       - watershed
-      - level_set_cpu
 
+  # Algorithm-specific parameters
   algorithms:
-    watershed:
-      watershedGradientScale:
+    geodesic_distance:
+      geodesic_edge_weight:
         type: float
-        range: [1.0, 2.0]
-      watershedSmoothing:
+        range: [6.0, 12.0]
+      geodesic_smoothing:
         type: float
         range: [0.3, 0.8]
 
-    level_set_cpu:
-      levelSetIterations:
-        type: int
-        range: [50, 100]
-        step: 10
-      levelSetPropagation:
+    random_walker:
+      random_walker_beta:
         type: float
-        range: [0.8, 1.5]
-      levelSetCurvature:
+        range: [80.0, 160.0]
+        step: 20.0
+
+    watershed:
+      watershed_gradient_scale:
         type: float
-        range: [0.8, 1.5]
+        range: [1.0, 2.0]
+      watershed_smoothing:
+        type: float
+        range: [0.4, 0.8]
 
 output:
   reports:

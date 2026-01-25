@@ -594,122 +594,136 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Track source volume for detecting changes
         self._lastSourceVolumeId = None
 
-        # Parameter presets for common tissue types
-        # Each preset defines optimal parameters for that tissue
+        # Parameter presets by modality and tissue type
+        # These set common parameters (edge sensitivity, threshold zone, etc.)
+        # Algorithm selection is separate - user picks algorithm, then picks preset
+        # For algorithm recommendations, see user documentation
         self._presets = {
             "default": {
                 "name": "Default",
                 "description": "Balanced settings for general use",
-                "algorithm": "geodesic_distance",
                 "edge_sensitivity": 50,
                 "threshold_zone": 50,
                 "sampling_method": "mean_std",
                 "gaussian_sigma": 0.5,
                 "std_multiplier": 2.0,
-                "geodesic_edge_weight": 8.0,
-                "geodesic_smoothing": 0.5,
-                "random_walker_beta": 130.0,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            "bone_ct": {
-                "name": "Bone (CT)",
+            # === CT Presets ===
+            "ct_bone": {
+                "name": "CT - Bone",
                 "description": "High contrast bone segmentation in CT",
-                "algorithm": "geodesic_distance",
                 "edge_sensitivity": 70,
                 "threshold_zone": 40,
                 "sampling_method": "percentile",
                 "gaussian_sigma": 0.3,
                 "std_multiplier": 1.5,
-                "geodesic_edge_weight": 12.0,
-                "geodesic_smoothing": 0.3,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            "soft_tissue_ct": {
-                "name": "Soft Tissue (CT)",
-                "description": "Organs and soft tissue in CT (liver, muscle, etc.)",
-                "algorithm": "watershed",
+            "ct_soft_tissue": {
+                "name": "CT - Soft Tissue",
+                "description": "Organs in CT (liver, kidney, spleen, muscle)",
                 "edge_sensitivity": 50,
                 "threshold_zone": 60,
                 "sampling_method": "mean_std",
                 "gaussian_sigma": 0.5,
                 "std_multiplier": 2.5,
-                "watershed_gradient_scale": 1.5,
-                "watershed_smoothing": 0.7,
                 "fill_holes": True,
                 "closing_radius": 1,
             },
-            "lung_ct": {
-                "name": "Lung (CT)",
+            "ct_lung": {
+                "name": "CT - Lung",
                 "description": "Lung parenchyma and airways in CT",
-                "algorithm": "geodesic_distance",
                 "edge_sensitivity": 60,
                 "threshold_zone": 50,
                 "sampling_method": "percentile",
                 "gaussian_sigma": 0.4,
                 "std_multiplier": 2.0,
-                "geodesic_edge_weight": 10.0,
-                "geodesic_smoothing": 0.5,
                 "fill_holes": False,  # Preserve airways
                 "closing_radius": 0,
             },
-            "brain_mri": {
-                "name": "Brain (MRI)",
-                "description": "Brain tissue segmentation in MRI",
-                "algorithm": "level_set_cpu",
-                "edge_sensitivity": 55,
-                "threshold_zone": 50,
-                "sampling_method": "mean_std",
-                "gaussian_sigma": 0.5,
-                "std_multiplier": 2.0,
-                "level_set_propagation": 1.0,
-                "level_set_curvature": 1.2,
-                "level_set_iterations": 60,
-                "fill_holes": True,
-                "closing_radius": 0,
-            },
-            "tumor_lesion": {
-                "name": "Tumor / Lesion",
-                "description": "Tumors and lesions with irregular/ambiguous boundaries",
-                "algorithm": "random_walker",
-                "edge_sensitivity": 45,
-                "threshold_zone": 60,
-                "sampling_method": "mean_std",
-                "gaussian_sigma": 0.6,
-                "std_multiplier": 2.5,
-                "random_walker_beta": 100.0,  # Lower beta for soft boundaries
-                "fill_holes": True,
-                "closing_radius": 1,
-            },
-            "vessel": {
-                "name": "Vessels",
-                "description": "Blood vessels and tubular structures",
-                "algorithm": "geodesic_distance",
+            "ct_vessel_contrast": {
+                "name": "CT - Vessels (Contrast)",
+                "description": "Contrast-enhanced blood vessels in CTA",
                 "edge_sensitivity": 65,
                 "threshold_zone": 35,
                 "sampling_method": "percentile",
                 "gaussian_sigma": 0.3,
                 "std_multiplier": 1.5,
-                "geodesic_edge_weight": 10.0,
-                "geodesic_distance_scale": 1.2,
-                "geodesic_smoothing": 0.3,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            "fat": {
-                "name": "Fat",
-                "description": "Adipose tissue (bright in T1 MRI, dark in CT)",
-                "algorithm": "watershed",
+            # === MRI T1 Presets ===
+            "mri_t1_brain": {
+                "name": "MRI T1 - Brain Tissue",
+                "description": "Gray/white matter in T1-weighted MRI",
+                "edge_sensitivity": 55,
+                "threshold_zone": 50,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "mri_t1_fat": {
+                "name": "MRI T1 - Fat/Adipose",
+                "description": "Adipose tissue (bright in T1-weighted MRI)",
                 "edge_sensitivity": 40,
                 "threshold_zone": 70,
                 "sampling_method": "mean_std",
                 "gaussian_sigma": 0.6,
                 "std_multiplier": 2.5,
-                "watershed_gradient_scale": 1.0,
-                "watershed_smoothing": 0.8,
                 "fill_holes": True,
                 "closing_radius": 1,
+            },
+            # === MRI T1+Gd (Contrast) Presets ===
+            "mri_t1gd_tumor": {
+                "name": "MRI T1+Gd - Enhancing Tumor",
+                "description": "Contrast-enhancing tumors in post-gadolinium T1",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.6,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            # === MRI T2/FLAIR Presets ===
+            "mri_t2_lesion": {
+                "name": "MRI T2/FLAIR - Lesion",
+                "description": "Hyperintense lesions in T2/FLAIR (edema, MS, etc.)",
+                "edge_sensitivity": 50,
+                "threshold_zone": 55,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # === Generic/Multi-modality Presets ===
+            "generic_tumor": {
+                "name": "Generic - Tumor/Mass",
+                "description": "General tumor/mass with irregular boundaries",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.6,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "generic_vessel": {
+                "name": "Generic - Vessels",
+                "description": "Blood vessels and tubular structures",
+                "edge_sensitivity": 65,
+                "threshold_zone": 35,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
             },
         }
         self._currentPreset = "default"
@@ -1753,24 +1767,13 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self._currentPreset = preset_id
 
         # Block signals to prevent multiple cache invalidations
+        # Note: Presets don't change algorithm - only common parameters
         widgets_to_block = [
             self.sensitivitySlider,
             self.zoneSlider,
             self.samplingMethodCombo,
-            self.algorithmCombo,
             self.gaussianSigmaSlider,
             self.stdMultiplierSlider,
-            self.geodesicEdgeWeightSlider,
-            self.geodesicDistanceScaleSlider,
-            self.geodesicSmoothingSlider,
-            self.watershedGradientScaleSlider,
-            self.watershedSmoothingSlider,
-            self.levelSetPropagationSlider,
-            self.levelSetCurvatureSlider,
-            self.levelSetIterationsSlider,
-            self.regionGrowingMultiplierSlider,
-            self.regionGrowingIterationsSlider,
-            self.randomWalkerBetaSlider,
             self.fillHolesCheckbox,
             self.closingRadiusSlider,
         ]
@@ -1795,12 +1798,6 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 if idx >= 0:
                     self.samplingMethodCombo.setCurrentIndex(idx)
 
-            if "algorithm" in preset:
-                self.algorithm = preset["algorithm"]
-                idx = self.algorithmCombo.findData(preset["algorithm"])
-                if idx >= 0:
-                    self.algorithmCombo.setCurrentIndex(idx)
-
             # Apply sampling parameters
             if "gaussian_sigma" in preset:
                 self.gaussianSigma = preset["gaussian_sigma"]
@@ -1809,55 +1806,6 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             if "std_multiplier" in preset:
                 self.stdMultiplier = preset["std_multiplier"]
                 self.stdMultiplierSlider.value = preset["std_multiplier"]
-
-            # Apply geodesic parameters
-            if "geodesic_edge_weight" in preset:
-                self.geodesicEdgeWeight = preset["geodesic_edge_weight"]
-                self.geodesicEdgeWeightSlider.value = preset["geodesic_edge_weight"]
-
-            if "geodesic_distance_scale" in preset:
-                self.geodesicDistanceScale = preset["geodesic_distance_scale"]
-                self.geodesicDistanceScaleSlider.value = preset["geodesic_distance_scale"]
-
-            if "geodesic_smoothing" in preset:
-                self.geodesicSmoothing = preset["geodesic_smoothing"]
-                self.geodesicSmoothingSlider.value = preset["geodesic_smoothing"]
-
-            # Apply watershed parameters
-            if "watershed_gradient_scale" in preset:
-                self.watershedGradientScale = preset["watershed_gradient_scale"]
-                self.watershedGradientScaleSlider.value = preset["watershed_gradient_scale"]
-
-            if "watershed_smoothing" in preset:
-                self.watershedSmoothing = preset["watershed_smoothing"]
-                self.watershedSmoothingSlider.value = preset["watershed_smoothing"]
-
-            # Apply level set parameters
-            if "level_set_propagation" in preset:
-                self.levelSetPropagation = preset["level_set_propagation"]
-                self.levelSetPropagationSlider.value = preset["level_set_propagation"]
-
-            if "level_set_curvature" in preset:
-                self.levelSetCurvature = preset["level_set_curvature"]
-                self.levelSetCurvatureSlider.value = preset["level_set_curvature"]
-
-            if "level_set_iterations" in preset:
-                self.levelSetIterations = preset["level_set_iterations"]
-                self.levelSetIterationsSlider.value = preset["level_set_iterations"]
-
-            # Apply region growing parameters
-            if "region_growing_multiplier" in preset:
-                self.regionGrowingMultiplier = preset["region_growing_multiplier"]
-                self.regionGrowingMultiplierSlider.value = preset["region_growing_multiplier"]
-
-            if "region_growing_iterations" in preset:
-                self.regionGrowingIterations = preset["region_growing_iterations"]
-                self.regionGrowingIterationsSlider.value = preset["region_growing_iterations"]
-
-            # Apply random walker parameters
-            if "random_walker_beta" in preset:
-                self.randomWalkerBeta = preset["random_walker_beta"]
-                self.randomWalkerBetaSlider.value = preset["random_walker_beta"]
 
             # Apply morphology parameters
             if "fill_holes" in preset:
@@ -1880,6 +1828,126 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self._updateAlgorithmParamsVisibility()
 
         logging.debug(f"Applied preset: {preset['name']}")
+
+    # =========================================================================
+    # Public API for scripting and recipes
+    # =========================================================================
+
+    def applyPreset(self, preset_id: str) -> None:
+        """Apply a parameter preset.
+
+        Args:
+            preset_id: Preset name (e.g., "tumor_lesion", "bone_ct", "default").
+
+        Available presets:
+            - "default": Balanced settings for general use
+            - "bone_ct": High contrast bone in CT
+            - "soft_tissue_ct": Organs/soft tissue in CT
+            - "lung_ct": Lung parenchyma in CT
+            - "brain_mri": Brain tissue in MRI
+            - "tumor_lesion": Tumors with irregular boundaries
+            - "vessel": Blood vessels
+            - "smooth_edge": Smooth-edged structures
+            - "sharp_edge": Sharp-edged structures
+            - "fast_rough": Quick rough segmentation
+        """
+        self._applyPreset(preset_id)
+
+    def paintAt(self, r: float, a: float, s: float, erase: bool = False) -> None:
+        """Apply a brush stroke at the given RAS coordinates.
+
+        This is the main method for programmatic painting. It navigates to
+        the location, applies the brush with current parameters, and updates
+        the segmentation.
+
+        Args:
+            r: Right coordinate (mm).
+            a: Anterior coordinate (mm).
+            s: Superior coordinate (mm).
+            erase: If True, erase instead of add.
+
+        Example:
+            effect.applyPreset("tumor_lesion")
+            effect.brushRadiusMm = 20.0
+            effect.paintAt(-5.31, 34.77, 20.83)
+        """
+        import slicer
+
+        ras = (r, a, s)
+
+        # Get the red slice widget (primary 2D view)
+        layoutManager = slicer.app.layoutManager()
+        sliceWidget = layoutManager.sliceWidget("Red")
+        sliceLogic = sliceWidget.sliceLogic()
+        sliceNode = sliceLogic.GetSliceNode()
+
+        # Navigate to the RAS location
+        sliceNode.JumpSliceByCentering(r, a, s)
+        slicer.app.processEvents()
+
+        # Convert RAS to XY in slice view
+        xy = self._rasToXy(ras, sliceWidget)
+
+        if xy is None:
+            logging.warning(f"Could not convert RAS {ras} to XY coordinates")
+            return
+
+        # Apply the brush stroke
+        self.paintApply(xy, erase)
+        slicer.app.processEvents()
+
+        logging.debug(f"paintAt RAS=({r}, {a}, {s}), erase={erase}")
+
+    def _rasToXy(self, ras, sliceWidget):
+        """Convert RAS coordinates to XY in slice widget.
+
+        Args:
+            ras: (R, A, S) coordinates.
+            sliceWidget: The slice widget.
+
+        Returns:
+            (x, y) coordinates or None if conversion fails.
+        """
+        import vtk
+
+        sliceLogic = sliceWidget.sliceLogic()
+        sliceNode = sliceLogic.GetSliceNode()
+
+        # Get the slice-to-RAS matrix and invert it
+        sliceToRas = sliceNode.GetSliceToRAS()
+        rasToSlice = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(sliceToRas, rasToSlice)
+
+        # Transform RAS to slice XYZ
+        rasPoint = [ras[0], ras[1], ras[2], 1.0]
+        slicePoint = rasToSlice.MultiplyPoint(rasPoint)
+
+        # Get XY from slice coordinates
+        # The slice view XY is the first two components
+        x = slicePoint[0]
+        y = slicePoint[1]
+
+        return (x, y)
+
+    @property
+    def brushRadiusMm(self) -> float:
+        """Get/set the brush radius in millimeters."""
+        return float(self.radiusMm)
+
+    @brushRadiusMm.setter
+    def brushRadiusMm(self, value: float) -> None:
+        self.radiusMm = value
+        self.radiusSlider.value = value
+
+    @property
+    def edgeSensitivityValue(self) -> int:
+        """Get/set edge sensitivity (0-100)."""
+        return int(self.edgeSensitivity)
+
+    @edgeSensitivityValue.setter
+    def edgeSensitivityValue(self, value: int) -> None:
+        self.edgeSensitivity = value
+        self.sensitivitySlider.value = value
 
     def onRadiusChanged(self, value):
         """Handle radius slider change."""

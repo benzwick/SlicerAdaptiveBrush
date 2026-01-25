@@ -26,7 +26,7 @@ from .OptunaOptimizer import (
     OptunaTrialResult,
 )
 from .ParameterOptimizer import OptimizationTrial, ParameterOptimizer, ParameterSpace
-from .Recipe import Action, Recipe
+from .Recipe import Recipe, list_recipes
 from .RecipeRecorder import (
     RecipeRecorder,
     get_global_recorder,
@@ -34,7 +34,7 @@ from .RecipeRecorder import (
     start_recording,
     stop_recording,
 )
-from .RecipeRunner import ActionResult, RecipeResult, RecipeRunner
+from .RecipeRunner import RecipeResult, RecipeRunner, run_recipe
 from .ReportGenerator import ReportGenerator
 from .ScreenshotCapture import ScreenshotCapture, ScreenshotInfo
 from .SegmentationMetrics import MetricsResult, SegmentationMetrics, StrokeMetricsTracker
@@ -74,11 +74,11 @@ __all__ = [
     # Lab notebooks (Phase 2)
     "LabNotebook",
     # Recipes (v0.13.0)
-    "Action",
     "Recipe",
     "RecipeRunner",
     "RecipeResult",
-    "ActionResult",
+    "run_recipe",
+    "list_recipes",
     "RecipeRecorder",
     "get_global_recorder",
     "start_recording",

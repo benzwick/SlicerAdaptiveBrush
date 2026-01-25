@@ -552,22 +552,17 @@ def run_optimization_with_recipe(
         recipe_spec = config.recipes[0]
         recipe = Recipe.load(recipe_spec.path)
 
-        # Apply parameter overrides
-        overrides = {"global": params}
-        if "algorithm" in params:
-            overrides["algorithm"] = params["algorithm"]
-        modified_recipe = recipe.with_overrides(overrides)
+        # Run recipe - parameters are applied by the RecipeRunner
+        # which sets up the effect before calling recipe.run(effect)
+        runner = RecipeRunner(recipe)
 
-        # Run recipe
-        runner = RecipeRunner(modified_recipe)
+        # TODO: Apply params to effect before running
+        # The new recipe system uses native Python scripts that call
+        # effect methods directly. Optimization would need to:
+        # 1. Set effect parameters before recipe.run(effect)
+        # 2. Or wrap the effect to override parameters
 
-        def on_action_complete(idx: int, phase: str, desc: str) -> None:
-            if phase == "after" and recipe_spec.gold_standard:
-                # Compute intermediate Dice
-                # Note: This requires the gold standard to be loaded
-                pass
-
-        result = runner.run(screenshot_callback=on_action_complete)
+        result = runner.run()
 
         if not result.success:
             return float("-inf") if config.direction == "maximize" else float("inf")
@@ -589,7 +584,7 @@ def run_optimization_with_recipe(
                 return metrics.hausdorff_95
 
         # No gold standard - return voxel count as proxy
-        return float(result.final_voxel_count)
+        return float(result.voxel_count)
 
     # Run optimization
     results = optimizer.optimize(objective)

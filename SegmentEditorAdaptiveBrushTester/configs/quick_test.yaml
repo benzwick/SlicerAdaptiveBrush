@@ -22,25 +22,33 @@ recipes:
     gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
 
 parameter_space:
+  # Common parameters (limited range for speed)
   global:
     edge_sensitivity:
       type: int
-      range: [30, 60]
-      step: 15
-    threshold_zone:
-      type: int
       range: [40, 60]
       step: 10
+    threshold_zone:
+      type: int
+      range: [45, 55]
+      step: 5
 
+  # Algorithm selection
   algorithm_substitution:
     enabled: true
     candidates:
+      - geodesic_distance
       - watershed
-      - connected_threshold
 
+  # Minimal algorithm-specific tuning
   algorithms:
+    geodesic_distance:
+      geodesic_edge_weight:
+        type: float
+        range: [6.0, 10.0]
+
     watershed:
-      watershedGradientScale:
+      watershed_gradient_scale:
         type: float
         range: [1.0, 2.0]
 

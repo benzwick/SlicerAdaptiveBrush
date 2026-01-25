@@ -1,71 +1,65 @@
 """
-Segmentation recipe: TEMPLATE
+Recipe: TEMPLATE
 
-Description: Template for creating new segmentation recipes
-Created: YYYY-MM-DD
-Sample Data: <SampleDataName>
-
-Instructions:
-1. Copy this file and rename to your recipe name (e.g., my_segmentation.py)
-2. Update the recipe metadata (name, description, sample_data, segment_name)
-3. Add actions for each brush stroke or effect operation
-4. Update optimization_hints to indicate which parameters should be varied
-
-Supported Actions:
-- Action.adaptive_brush(...) - Adaptive Brush effect
-- Action.paint(...) - Standard Paint effect
-- Action.threshold(...) - Threshold effect
-- Action.grow_from_seeds() - Grow from Seeds
-- Action.islands(...) - Islands operation
-- Action.smoothing(...) - Smoothing operation
+Copy this file and customize for your segmentation.
+Recipes are Python scripts with full access to Slicer's API.
 """
 
-from SegmentEditorAdaptiveBrushTesterLib.Recipe import Recipe
+# Metadata for the test runner
+sample_data = "MRHead"  # Slicer SampleData name
+segment_name = "Segment_1"
 
-recipe = Recipe(
-    name="template",
-    description="Template recipe - copy and modify",
-    sample_data="MRHead",  # Change to your sample data
-    segment_name="Segment_1",  # Change to your segment name
-    actions=[
-        # Example: Adaptive Brush stroke
-        # Action.adaptive_brush(
-        #     ras=(0.0, 0.0, 0.0),  # RAS coordinates
-        #     algorithm="watershed",
-        #     brush_radius_mm=15.0,
-        #     edge_sensitivity=50,
-        #     threshold_zone=50,
-        #     mode="add",  # or "erase"
-        # ),
-        # Example: Standard Paint stroke
-        # Action.paint(
-        #     ras=(0.0, 0.0, 0.0),
-        #     radius_mm=5.0,
-        #     mode="add",
-        # ),
-        # Example: Threshold
-        # Action.threshold(
-        #     min_value=100,
-        #     max_value=500,
-        # ),
-        # Example: Islands - keep largest
-        # Action.islands(
-        #     operation="KEEP_LARGEST",
-        # ),
-        # Example: Smoothing
-        # Action.smoothing(
-        #     method="MEDIAN",
-        #     kernel_size_mm=3.0,
-        # ),
-    ],
-)
 
-# Optimization hints for parameter tuning
-optimization_hints = {
-    # Parameters to vary with same value across all actions
-    "vary_globally": ["edge_sensitivity", "threshold_zone"],
-    # Parameters that can vary per action
-    "vary_per_action": ["brush_radius_mm"],
-    # Alternative algorithms to try
-    "algorithm_options": ["watershed", "level_set_cpu", "connected_threshold"],
-}
+def run(effect):
+    """Execute the segmentation recipe.
+
+    Args:
+        effect: The Adaptive Brush scripted effect instance.
+
+    Presets (by modality - set common parameters, NOT algorithm):
+        CT:
+            effect.applyPreset("ct_bone")           # High contrast bone
+            effect.applyPreset("ct_soft_tissue")    # Liver, kidney, spleen
+            effect.applyPreset("ct_lung")           # Lung parenchyma
+            effect.applyPreset("ct_vessel_contrast") # CTA vessels
+
+        MRI T1:
+            effect.applyPreset("mri_t1_brain")      # Gray/white matter
+            effect.applyPreset("mri_t1_fat")        # Adipose tissue
+
+        MRI T1+Gd:
+            effect.applyPreset("mri_t1gd_tumor")    # Enhancing tumor
+
+        MRI T2/FLAIR:
+            effect.applyPreset("mri_t2_lesion")     # Hyperintense lesions
+
+        Generic:
+            effect.applyPreset("default")           # Balanced defaults
+            effect.applyPreset("generic_tumor")     # Any tumor/mass
+            effect.applyPreset("generic_vessel")    # Any vessel
+
+    Properties:
+        effect.brushRadiusMm = 20.0          # Brush size in mm
+        effect.edgeSensitivityValue = 50     # Edge sensitivity 0-100
+
+    Paint:
+        effect.paintAt(r, a, s)              # Paint at RAS coords
+        effect.paintAt(r, a, s, erase=True)  # Erase at RAS coords
+
+    Algorithm Selection (separate from presets):
+        # Algorithm is selected via UI or Slicer parameter system
+        # See user documentation for algorithm recommendations
+
+    Other Slicer effects (example):
+        import slicer
+        editor = slicer.modules.segmenteditor.widgetRepresentation().self().editor
+        editor.setActiveEffectByName("Islands")
+        effect = editor.activeEffect()
+        effect.setParameter("Operation", "KEEP_LARGEST_ISLAND")
+        effect.self().onApply()
+    """
+    # Example:
+    # effect.applyPreset("ct_soft_tissue")
+    # effect.brushRadiusMm = 15.0
+    # effect.paintAt(0.0, 0.0, 0.0)
+    pass

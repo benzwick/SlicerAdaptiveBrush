@@ -1,527 +1,126 @@
-"""Segmentation Recipe data structures.
+"""Segmentation Recipe loader.
 
-Recipes capture complete segmentation workflows as Python objects,
-enabling exact reproduction, optimization, and version control.
+Recipes are Python scripts that define a `run(effect)` function.
+This module loads recipes and provides utilities for running them.
 
-See ADR-013 for architecture decisions.
+Example recipe (brain_tumor_1.py):
+
+    sample_data = "MRBrainTumor1"
+    segment_name = "Tumor"
+
+    def run(effect):
+        effect.applyPreset("tumor_lesion")
+        effect.brushRadiusMm = 20.0
+        effect.paintAt(-5.31, 34.77, 20.83)
+        effect.paintAt(-5.31, 25.12, 35.97)
 """
 
 from __future__ import annotations
 
 import importlib.util
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Action:
-    """A single segmentation action.
-
-    Actions represent discrete steps in a segmentation workflow.
-    Each action has an effect type and parameters specific to that effect.
-
-    Example:
-        action = Action.adaptive_brush(
-            ras=(-5.31, 34.77, 20.83),
-            algorithm="watershed",
-            brush_radius_mm=25.0,
-            edge_sensitivity=40,
-        )
-    """
-
-    effect: str
-    params: dict[str, Any]
-
-    @classmethod
-    def adaptive_brush(
-        cls,
-        ras: tuple[float, float, float],
-        algorithm: str,
-        brush_radius_mm: float,
-        edge_sensitivity: int,
-        mode: str = "add",
-        threshold_zone: int = 50,
-        **kwargs: Any,
-    ) -> Action:
-        """Create Adaptive Brush action.
-
-        Args:
-            ras: RAS (Right-Anterior-Superior) coordinates for the stroke.
-            algorithm: Algorithm name (watershed, level_set_cpu, etc.).
-            brush_radius_mm: Brush radius in millimeters.
-            edge_sensitivity: Edge sensitivity (0-100).
-            mode: "add" or "erase".
-            threshold_zone: Threshold zone percentage (0-100).
-            **kwargs: Algorithm-specific parameters.
-
-        Returns:
-            Action configured for Adaptive Brush effect.
-        """
-        return cls(
-            effect="adaptive_brush",
-            params={
-                "ras": ras,
-                "algorithm": algorithm,
-                "brush_radius_mm": brush_radius_mm,
-                "edge_sensitivity": edge_sensitivity,
-                "mode": mode,
-                "threshold_zone": threshold_zone,
-                **kwargs,
-            },
-        )
-
-    @classmethod
-    def paint(
-        cls,
-        ras: tuple[float, float, float],
-        radius_mm: float,
-        mode: str = "add",
-        sphere: bool = False,
-    ) -> Action:
-        """Create standard Paint effect action.
-
-        Args:
-            ras: RAS coordinates for the stroke.
-            radius_mm: Paint brush radius in millimeters.
-            mode: "add" or "erase".
-            sphere: Whether to use 3D sphere brush.
-
-        Returns:
-            Action configured for Paint effect.
-        """
-        return cls(
-            effect="paint",
-            params={
-                "ras": ras,
-                "radius_mm": radius_mm,
-                "mode": mode,
-                "sphere": sphere,
-            },
-        )
-
-    @classmethod
-    def threshold(
-        cls,
-        min_value: float,
-        max_value: float,
-    ) -> Action:
-        """Create Threshold effect action.
-
-        Args:
-            min_value: Minimum intensity threshold.
-            max_value: Maximum intensity threshold.
-
-        Returns:
-            Action configured for Threshold effect.
-        """
-        return cls(
-            effect="threshold",
-            params={
-                "min_value": min_value,
-                "max_value": max_value,
-            },
-        )
-
-    @classmethod
-    def grow_from_seeds(cls) -> Action:
-        """Create Grow from Seeds effect action.
-
-        Returns:
-            Action configured for Grow from Seeds effect.
-        """
-        return cls(effect="grow_from_seeds", params={})
-
-    @classmethod
-    def islands(
-        cls,
-        operation: str = "KEEP_LARGEST",
-        min_size: int = 1000,
-    ) -> Action:
-        """Create Islands operation action.
-
-        Args:
-            operation: Operation type (KEEP_LARGEST, REMOVE_SMALL, etc.).
-            min_size: Minimum island size in voxels.
-
-        Returns:
-            Action configured for Islands effect.
-        """
-        return cls(
-            effect="islands",
-            params={
-                "operation": operation,
-                "min_size": min_size,
-            },
-        )
-
-    @classmethod
-    def smoothing(
-        cls,
-        method: str = "MEDIAN",
-        kernel_size_mm: float = 3.0,
-    ) -> Action:
-        """Create Smoothing effect action.
-
-        Args:
-            method: Smoothing method (MEDIAN, GAUSSIAN, etc.).
-            kernel_size_mm: Kernel size in millimeters.
-
-        Returns:
-            Action configured for Smoothing effect.
-        """
-        return cls(
-            effect="smoothing",
-            params={
-                "method": method,
-                "kernel_size_mm": kernel_size_mm,
-            },
-        )
-
-    @classmethod
-    def scissors(
-        cls,
-        ras_points: list[tuple[float, float, float]],
-        operation: str = "EraseInside",
-        slice_cut: bool = True,
-    ) -> Action:
-        """Create Scissors effect action.
-
-        Args:
-            ras_points: List of RAS coordinates forming the cut path.
-            operation: Operation type (EraseInside, EraseOutside, FillInside, etc.).
-            slice_cut: Whether to cut in current slice only.
-
-        Returns:
-            Action configured for Scissors effect.
-        """
-        return cls(
-            effect="scissors",
-            params={
-                "ras_points": ras_points,
-                "operation": operation,
-                "slice_cut": slice_cut,
-            },
-        )
-
-    def with_overrides(self, overrides: dict[str, Any]) -> Action:
-        """Create copy with parameter overrides applied.
-
-        Args:
-            overrides: Dictionary of parameter overrides.
-
-        Returns:
-            New Action with overrides applied.
-        """
-        new_params = {**self.params}
-        for key, value in overrides.items():
-            if key in new_params:
-                new_params[key] = value
-        return Action(self.effect, new_params)
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
-        return {
-            "effect": self.effect,
-            "params": self.params,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> Action:
-        """Create Action from dictionary."""
-        return cls(effect=data["effect"], params=data["params"])
-
-
-@dataclass
 class Recipe:
-    """A complete segmentation recipe.
+    """A loaded recipe ready to execute.
 
-    Recipes capture the full workflow for creating a segmentation,
-    including sample data, segment name, and sequence of actions.
-
-    Example:
-        recipe = Recipe(
-            name="brain_tumor_1",
-            description="5-click watershed segmentation",
-            sample_data="MRBrainTumor1",
-            segment_name="Tumor",
-            actions=[
-                Action.adaptive_brush(ras=(-5.31, 34.77, 20.83), ...),
-                Action.adaptive_brush(ras=(-5.31, 25.12, 35.97), ...),
-            ],
-        )
+    Attributes:
+        name: Recipe name (from filename).
+        path: Path to the recipe file.
+        sample_data: Slicer SampleData name to load.
+        segment_name: Name for the segment to create.
+        run: The run(effect) function to execute.
+        module: The loaded Python module.
     """
 
     name: str
-    description: str
-    sample_data: str  # Slicer SampleData name
+    path: Path
+    sample_data: str
     segment_name: str
-    actions: list[Action]
-    optimization_hints: dict[str, Any] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    run: Callable[[Any], None]
+    module: ModuleType
 
     @classmethod
     def load(cls, path: Path | str) -> Recipe:
-        """Load recipe from Python file.
+        """Load a recipe from a Python file.
 
         Args:
-            path: Path to recipe Python file.
+            path: Path to the recipe file.
 
         Returns:
             Loaded Recipe object.
 
         Raises:
             FileNotFoundError: If recipe file doesn't exist.
-            AttributeError: If recipe file doesn't define 'recipe' variable.
+            AttributeError: If recipe doesn't define required attributes.
         """
         path = Path(path)
         if not path.exists():
-            raise FileNotFoundError(f"Recipe file not found: {path}")
+            raise FileNotFoundError(f"Recipe not found: {path}")
 
-        spec = importlib.util.spec_from_file_location("recipe_module", path)
+        # Load the module
+        spec = importlib.util.spec_from_file_location(path.stem, path)
         if spec is None or spec.loader is None:
-            raise ImportError(f"Could not load recipe from: {path}")
+            raise ImportError(f"Could not load recipe: {path}")
 
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        if not hasattr(module, "recipe"):
-            raise AttributeError(f"Recipe file must define 'recipe' variable: {path}")
+        # Extract required attributes
+        if not hasattr(module, "run"):
+            raise AttributeError(f"Recipe must define run(effect) function: {path}")
 
-        recipe: Recipe = module.recipe
+        sample_data = getattr(module, "sample_data", "")
+        segment_name = getattr(module, "segment_name", "Segment")
 
-        # Copy optimization hints if present
-        if hasattr(module, "optimization_hints"):
-            recipe.optimization_hints = module.optimization_hints
+        logger.info(f"Loaded recipe: {path.stem}")
 
-        logger.info(f"Loaded recipe '{recipe.name}' from {path}")
-        return recipe
-
-    def with_overrides(self, overrides: dict[str, Any]) -> Recipe:
-        """Create copy with parameter overrides applied.
-
-        Supports global overrides (applied to all actions) and
-        algorithm substitution.
-
-        Args:
-            overrides: Dictionary with optional keys:
-                - "global": dict of params to override in all actions
-                - "algorithm": algorithm to use for all adaptive_brush actions
-                - "per_action": list of per-action override dicts
-
-        Returns:
-            New Recipe with overrides applied.
-        """
-        new_actions = []
-        global_overrides = overrides.get("global", {})
-        algorithm_override = overrides.get("algorithm")
-        per_action = overrides.get("per_action", [])
-
-        for i, action in enumerate(self.actions):
-            action_overrides = {**global_overrides}
-
-            # Apply algorithm override for adaptive_brush actions
-            if algorithm_override and action.effect == "adaptive_brush":
-                action_overrides["algorithm"] = algorithm_override
-
-            # Apply per-action overrides if available
-            if i < len(per_action):
-                action_overrides.update(per_action[i])
-
-            if action_overrides:
-                new_actions.append(action.with_overrides(action_overrides))
-            else:
-                new_actions.append(action)
-
-        return Recipe(
-            name=self.name,
-            description=self.description,
-            sample_data=self.sample_data,
-            segment_name=self.segment_name,
-            actions=new_actions,
-            optimization_hints=self.optimization_hints,
-            metadata=self.metadata,
-        )
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for serialization."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "sample_data": self.sample_data,
-            "segment_name": self.segment_name,
-            "actions": [a.to_dict() for a in self.actions],
-            "optimization_hints": self.optimization_hints,
-            "metadata": self.metadata,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> Recipe:
-        """Create Recipe from dictionary."""
         return cls(
-            name=data["name"],
-            description=data["description"],
-            sample_data=data["sample_data"],
-            segment_name=data["segment_name"],
-            actions=[Action.from_dict(a) for a in data["actions"]],
-            optimization_hints=data.get("optimization_hints", {}),
-            metadata=data.get("metadata", {}),
+            name=path.stem,
+            path=path,
+            sample_data=sample_data,
+            segment_name=segment_name,
+            run=module.run,
+            module=module,
         )
 
-    def save(self, output_path: Path | str) -> None:
-        """Save recipe as Python file.
+    def execute(self, effect: Any) -> None:
+        """Execute the recipe with the given effect.
 
         Args:
-            output_path: Path where to save the recipe file.
+            effect: The Adaptive Brush scripted effect instance.
         """
-        output_path = Path(output_path)
-        code = self._generate_python_code()
-        output_path.write_text(code)
-        logger.info(f"Saved recipe '{self.name}' to {output_path}")
+        logger.info(f"Executing recipe: {self.name}")
+        self.run(effect)
+        logger.info(f"Recipe complete: {self.name}")
 
-    def _generate_python_code(self) -> str:
-        """Generate Python code for this recipe."""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        lines = [
-            '"""',
-            f"Segmentation recipe: {self.name}",
-            "",
-            f"Description: {self.description}",
-            f"Created: {timestamp}",
-            f"Sample Data: {self.sample_data}",
-            '"""',
-            "from SegmentEditorAdaptiveBrushTesterLib.Recipe import Action, Recipe",
-            "",
-            "recipe = Recipe(",
-            f'    name="{self.name}",',
-            f'    description="{self.description}",',
-            f'    sample_data="{self.sample_data}",',
-            f'    segment_name="{self.segment_name}",',
-            "    actions=[",
-        ]
+def list_recipes(recipes_dir: Path | str | None = None) -> list[Path]:
+    """List available recipe files.
 
-        for i, action in enumerate(self.actions):
-            lines.append(f"        # Action {i + 1}")
-            lines.append(self._format_action(action))
+    Args:
+        recipes_dir: Directory to search. If None, uses default location.
 
-        lines.extend(
-            [
-                "    ],",
-                ")",
-                "",
-                "# Optimization hints for parameter tuning",
-                "optimization_hints = {",
-            ]
-        )
+    Returns:
+        List of recipe file paths.
+    """
+    if recipes_dir is None:
+        # Default to recipes/ in the same package
+        recipes_dir = Path(__file__).parent.parent / "recipes"
 
-        # Add optimization hints
-        for key, value in self.optimization_hints.items():
-            lines.append(f'    "{key}": {repr(value)},')
+    recipes_dir = Path(recipes_dir)
+    if not recipes_dir.exists():
+        return []
 
-        lines.extend(["}", ""])
-
-        return "\n".join(lines)
-
-    def _format_action(self, action: Action) -> str:
-        """Format a single action as Python code."""
-        if action.effect == "adaptive_brush":
-            params = action.params
-            ras = params["ras"]
-            lines = [
-                "        Action.adaptive_brush(",
-                f"            ras=({ras[0]}, {ras[1]}, {ras[2]}),",
-                f'            algorithm="{params["algorithm"]}",',
-                f"            brush_radius_mm={params['brush_radius_mm']},",
-                f"            edge_sensitivity={params['edge_sensitivity']},",
-            ]
-
-            # Add optional params
-            if "mode" in params and params["mode"] != "add":
-                lines.append(f'            mode="{params["mode"]}",')
-            if "threshold_zone" in params:
-                lines.append(f"            threshold_zone={params['threshold_zone']},")
-
-            # Add algorithm-specific params
-            for key, value in params.items():
-                if key not in [
-                    "ras",
-                    "algorithm",
-                    "brush_radius_mm",
-                    "edge_sensitivity",
-                    "mode",
-                    "threshold_zone",
-                ]:
-                    if isinstance(value, str):
-                        lines.append(f'            {key}="{value}",')
-                    else:
-                        lines.append(f"            {key}={value},")
-
-            lines.append("        ),")
-            return "\n".join(lines)
-
-        elif action.effect == "paint":
-            params = action.params
-            ras = params["ras"]
-            return (
-                f"        Action.paint(\n"
-                f"            ras=({ras[0]}, {ras[1]}, {ras[2]}),\n"
-                f"            radius_mm={params['radius_mm']},\n"
-                f'            mode="{params.get("mode", "add")}",\n'
-                f"            sphere={params.get('sphere', False)},\n"
-                f"        ),"
-            )
-
-        elif action.effect == "threshold":
-            params = action.params
-            return (
-                f"        Action.threshold(\n"
-                f"            min_value={params['min_value']},\n"
-                f"            max_value={params['max_value']},\n"
-                f"        ),"
-            )
-
-        elif action.effect == "grow_from_seeds":
-            return "        Action.grow_from_seeds(),"
-
-        elif action.effect == "islands":
-            params = action.params
-            return (
-                f"        Action.islands(\n"
-                f'            operation="{params.get("operation", "KEEP_LARGEST")}",\n'
-                f"            min_size={params.get('min_size', 1000)},\n"
-                f"        ),"
-            )
-
-        elif action.effect == "smoothing":
-            params = action.params
-            return (
-                f"        Action.smoothing(\n"
-                f'            method="{params.get("method", "MEDIAN")}",\n'
-                f"            kernel_size_mm={params.get('kernel_size_mm', 3.0)},\n"
-                f"        ),"
-            )
-
-        else:
-            # Generic formatting
-            return f"        Action(effect={repr(action.effect)}, params={repr(action.params)}),"
-
-    def get_action_count(self) -> int:
-        """Get number of actions in recipe."""
-        return len(self.actions)
-
-    def get_adaptive_brush_actions(self) -> list[Action]:
-        """Get only adaptive brush actions."""
-        return [a for a in self.actions if a.effect == "adaptive_brush"]
-
-    def get_click_positions(self) -> list[tuple[float, float, float]]:
-        """Get RAS positions of all click-based actions."""
-        positions = []
-        for action in self.actions:
-            if "ras" in action.params:
-                positions.append(tuple(action.params["ras"]))
-        return positions
+    return sorted(
+        p
+        for p in recipes_dir.glob("*.py")
+        if not p.name.startswith("_") and p.name != "template.py"
+    )

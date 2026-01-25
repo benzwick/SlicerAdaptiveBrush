@@ -1,9 +1,6 @@
 """Recipe recording for capturing manual segmentation sessions.
 
-Records user actions in Slicer and generates recipe files that can
-be replayed, edited, and optimized.
-
-See ADR-013 for architecture decisions.
+Records user actions and generates Python recipe files.
 """
 
 from __future__ import annotations
@@ -13,33 +10,31 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
-
-from .Recipe import Action, Recipe
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class RecordedAction:
-    """An action recorded during a manual session."""
+class RecordedStroke:
+    """A recorded brush stroke."""
 
-    action: Action
-    timestamp: float
-    view_name: str = "Red"
-    notes: str = ""
+    ras: tuple[float, float, float]
+    erase: bool = False
+    timestamp: float = 0.0
+
+
+@dataclass
+class RecordedParamChange:
+    """A recorded parameter change."""
+
+    name: str
+    value: Any
+    timestamp: float = 0.0
 
 
 class RecipeRecorder:
-    """Record manual Slicer sessions into recipe files.
-
-    Captures user actions including:
-    - Adaptive Brush strokes with all parameters
-    - Other segment editor effects
-    - Parameter changes
+    """Record manual Slicer sessions into Python recipe files.
 
     Example:
         recorder = RecipeRecorder()
@@ -47,25 +42,25 @@ class RecipeRecorder:
 
         # ... user performs manual segmentation ...
 
-        recipe = recorder.stop()
-        recipe.save("recipes/my_segmentation.py")
+        recorder.stop()
+        recorder.save("recipes/my_segmentation.py")
     """
 
     def __init__(self) -> None:
         """Initialize recorder."""
-        self.recorded_actions: list[RecordedAction] = []
+        self.strokes: list[RecordedStroke] = []
+        self.param_changes: list[RecordedParamChange] = []
         self.recording: bool = False
         self.sample_data: str = ""
         self.segment_name: str = ""
         self.start_time: float = 0.0
-        self._observers: list[tuple[Any, int]] = []
-        self._effect_observers: dict[str, Any] = {}
+        self.initial_preset: str = ""
 
     def start(self, sample_data: str, segment_name: str) -> None:
         """Start recording a session.
 
         Args:
-            sample_data: Slicer SampleData name being segmented.
+            sample_data: Slicer SampleData name.
             segment_name: Name of the segment being created.
         """
         if self.recording:
@@ -74,352 +69,155 @@ class RecipeRecorder:
 
         self.sample_data = sample_data
         self.segment_name = segment_name
-        self.recorded_actions = []
+        self.strokes = []
+        self.param_changes = []
         self.start_time = time.time()
         self.recording = True
+        self.initial_preset = self._get_current_preset()
 
-        self._install_hooks()
         logger.info(f"Started recording: {sample_data} / {segment_name}")
 
-    def stop(self) -> Recipe:
-        """Stop recording and return Recipe.
-
-        Returns:
-            Recipe object with recorded actions.
-        """
+    def stop(self) -> None:
+        """Stop recording."""
         self.recording = False
-        self._remove_hooks()
-
-        recipe = Recipe(
-            name=f"recorded_{datetime.now():%Y%m%d_%H%M%S}",
-            description=f"Recorded from manual session ({len(self.recorded_actions)} actions)",
-            sample_data=self.sample_data,
-            segment_name=self.segment_name,
-            actions=[ra.action for ra in self.recorded_actions],
-            optimization_hints={
-                "vary_globally": ["edge_sensitivity", "threshold_zone"],
-                "vary_per_action": ["brush_radius_mm"],
-            },
-            metadata={
-                "recorded_at": datetime.now().isoformat(),
-                "duration_seconds": time.time() - self.start_time,
-                "action_count": len(self.recorded_actions),
-            },
+        logger.info(
+            f"Stopped recording: {len(self.strokes)} strokes, "
+            f"{len(self.param_changes)} param changes"
         )
 
-        logger.info(f"Stopped recording: {len(self.recorded_actions)} actions captured")
-        return recipe
-
-    def save(self, output_path: Path | str) -> Recipe:
-        """Stop recording and save recipe to file.
-
-        Args:
-            output_path: Path where to save recipe file.
-
-        Returns:
-            The saved Recipe object.
-        """
-        recipe = self.stop()
-        recipe.save(output_path)
-        return recipe
-
-    def add_note(self, note: str) -> None:
-        """Add a note to the most recent action.
+    def record_stroke(
+        self,
+        ras: tuple[float, float, float],
+        erase: bool = False,
+    ) -> None:
+        """Record a brush stroke.
 
         Args:
-            note: Note text to add.
+            ras: RAS coordinates.
+            erase: Whether this was an erase stroke.
         """
-        if self.recorded_actions:
-            self.recorded_actions[-1].notes = note
-            logger.debug(f"Added note to action: {note}")
+        if not self.recording:
+            return
+
+        stroke = RecordedStroke(
+            ras=ras,
+            erase=erase,
+            timestamp=time.time() - self.start_time,
+        )
+        self.strokes.append(stroke)
+        logger.debug(f"Recorded stroke at {ras}, erase={erase}")
+
+    def record_param_change(self, name: str, value: Any) -> None:
+        """Record a parameter change.
+
+        Args:
+            name: Parameter name.
+            value: New value.
+        """
+        if not self.recording:
+            return
+
+        change = RecordedParamChange(
+            name=name,
+            value=value,
+            timestamp=time.time() - self.start_time,
+        )
+        self.param_changes.append(change)
+        logger.debug(f"Recorded param change: {name}={value}")
+
+    def save(self, output_path: Path | str) -> None:
+        """Save recording as a Python recipe file.
+
+        Args:
+            output_path: Path for the output file.
+        """
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        code = self._generate_code()
+
+        with open(output_path, "w") as f:
+            f.write(code)
+
+        logger.info(f"Saved recipe to: {output_path}")
+
+    def _generate_code(self) -> str:
+        """Generate Python recipe code from recording."""
+        lines = [
+            '"""',
+            f"Recipe: {self.segment_name}",
+            "",
+            f"Recorded: {datetime.now():%Y-%m-%d %H:%M}",
+            f"Sample Data: {self.sample_data}",
+            f"Strokes: {len(self.strokes)}",
+            '"""',
+            "",
+            f'sample_data = "{self.sample_data}"',
+            f'segment_name = "{self.segment_name}"',
+            "",
+            "",
+            "def run(effect):",
+        ]
+
+        # Add preset if set
+        if self.initial_preset:
+            lines.append(f'    effect.applyPreset("{self.initial_preset}")')
+            lines.append("")
+
+        # Merge strokes and param changes by timestamp
+        events: list[tuple[str, float, RecordedStroke | RecordedParamChange]] = []
+        for stroke in self.strokes:
+            events.append(("stroke", stroke.timestamp, stroke))
+        for change in self.param_changes:
+            events.append(("param", change.timestamp, change))
+
+        events.sort(key=lambda x: x[1])
+
+        # Generate code for each event
+        for event_type, _, data in events:
+            if event_type == "stroke" and isinstance(data, RecordedStroke):
+                r, a, s = data.ras
+                if data.erase:
+                    lines.append(f"    effect.paintAt({r:.2f}, {a:.2f}, {s:.2f}, erase=True)")
+                else:
+                    lines.append(f"    effect.paintAt({r:.2f}, {a:.2f}, {s:.2f})")
+            elif event_type == "param" and isinstance(data, RecordedParamChange):
+                if isinstance(data.value, str):
+                    lines.append(f'    effect.{data.name} = "{data.value}"')
+                else:
+                    lines.append(f"    effect.{data.name} = {data.value}")
+
+        if len(self.strokes) == 0:
+            lines.append("    pass  # No strokes recorded")
+
+        lines.append("")
+
+        return "\n".join(lines)
+
+    def _get_current_preset(self) -> str:
+        """Get the current preset from the effect."""
+        try:
+            import slicer
+
+            editor = slicer.modules.segmenteditor.widgetRepresentation().self().editor
+            effect = editor.activeEffect()
+            if effect and effect.name == "Adaptive Brush":
+                return getattr(effect.self(), "_currentPreset", "")
+        except Exception:
+            pass
+        return ""
 
     def is_recording(self) -> bool:
-        """Check if currently recording.
-
-        Returns:
-            True if recording is active.
-        """
+        """Check if currently recording."""
         return self.recording
 
-    def get_action_count(self) -> int:
-        """Get number of recorded actions.
 
-        Returns:
-            Number of actions recorded so far.
-        """
-        return len(self.recorded_actions)
-
-    def _install_hooks(self) -> None:
-        """Install Slicer event hooks for recording."""
-        try:
-            import slicer
-
-            # Hook into segment editor widget
-            segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation()
-            if segment_editor_module:
-                # We can't directly observe effect events, but we can poll
-                # or use the action recorder from the tester module
-                # Editor reference available via: segment_editor_module.self().editor
-                logger.debug("Installed Slicer hooks for recording")
-
-        except Exception as e:
-            logger.warning(f"Could not install Slicer hooks: {e}")
-
-    def _remove_hooks(self) -> None:
-        """Remove Slicer event hooks."""
-        for obj, tag in self._observers:
-            try:
-                obj.RemoveObserver(tag)
-            except Exception:
-                pass
-        self._observers.clear()
-        self._effect_observers.clear()
-        logger.debug("Removed Slicer hooks")
-
-    def record_adaptive_brush_stroke(
-        self,
-        ras: tuple[float, float, float],
-        algorithm: str,
-        brush_radius_mm: float,
-        edge_sensitivity: int,
-        threshold_zone: int = 50,
-        mode: str = "add",
-        view_name: str = "Red",
-        **kwargs: Any,
-    ) -> None:
-        """Record an Adaptive Brush stroke.
-
-        This method is called by the Adaptive Brush effect when
-        recording is active.
-
-        Args:
-            ras: RAS coordinates of the stroke.
-            algorithm: Algorithm used.
-            brush_radius_mm: Brush radius in mm.
-            edge_sensitivity: Edge sensitivity (0-100).
-            threshold_zone: Threshold zone percentage.
-            mode: "add" or "erase".
-            view_name: Name of the slice view.
-            **kwargs: Additional algorithm-specific parameters.
-        """
-        if not self.recording:
-            return
-
-        action = Action.adaptive_brush(
-            ras=ras,
-            algorithm=algorithm,
-            brush_radius_mm=brush_radius_mm,
-            edge_sensitivity=edge_sensitivity,
-            threshold_zone=threshold_zone,
-            mode=mode,
-            **kwargs,
-        )
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-            view_name=view_name,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug(
-            f"Recorded adaptive brush: RAS={ras}, algo={algorithm}, "
-            f"radius={brush_radius_mm}mm, mode={mode}"
-        )
-
-    def record_paint_stroke(
-        self,
-        ras: tuple[float, float, float],
-        radius_mm: float,
-        mode: str = "add",
-        sphere: bool = False,
-        view_name: str = "Red",
-    ) -> None:
-        """Record a Paint stroke.
-
-        Args:
-            ras: RAS coordinates of the stroke.
-            radius_mm: Paint radius in mm.
-            mode: "add" or "erase".
-            sphere: Whether sphere brush was used.
-            view_name: Name of the slice view.
-        """
-        if not self.recording:
-            return
-
-        action = Action.paint(
-            ras=ras,
-            radius_mm=radius_mm,
-            mode=mode,
-            sphere=sphere,
-        )
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-            view_name=view_name,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug(f"Recorded paint: RAS={ras}, radius={radius_mm}mm, mode={mode}")
-
-    def record_threshold(
-        self,
-        min_value: float,
-        max_value: float,
-    ) -> None:
-        """Record a Threshold application.
-
-        Args:
-            min_value: Minimum threshold value.
-            max_value: Maximum threshold value.
-        """
-        if not self.recording:
-            return
-
-        action = Action.threshold(min_value=min_value, max_value=max_value)
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug(f"Recorded threshold: [{min_value}, {max_value}]")
-
-    def record_grow_from_seeds(self) -> None:
-        """Record a Grow from Seeds application."""
-        if not self.recording:
-            return
-
-        action = Action.grow_from_seeds()
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug("Recorded grow from seeds")
-
-    def record_islands(
-        self,
-        operation: str = "KEEP_LARGEST",
-        min_size: int = 1000,
-    ) -> None:
-        """Record an Islands operation.
-
-        Args:
-            operation: Islands operation type.
-            min_size: Minimum island size.
-        """
-        if not self.recording:
-            return
-
-        action = Action.islands(operation=operation, min_size=min_size)
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug(f"Recorded islands: {operation}")
-
-    def record_smoothing(
-        self,
-        method: str = "MEDIAN",
-        kernel_size_mm: float = 3.0,
-    ) -> None:
-        """Record a Smoothing operation.
-
-        Args:
-            method: Smoothing method.
-            kernel_size_mm: Kernel size in mm.
-        """
-        if not self.recording:
-            return
-
-        action = Action.smoothing(method=method, kernel_size_mm=kernel_size_mm)
-
-        recorded = RecordedAction(
-            action=action,
-            timestamp=time.time() - self.start_time,
-        )
-        self.recorded_actions.append(recorded)
-
-        logger.debug(f"Recorded smoothing: {method}")
-
-    def get_current_adaptive_brush_params(self) -> dict[str, Any] | None:
-        """Get current parameters from Adaptive Brush effect.
-
-        Returns:
-            Dictionary of current parameters or None if not available.
-        """
-        try:
-            import slicer
-
-            segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation()
-            if not segment_editor_module:
-                return None
-
-            editor = segment_editor_module.self().editor
-            effect = editor.activeEffect()
-
-            if effect is None or effect.name != "Adaptive Brush":
-                return None
-
-            scripted_effect = effect.self()
-
-            params = {
-                "algorithm": scripted_effect.algorithmCombo.currentData,
-                "brush_radius_mm": scripted_effect.radiusSlider.value,
-                "edge_sensitivity": int(scripted_effect.sensitivitySlider.value),
-                "threshold_zone": int(scripted_effect.thresholdZoneSlider.value),
-            }
-
-            # Add algorithm-specific params
-            algo = params["algorithm"]
-
-            if algo == "watershed":
-                params["watershedGradientScale"] = (
-                    scripted_effect.watershedGradientScaleSlider.value
-                )
-                params["watershedSmoothing"] = scripted_effect.watershedSmoothingSlider.value
-
-            elif algo in ("level_set_cpu", "level_set_gpu"):
-                params["levelSetIterations"] = int(scripted_effect.levelSetIterationsSlider.value)
-                params["levelSetPropagation"] = scripted_effect.levelSetPropagationSlider.value
-                params["levelSetCurvature"] = scripted_effect.levelSetCurvatureSlider.value
-
-            elif algo == "region_growing":
-                params["regionGrowingMultiplier"] = (
-                    scripted_effect.regionGrowingMultiplierSlider.value
-                )
-
-            elif algo == "threshold_brush":
-                params["thresholdMethod"] = scripted_effect.thresholdMethodCombo.currentData
-
-            elif algo == "random_walker":
-                params["randomWalkerBeta"] = int(scripted_effect.randomWalkerBetaSlider.value)
-
-            return params
-
-        except Exception as e:
-            logger.warning(f"Could not get Adaptive Brush params: {e}")
-            return None
-
-
-# Global recorder instance for use by effects
+# Global recorder instance
 _global_recorder: RecipeRecorder | None = None
 
 
 def get_global_recorder() -> RecipeRecorder:
-    """Get or create the global recipe recorder.
-
-    Returns:
-        Global RecipeRecorder instance.
-    """
+    """Get or create the global recipe recorder."""
     global _global_recorder
     if _global_recorder is None:
         _global_recorder = RecipeRecorder()
@@ -427,28 +225,15 @@ def get_global_recorder() -> RecipeRecorder:
 
 
 def start_recording(sample_data: str, segment_name: str) -> None:
-    """Start global recording session.
-
-    Args:
-        sample_data: Slicer SampleData name.
-        segment_name: Segment name being created.
-    """
+    """Start global recording session."""
     get_global_recorder().start(sample_data, segment_name)
 
 
-def stop_recording() -> Recipe:
-    """Stop global recording and return recipe.
-
-    Returns:
-        Recipe with recorded actions.
-    """
-    return get_global_recorder().stop()
+def stop_recording() -> None:
+    """Stop global recording."""
+    get_global_recorder().stop()
 
 
 def is_recording() -> bool:
-    """Check if global recording is active.
-
-    Returns:
-        True if recording.
-    """
+    """Check if global recording is active."""
     return get_global_recorder().is_recording()
