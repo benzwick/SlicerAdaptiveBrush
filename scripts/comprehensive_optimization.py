@@ -15,6 +15,7 @@ Usage (run in Slicer):
 
 import json
 import logging
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -24,13 +25,24 @@ import SimpleITK as sitk
 import slicer
 import vtk
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 SCRIPT_DIR = Path(__file__).parent.parent
 OUTPUT_DIR = (
     SCRIPT_DIR / "test_runs" / f"comprehensive_opt_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 )
+
+# Create output dir early so we can log there
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Log to both console and file in output folder
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(OUTPUT_DIR / "console.log"),
+    ],
+)
+logger = logging.getLogger(__name__)
 
 # All click points we might use (different subsets for different tests)
 ALL_CLICK_POINTS = [
@@ -562,7 +574,6 @@ def run_trial(
 
 
 def main():
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Output: {OUTPUT_DIR}")
 
     # Clear scene
