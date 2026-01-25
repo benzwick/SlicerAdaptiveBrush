@@ -2742,6 +2742,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         Returns:
             True if the event was handled, False otherwise.
         """
+        # Skip event processing when wizard is active (wizard handles its own sampling)
+        if getattr(self, "_wizardActive", False):
+            return False
+
         if viewWidget.className() != "qMRMLSliceWidget":
             return False
 

@@ -125,19 +125,23 @@ class WizardSampler:
 
     def _on_left_button_press(self, caller: Any, event: str) -> None:
         """Handle left mouse button press - start sampling."""
+        logger.debug(f"WizardSampler: LeftButtonPress received, active={self._active}")
         if not self._active:
             return
 
         try:
             xy = self._get_event_position(caller)
+            logger.debug(f"WizardSampler: sampling at xy={xy}")
             if xy:
                 self._sample_at_xy(xy)
                 self._last_sample_pos = xy
+                logger.debug(f"WizardSampler: sample count now {len(self._points)}")
         except Exception as e:
             logger.debug(f"Error in left button press: {e}")
 
     def _on_left_button_release(self, caller: Any, event: str) -> None:
         """Handle left mouse button release - finalize sampling stroke."""
+        logger.debug(f"WizardSampler: LeftButtonRelease received, active={self._active}")
         if not self._active:
             return
 
@@ -145,6 +149,7 @@ class WizardSampler:
 
         # Notify callback if registered
         if self.callback and len(self._points) > 0:
+            logger.info(f"WizardSampler: stroke complete with {len(self._points)} samples")
             try:
                 self.callback(self._points.copy(), np.array(self._intensities))
             except Exception as e:

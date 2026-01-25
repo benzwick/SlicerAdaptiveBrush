@@ -50,6 +50,7 @@ class ParameterWizard:
     def start(self) -> None:
         """Launch the wizard dialog."""
         try:
+            import slicer
             from WizardUI import WizardPanel
 
             # Get source volume
@@ -60,21 +61,34 @@ class ParameterWizard:
 
             self.samples.volume_node = volume_node
 
+            # Set wizard active flag to prevent main effect from handling events
+            self.effect._wizardActive = True
+            logger.info("Wizard started - main effect event handling disabled")
+
             # Create samplers
             self._fg_sampler = WizardSampler(volume_node, self._on_foreground_sampled)
             self._bg_sampler = WizardSampler(volume_node, self._on_background_sampled)
             self._boundary_sampler = WizardSampler(volume_node, self._on_boundary_traced)
 
-            # Create and show wizard panel
-            self._wizard_panel = WizardPanel()
+            # Create wizard panel with Slicer main window as parent for proper window management
+            main_window = slicer.util.mainWindow()
+            self._wizard_panel = WizardPanel(parent=main_window)
+            self._wizard_panel.setWindowFlags(
+                self._wizard_panel.windowFlags() | 0x00000008  # Qt.WindowStaysOnTopHint
+            )
             self._connect_wizard_signals()
             self._wizard_panel.show()
+            self._wizard_panel.raise_()  # Bring to front
+            self._wizard_panel.activateWindow()  # Give focus
 
             # Start foreground sampling
             self._activate_foreground_sampling()
 
+            logger.info("Wizard panel displayed")
+
         except Exception as e:
             logger.exception("Failed to start wizard")
+            self.effect._wizardActive = False
             self._show_error(f"Failed to start wizard: {e}")
 
     def _get_source_volume(self) -> Any:
@@ -347,6 +361,8 @@ class ParameterWizard:
         Args:
             result: Dialog result (1 = accepted, 0 = rejected).
         """
+        logger.info(f"Wizard finished with result: {result}")
+
         # Clean up samplers
         if self._fg_sampler:
             self._fg_sampler.deactivate()
@@ -367,6 +383,10 @@ class ParameterWizard:
                 logger.exception("Failed to apply wizard results")
 
         self._wizard_panel = None
+
+        # Re-enable main effect event handling
+        self.effect._wizardActive = False
+        logger.info("Wizard closed - main effect event handling re-enabled")
 
     def _show_error(self, message: str) -> None:
         """Show error message to user."""
