@@ -133,6 +133,7 @@
   - [x] Action class for individual operations (adaptive_brush, paint, threshold, etc.)
   - [x] RecipeRunner for executing recipes in Slicer
   - [x] RecipeRecorder for capturing manual sessions
+  - [x] RecipeTestRunner for regression testing against gold standards
   - [x] Example recipes (brain_tumor_1.py, template.py)
 
 - [x] Optuna Integration (ADR-011)

@@ -64,10 +64,12 @@ class ResultsLoader:
 
         Args:
             results_dir: Directory containing optimization results.
-                        Defaults to "optimization_results".
+                        Defaults to "test_runs" relative to extension root.
         """
         if results_dir is None:
-            results_dir = Path("optimization_results")
+            # Find test_runs relative to this module
+            module_dir = Path(__file__).parent.parent.parent
+            results_dir = module_dir / "test_runs"
         self.results_dir = Path(results_dir)
 
     def list_runs(self) -> list[Path]:
