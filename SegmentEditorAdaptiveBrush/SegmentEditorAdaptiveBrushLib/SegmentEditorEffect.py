@@ -2745,8 +2745,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         Returns:
             True if the event was handled, False otherwise.
         """
-        # Skip event processing when wizard is active (wizard handles its own sampling)
+        # When wizard is active, forward events to the wizard's sampler
         if getattr(self, "_wizardActive", False):
+            if hasattr(self, "_activeWizard") and self._activeWizard:
+                return self._activeWizard.handle_interaction_event(
+                    callerInteractor, eventId, viewWidget
+                )
             return False
 
         if viewWidget.className() != "qMRMLSliceWidget":

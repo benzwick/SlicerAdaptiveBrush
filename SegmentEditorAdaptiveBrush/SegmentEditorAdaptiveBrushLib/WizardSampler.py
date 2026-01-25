@@ -37,7 +37,6 @@ class WizardSampler:
         self._intensities: list[float] = []
         self._active = False
         self._view_widget: Any = None
-        self._observations: list[tuple[Any, int]] = []
 
         # Sampling parameters
         self._sample_spacing = 1  # Sample every N pixels during drag
@@ -63,35 +62,12 @@ class WizardSampler:
         self._intensities = []
         self._last_sample_pos = None
 
-        # Add event observers
-        try:
-            interactor = view_widget.sliceView().interactor()
-            if interactor:
-                # Observe mouse events
-                events_to_observe = [
-                    ("LeftButtonPressEvent", self._on_left_button_press),
-                    ("LeftButtonReleaseEvent", self._on_left_button_release),
-                    ("MouseMoveEvent", self._on_mouse_move),
-                ]
-                for event_name, handler in events_to_observe:
-                    tag = interactor.AddObserver(event_name, handler)
-                    self._observations.append((interactor, tag))
-
-                logger.debug("WizardSampler activated on view widget")
-        except Exception as e:
-            logger.warning(f"Failed to activate WizardSampler: {e}")
-            self._active = False
+        # Events are routed through ParameterWizard.handle_interaction_event,
+        # not through direct VTK observers
+        logger.debug("WizardSampler activated on view widget")
 
     def deactivate(self) -> None:
-        """Deactivate sampling mode and clean up observers."""
-        # Remove event observers
-        for interactor, tag in self._observations:
-            try:
-                interactor.RemoveObserver(tag)
-            except Exception:
-                pass
-        self._observations = []
-
+        """Deactivate sampling mode."""
         self._active = False
         self._view_widget = None
         self._last_sample_pos = None

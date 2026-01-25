@@ -57,8 +57,9 @@ class ParameterWizard:
             self.samples = WizardSamples()
             self.samples.volume_node = volume_node
 
-            # Set wizard active flag to prevent main effect from handling events
+            # Set wizard active flag and store reference for event forwarding
             self.effect._wizardActive = True
+            self.effect._activeWizard = self
             logger.info("Wizard started - main effect event handling disabled")
 
             # Create samplers
@@ -210,6 +211,43 @@ class ParameterWizard:
             logger.warning(f"Failed to get slice widget: {e}")
 
         return None
+
+    def handle_interaction_event(
+        self, callerInteractor: Any, eventId: int, viewWidget: Any
+    ) -> bool:
+        """Handle mouse interaction events forwarded from the main effect.
+
+        Args:
+            callerInteractor: VTK interactor that triggered the event.
+            eventId: VTK event ID.
+            viewWidget: The view widget where the event occurred.
+
+        Returns:
+            True if the event was handled (consumed), False otherwise.
+        """
+        import vtk
+
+        if not self._current_sampler or not self._current_sampler.is_active:
+            return False
+
+        # Only handle events in slice views
+        if viewWidget.className() != "qMRMLSliceWidget":
+            return False
+
+        # Map VTK event IDs to string names for the sampler
+        event_map = {
+            vtk.vtkCommand.LeftButtonPressEvent: "LeftButtonPressEvent",
+            vtk.vtkCommand.LeftButtonReleaseEvent: "LeftButtonReleaseEvent",
+            vtk.vtkCommand.MouseMoveEvent: "MouseMoveEvent",
+        }
+
+        event_name = event_map.get(eventId)
+        if event_name:
+            # Store the view widget reference for coordinate conversion
+            self._current_sampler._view_widget = viewWidget
+            return bool(self._current_sampler.process_event(callerInteractor, event_name))
+
+        return False
 
     def on_foreground_sampled(self, points: list, intensities: np.ndarray) -> None:
         """Called when foreground sampling completes a stroke.
@@ -413,6 +451,7 @@ class ParameterWizard:
 
         # Re-enable main effect event handling
         self.effect._wizardActive = False
+        self.effect._activeWizard = None
         logger.info("Wizard closed - main effect event handling re-enabled")
 
     def _show_error(self, message: str) -> None:
