@@ -178,6 +178,28 @@
   - [x] 83 screenshots captured per test run
   - [ ] Multi-dataset regression suite (currently only MRBrainTumor1)
 
+## Version 0.14.0 - Enhanced Testing and Recipe Replay
+
+- [ ] Enhanced Screenshots
+  - [ ] Always capture 3D view alongside layout screenshots
+  - [ ] `capture_layout_with_3d()` method in ScreenshotCapture
+
+- [ ] Review Module Enhancements
+  - [ ] View layout buttons (Conventional, Four-Up, 3D Only, Dual 3D)
+  - [ ] Recipe replay UI with step controls
+  - [ ] Current action parameters display
+  - [ ] Branch recording integration
+
+- [ ] Action Recipe System
+  - [ ] ActionRecipe class (JSON-based, steppable)
+  - [ ] SteppingRecipeRunner with checkpointing
+  - [ ] Converter from Python function recipes
+  - [ ] Branch and save workflow
+
+- [ ] Documentation
+  - [ ] ADR-014: Enhanced Testing and Recipe Replay
+  - [ ] Update ROADMAP.md with v0.14.0 section
+
 ## Version 0.15.0 - Living Documentation
 
 - [ ] Test scripts generate screenshots automatically

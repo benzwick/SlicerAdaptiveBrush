@@ -273,6 +273,32 @@ class ScreenshotCapture:
         logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
         return info
 
+    def capture_layout_with_3d(
+        self, description: str = ""
+    ) -> tuple[ScreenshotInfo, ScreenshotInfo | None]:
+        """Capture both layout and 3D view as separate files.
+
+        This method captures the entire layout screenshot first, then attempts
+        to capture a dedicated 3D view screenshot. This ensures 3D visualization
+        is always captured for review.
+
+        Args:
+            description: Human-readable description for the screenshots.
+
+        Returns:
+            Tuple of (layout_info, three_d_info). three_d_info is None if
+            no 3D view is available in the current layout.
+        """
+        layout_info = self.capture_layout(description)
+
+        try:
+            three_d_info = self.capture_3d_view(f"{description} (3D)")
+            return layout_info, three_d_info
+        except ValueError:
+            # No 3D view available in current layout
+            logger.debug("No 3D view available for capture_layout_with_3d")
+            return layout_info, None
+
     def capture_3d_view(self, description: str = "", view_node_index: int = 0) -> ScreenshotInfo:
         """Capture screenshot of the 3D view.
 

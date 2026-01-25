@@ -585,5 +585,6 @@ PARAM_MAP = {
 
 - [ADR-010](ADR-010-testing-framework.md): Slicer Testing Framework
 - [ADR-011](ADR-011-optimization-framework.md): Smart Optimization Framework
+- [ADR-014](ADR-014-enhanced-testing-recipe-replay.md): Enhanced Testing and Recipe Replay (extends this ADR with action-based format)
 - [Slicer SampleData](https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#download-sample-data)
 - [Segment Editor Effects](https://slicer.readthedocs.io/en/latest/user_guide/modules/segmenteditor.html)

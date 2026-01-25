@@ -3,6 +3,7 @@
 This package provides the testing framework for SlicerAdaptiveBrush.
 """
 
+from .ActionRecipe import ActionRecipe, RecipeAction, list_action_recipes
 from .ActionRecorder import ActionRecorder
 from .AlgorithmCharacterizer import AlgorithmCharacterizer
 from .AlgorithmProfile import (
@@ -42,6 +43,7 @@ from .RecipeTestRunner import (
 from .ReportGenerator import ReportGenerator
 from .ScreenshotCapture import ScreenshotCapture, ScreenshotInfo
 from .SegmentationMetrics import MetricsResult, SegmentationMetrics, StrokeMetricsTracker
+from .SteppingRecipeRunner import SegmentationCheckpoint, SteppingRecipeRunner
 from .TestCase import TestCase
 from .TestContext import TestContext
 from .TestRegistry import TestRegistry, register_test
@@ -65,6 +67,13 @@ __all__ = [
     "TestRunFolder",
     "ActionRecorder",
     "ReportGenerator",
+    # Action recipes (v0.14.0)
+    "ActionRecipe",
+    "RecipeAction",
+    "list_action_recipes",
+    # Stepping runner (v0.14.0)
+    "SteppingRecipeRunner",
+    "SegmentationCheckpoint",
     # Segmentation metrics (Phase 2)
     "SegmentationMetrics",
     "MetricsResult",

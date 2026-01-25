@@ -58,6 +58,11 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.current_trial = None
         self.selected_screenshot_path = None
 
+        # Recipe replay state
+        self.stepping_runner = None
+        self.current_action_recipe = None
+        self.autoplay_timer = None
+
     def setup(self):
         """Set up the widget UI."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -72,6 +77,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self._create_visualization_section()
         self._create_parameters_metrics_section()
         self._create_screenshots_section()
+        self._create_recipe_replay_section()
         self._create_actions_section()
 
         # Add vertical spacer
@@ -117,6 +123,29 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         """Create the visualization controls section."""
         collapsible = qt.QGroupBox("Visualization")
         layout = qt.QVBoxLayout(collapsible)
+
+        # Layout buttons
+        layout_row = qt.QHBoxLayout()
+        layout_row.addWidget(qt.QLabel("Layout:"))
+
+        self.layoutConventionalButton = qt.QPushButton("Conventional")
+        self.layoutConventionalButton.clicked.connect(lambda: self._set_layout(3))
+        layout_row.addWidget(self.layoutConventionalButton)
+
+        self.layoutFourUpButton = qt.QPushButton("Four-Up")
+        self.layoutFourUpButton.clicked.connect(lambda: self._set_layout(4))
+        layout_row.addWidget(self.layoutFourUpButton)
+
+        self.layout3DOnlyButton = qt.QPushButton("3D Only")
+        self.layout3DOnlyButton.clicked.connect(lambda: self._set_layout(6))
+        layout_row.addWidget(self.layout3DOnlyButton)
+
+        self.layoutDual3DButton = qt.QPushButton("Dual 3D")
+        self.layoutDual3DButton.clicked.connect(lambda: self._set_layout(15))
+        layout_row.addWidget(self.layoutDual3DButton)
+
+        layout_row.addStretch()
+        layout.addLayout(layout_row)
 
         # View mode
         mode_row = qt.QHBoxLayout()
@@ -250,6 +279,424 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         layout.addWidget(self.compareAlgosButton)
 
         self.layout.addWidget(collapsible)
+
+    def _create_recipe_replay_section(self):
+        """Create the recipe replay section."""
+        collapsible = qt.QGroupBox("Recipe Replay")
+        main_layout = qt.QVBoxLayout(collapsible)
+
+        # Recipe selection row
+        recipe_row = qt.QHBoxLayout()
+        recipe_row.addWidget(qt.QLabel("Recipe:"))
+
+        self.recipeComboBox = qt.QComboBox()
+        self.recipeComboBox.setMinimumWidth(150)
+        recipe_row.addWidget(self.recipeComboBox)
+
+        self.loadRecipeButton = qt.QPushButton("Load")
+        self.loadRecipeButton.clicked.connect(self._on_load_recipe)
+        recipe_row.addWidget(self.loadRecipeButton)
+
+        self.convertRecipeButton = qt.QPushButton("Convert from .py")
+        self.convertRecipeButton.clicked.connect(self._on_convert_recipe)
+        recipe_row.addWidget(self.convertRecipeButton)
+
+        recipe_row.addStretch()
+        main_layout.addLayout(recipe_row)
+
+        # Step controls row
+        step_row = qt.QHBoxLayout()
+        step_row.addWidget(qt.QLabel("Step:"))
+
+        self.stepFirstButton = qt.QPushButton("|<")
+        self.stepFirstButton.setMaximumWidth(30)
+        self.stepFirstButton.setToolTip("Go to start")
+        self.stepFirstButton.clicked.connect(self._on_step_first)
+        step_row.addWidget(self.stepFirstButton)
+
+        self.stepBackButton = qt.QPushButton("<")
+        self.stepBackButton.setMaximumWidth(30)
+        self.stepBackButton.setToolTip("Step backward")
+        self.stepBackButton.clicked.connect(self._on_step_back)
+        step_row.addWidget(self.stepBackButton)
+
+        self.stepLabel = qt.QLabel("0/0")
+        self.stepLabel.setMinimumWidth(50)
+        self.stepLabel.setAlignment(qt.Qt.AlignCenter)
+        step_row.addWidget(self.stepLabel)
+
+        self.stepForwardButton = qt.QPushButton(">")
+        self.stepForwardButton.setMaximumWidth(30)
+        self.stepForwardButton.setToolTip("Step forward")
+        self.stepForwardButton.clicked.connect(self._on_step_forward)
+        step_row.addWidget(self.stepForwardButton)
+
+        self.stepLastButton = qt.QPushButton(">|")
+        self.stepLastButton.setMaximumWidth(30)
+        self.stepLastButton.setToolTip("Run to end")
+        self.stepLastButton.clicked.connect(self._on_step_last)
+        step_row.addWidget(self.stepLastButton)
+
+        step_row.addSpacing(20)
+
+        self.autoplayButton = qt.QPushButton("Auto-play")
+        self.autoplayButton.setCheckable(True)
+        self.autoplayButton.clicked.connect(self._on_autoplay_toggled)
+        step_row.addWidget(self.autoplayButton)
+
+        step_row.addWidget(qt.QLabel("Speed:"))
+        self.speedComboBox = qt.QComboBox()
+        self.speedComboBox.addItems(["0.5x", "1x", "2x", "4x"])
+        self.speedComboBox.setCurrentIndex(1)  # Default 1x
+        step_row.addWidget(self.speedComboBox)
+
+        step_row.addStretch()
+        main_layout.addLayout(step_row)
+
+        # Timeline slider
+        self.timelineSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.timelineSlider.setMinimum(0)
+        self.timelineSlider.setMaximum(0)
+        self.timelineSlider.valueChanged.connect(self._on_timeline_changed)
+        main_layout.addWidget(self.timelineSlider)
+
+        # Current action display
+        action_group = qt.QGroupBox("Current Action")
+        action_layout = qt.QVBoxLayout(action_group)
+
+        self.actionInfoText = qt.QTextEdit()
+        self.actionInfoText.setReadOnly(True)
+        self.actionInfoText.setMaximumHeight(100)
+        self.actionInfoText.setPlainText("No recipe loaded")
+        action_layout.addWidget(self.actionInfoText)
+
+        main_layout.addWidget(action_group)
+
+        # Branch controls
+        branch_row = qt.QHBoxLayout()
+
+        self.startBranchButton = qt.QPushButton("Start Branch")
+        self.startBranchButton.clicked.connect(self._on_start_branch)
+        branch_row.addWidget(self.startBranchButton)
+
+        self.stopBranchButton = qt.QPushButton("Stop Branch")
+        self.stopBranchButton.setEnabled(False)
+        self.stopBranchButton.clicked.connect(self._on_stop_branch)
+        branch_row.addWidget(self.stopBranchButton)
+
+        self.saveBranchButton = qt.QPushButton("Save Branch As...")
+        self.saveBranchButton.setEnabled(False)
+        self.saveBranchButton.clicked.connect(self._on_save_branch)
+        branch_row.addWidget(self.saveBranchButton)
+
+        branch_row.addStretch()
+        main_layout.addLayout(branch_row)
+
+        self.layout.addWidget(collapsible)
+
+        # Populate recipe list
+        self._refresh_recipe_list()
+
+    def _refresh_recipe_list(self):
+        """Refresh the list of available recipes."""
+        self.recipeComboBox.clear()
+
+        try:
+            from SegmentEditorAdaptiveBrushTesterLib import list_action_recipes, list_recipes
+
+            # Add action recipes (JSON)
+            for recipe_path in list_action_recipes():
+                self.recipeComboBox.addItem(f"{recipe_path.stem} (JSON)", str(recipe_path))
+
+            # Add function recipes (Python) - these need conversion
+            for recipe_path in list_recipes():
+                self.recipeComboBox.addItem(f"{recipe_path.stem} (.py)", str(recipe_path))
+
+        except Exception as e:
+            logging.debug(f"Could not load recipes: {e}")
+
+    def _on_load_recipe(self):
+        """Load the selected recipe."""
+        if self.recipeComboBox.count == 0:
+            slicer.util.warningDisplay("No recipes available")
+            return
+
+        recipe_path = Path(self.recipeComboBox.currentData)
+        if not recipe_path.exists():
+            slicer.util.errorDisplay(f"Recipe file not found: {recipe_path}")
+            return
+
+        try:
+            if recipe_path.suffix == ".json":
+                from SegmentEditorAdaptiveBrushTesterLib import ActionRecipe
+
+                self.current_action_recipe = ActionRecipe.load(recipe_path)
+            else:
+                # Python recipe - needs conversion
+                slicer.util.warningDisplay(
+                    "Python recipes need to be converted first.\n"
+                    "Click 'Convert from .py' to create a steppable version."
+                )
+                return
+
+            # Create stepping runner
+            from SegmentEditorAdaptiveBrushTesterLib import SteppingRecipeRunner
+
+            self.stepping_runner = SteppingRecipeRunner(self.current_action_recipe)
+
+            # Update UI
+            self._update_replay_ui()
+
+            slicer.util.infoDisplay(
+                f"Loaded recipe: {self.current_action_recipe.name}\n"
+                f"({len(self.current_action_recipe)} steps)"
+            )
+
+        except Exception as e:
+            logging.exception(f"Failed to load recipe: {e}")
+            slicer.util.errorDisplay(f"Failed to load recipe: {e}")
+
+    def _on_convert_recipe(self):
+        """Convert a Python recipe to JSON action format."""
+        if self.recipeComboBox.count == 0:
+            slicer.util.warningDisplay("No recipes available")
+            return
+
+        recipe_path = Path(self.recipeComboBox.currentData)
+        if recipe_path.suffix != ".py":
+            slicer.util.warningDisplay("Select a .py recipe to convert")
+            return
+
+        try:
+            from SegmentEditorAdaptiveBrushTesterLib import ActionRecipe, Recipe
+
+            # Load Python recipe
+            py_recipe = Recipe.load(recipe_path)
+
+            # Convert (this runs the recipe with recording)
+            action_recipe = ActionRecipe.from_function_recipe(py_recipe)
+
+            # Save as JSON
+            json_path = recipe_path.with_suffix(".json")
+            action_recipe.save(json_path)
+
+            slicer.util.infoDisplay(
+                f"Converted recipe saved to:\n{json_path}\n"
+                f"({len(action_recipe)} actions recorded)"
+            )
+
+            # Refresh recipe list
+            self._refresh_recipe_list()
+
+        except Exception as e:
+            logging.exception(f"Failed to convert recipe: {e}")
+            slicer.util.errorDisplay(f"Failed to convert recipe: {e}")
+
+    def _update_replay_ui(self):
+        """Update the replay UI to reflect current state."""
+        if not self.stepping_runner or not self.current_action_recipe:
+            self.stepLabel.setText("0/0")
+            self.timelineSlider.setMaximum(0)
+            self.actionInfoText.setPlainText("No recipe loaded")
+            return
+
+        total = self.stepping_runner.total_steps
+        current = self.stepping_runner.current_step + 1  # Convert -1 to 0, 0 to 1, etc.
+
+        self.stepLabel.setText(f"{current}/{total}")
+        self.timelineSlider.setMaximum(total)
+        self.timelineSlider.blockSignals(True)
+        self.timelineSlider.setValue(current)
+        self.timelineSlider.blockSignals(False)
+
+        # Update action info
+        action = self.stepping_runner.get_current_action()
+        if action:
+            info_lines = [
+                f"Step {current}: {action.type}",
+            ]
+            if action.ras:
+                info_lines.append(
+                    f"Position: ({action.ras[0]:.2f}, {action.ras[1]:.2f}, {action.ras[2]:.2f}) RAS"
+                )
+            for key, value in action.params.items():
+                info_lines.append(f"{key}: {value}")
+            if action.description:
+                info_lines.append(f"Description: {action.description}")
+            self.actionInfoText.setPlainText("\n".join(info_lines))
+        else:
+            self.actionInfoText.setPlainText("At start - no action executed yet")
+
+        # Update button states
+        is_branching = self.stepping_runner.is_branching
+        self.startBranchButton.setEnabled(not is_branching)
+        self.stopBranchButton.setEnabled(is_branching)
+        self.saveBranchButton.setEnabled(is_branching)
+
+    def _on_step_first(self):
+        """Go to the start of the recipe."""
+        if not self.stepping_runner:
+            return
+
+        self.stepping_runner.goto_step(-1)
+        self._update_replay_ui()
+
+    def _on_step_back(self):
+        """Step backward one action."""
+        if not self.stepping_runner:
+            return
+
+        self.stepping_runner.step_backward()
+        self._update_replay_ui()
+
+    def _on_step_forward(self):
+        """Step forward one action."""
+        if not self.stepping_runner:
+            return
+
+        # Setup if not done yet
+        if self.stepping_runner.current_step == -1 and not self.stepping_runner._volume_node:
+            if not self.stepping_runner.setup():
+                slicer.util.errorDisplay("Failed to set up recipe execution")
+                return
+
+        self.stepping_runner.step_forward()
+        self._update_replay_ui()
+
+    def _on_step_last(self):
+        """Run all remaining steps."""
+        if not self.stepping_runner:
+            return
+
+        # Setup if not done yet
+        if self.stepping_runner.current_step == -1 and not self.stepping_runner._volume_node:
+            if not self.stepping_runner.setup():
+                slicer.util.errorDisplay("Failed to set up recipe execution")
+                return
+
+        steps = self.stepping_runner.run_to_end()
+        self._update_replay_ui()
+        slicer.util.infoDisplay(f"Executed {steps} steps")
+
+    def _on_timeline_changed(self, value):
+        """Handle timeline slider change."""
+        if not self.stepping_runner:
+            return
+
+        # Setup if needed
+        if (
+            self.stepping_runner.current_step == -1
+            and value > 0
+            and not self.stepping_runner._volume_node
+        ):
+            if not self.stepping_runner.setup():
+                return
+
+        # Convert slider value (1-based) to step index (0-based)
+        target_step = value - 1
+        self.stepping_runner.goto_step(target_step)
+        self._update_replay_ui()
+
+    def _on_autoplay_toggled(self, checked):
+        """Handle autoplay button toggle."""
+        if checked:
+            # Start autoplay
+            if not self.stepping_runner:
+                self.autoplayButton.setChecked(False)
+                return
+
+            # Setup if not done yet
+            if self.stepping_runner.current_step == -1 and not self.stepping_runner._volume_node:
+                if not self.stepping_runner.setup():
+                    self.autoplayButton.setChecked(False)
+                    return
+
+            # Get speed multiplier
+            speed_text = self.speedComboBox.currentText
+            speed = float(speed_text.replace("x", ""))
+            interval = int(1000 / speed)  # Base interval is 1 second
+
+            # Create timer
+            self.autoplay_timer = qt.QTimer()
+            self.autoplay_timer.timeout.connect(self._autoplay_step)
+            self.autoplay_timer.start(interval)
+        else:
+            # Stop autoplay
+            if self.autoplay_timer:
+                self.autoplay_timer.stop()
+                self.autoplay_timer = None
+
+    def _autoplay_step(self):
+        """Execute one step during autoplay."""
+        if not self.stepping_runner or self.stepping_runner.is_at_end:
+            self.autoplayButton.setChecked(False)
+            if self.autoplay_timer:
+                self.autoplay_timer.stop()
+                self.autoplay_timer = None
+            return
+
+        self.stepping_runner.step_forward()
+        self._update_replay_ui()
+
+    def _on_start_branch(self):
+        """Start recording a branch."""
+        if not self.stepping_runner:
+            slicer.util.warningDisplay("Load a recipe first")
+            return
+
+        self.stepping_runner.start_branch()
+        self._update_replay_ui()
+        slicer.util.infoDisplay(
+            f"Branch recording started from step {self.stepping_runner.current_step + 1}.\n"
+            "Perform manual actions, then click 'Save Branch As...' to save."
+        )
+
+    def _on_stop_branch(self):
+        """Stop recording the branch without saving."""
+        if not self.stepping_runner:
+            return
+
+        self.stepping_runner.stop_branch()
+        self._update_replay_ui()
+
+    def _on_save_branch(self):
+        """Save the current branch as a new recipe."""
+        if not self.stepping_runner or not self.stepping_runner.is_branching:
+            return
+
+        # Ask for name
+        default_name = f"{self.current_action_recipe.name}_branch"
+        name, ok = qt.QInputDialog.getText(
+            slicer.util.mainWindow(),
+            "Save Branch",
+            "Branch recipe name:",
+            qt.QLineEdit.Normal,
+            default_name,
+        )
+
+        if not ok or not name:
+            return
+
+        try:
+            from SegmentEditorAdaptiveBrushTesterLib import list_action_recipes
+
+            branched_recipe = self.stepping_runner.save_branch(name)
+
+            # Determine save path
+            recipes_dir = (
+                Path(list_action_recipes()[0]).parent if list_action_recipes() else Path(".")
+            )
+            save_path = recipes_dir / f"{name}.json"
+
+            branched_recipe.save(save_path)
+            slicer.util.infoDisplay(f"Branch saved to:\n{save_path}")
+
+            # Refresh recipe list
+            self._refresh_recipe_list()
+
+        except Exception as e:
+            logging.exception(f"Failed to save branch: {e}")
+            slicer.util.errorDisplay(f"Failed to save branch: {e}")
 
     def _refresh_run_list(self):
         """Refresh the list of optimization runs."""
@@ -685,10 +1132,32 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         dialog.exec_()
 
+    def _set_layout(self, layout_id: int):
+        """Set the Slicer view layout.
+
+        Args:
+            layout_id: Slicer layout constant. Common values:
+                3 = Conventional (default)
+                4 = Four-Up
+                6 = 3D Only
+                15 = Dual 3D
+        """
+        layoutManager = slicer.app.layoutManager()
+        layoutManager.setLayout(layout_id)
+
     def cleanup(self):
         """Clean up when module is closed."""
         if self.viz_controller:
             self.viz_controller.cleanup()
+
+        # Clean up replay state
+        if self.autoplay_timer:
+            self.autoplay_timer.stop()
+            self.autoplay_timer = None
+        if self.stepping_runner:
+            self.stepping_runner.cleanup()
+            self.stepping_runner = None
+        self.current_action_recipe = None
 
 
 class SegmentEditorAdaptiveBrushReviewerLogic(ScriptedLoadableModuleLogic):

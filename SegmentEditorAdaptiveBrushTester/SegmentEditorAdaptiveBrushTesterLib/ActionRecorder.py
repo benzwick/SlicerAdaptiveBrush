@@ -56,15 +56,31 @@ class ActionRecorder:
 
         # Stop recording
         recorder.stop()
+
+    Callback mode (for branch recording):
+        def my_callback(action_dict):
+            print(f"Action recorded: {action_dict['type']}")
+
+        recorder = ActionRecorder(test_run_folder, action_callback=my_callback)
+        recorder.start()
+        # ... actions are recorded and callback is called ...
     """
 
-    def __init__(self, test_run_folder: TestRunFolder) -> None:
+    def __init__(
+        self,
+        test_run_folder: TestRunFolder | None = None,
+        action_callback: Any | None = None,
+    ) -> None:
         """Initialize action recorder.
 
         Args:
-            test_run_folder: Folder to save actions to.
+            test_run_folder: Folder to save actions to. Optional if using callback mode.
+            action_callback: Optional callback function that receives each recorded action.
+                The callback receives a dict with action details (type, timestamp, etc.).
+                Useful for branch recording integration.
         """
         self._test_run_folder = test_run_folder
+        self._action_callback = action_callback
         self._recording = False
         self._action_count = 0
         self._observers: list[tuple[Any, int]] = []  # (node, observerId) pairs
@@ -80,6 +96,19 @@ class ActionRecorder:
     def action_count(self) -> int:
         """Number of actions recorded in current session."""
         return self._action_count
+
+    @property
+    def has_callback(self) -> bool:
+        """True if an action callback is set."""
+        return self._action_callback is not None
+
+    def set_action_callback(self, callback: Any | None) -> None:
+        """Set or clear the action callback.
+
+        Args:
+            callback: Callback function that receives action dicts, or None to clear.
+        """
+        self._action_callback = callback
 
     def start(self) -> None:
         """Start recording actions.
@@ -288,7 +317,7 @@ class ActionRecorder:
             return None, None
 
     def _record_action(self, action_type: ActionType, details: dict) -> None:
-        """Record an action to the log file.
+        """Record an action to the log file and/or callback.
 
         Args:
             action_type: Type of action.
@@ -301,7 +330,17 @@ class ActionRecorder:
             **details,
         }
 
-        self._test_run_folder.append_manual_action(action)
+        # Save to test run folder if available
+        if self._test_run_folder is not None:
+            self._test_run_folder.append_manual_action(action)
+
+        # Call callback if set (for branch recording integration)
+        if self._action_callback is not None:
+            try:
+                self._action_callback(action)
+            except Exception as e:
+                logger.warning(f"Action callback failed: {e}")
+
         self._action_count += 1
 
     def record_paint(
