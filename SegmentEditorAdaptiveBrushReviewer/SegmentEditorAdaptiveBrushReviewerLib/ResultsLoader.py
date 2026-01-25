@@ -130,16 +130,28 @@ class ResultsLoader:
             with open(importance_path) as f:
                 importance = json.load(f)
 
-        # Parse trials
+        # Parse trials - handle both formats:
+        # 1. Optuna format: {"trials": [...], "best_trial": {...}}
+        # 2. Test format: [{...}, {...}, ...] - array of test results
         trials = []
-        for trial_data in results.get("trials", []):
-            trial = self._parse_trial(trial_data, run_path)
-            trials.append(trial)
-
-        # Parse best trial
         best_trial = None
-        if results.get("best_trial"):
-            best_trial = self._parse_trial(results["best_trial"], run_path)
+
+        if isinstance(results, list):
+            # Test runner format - array of test results
+            for i, test_data in enumerate(results):
+                trial = self._parse_test_result(test_data, i, run_path)
+                trials.append(trial)
+            # Find best (highest value/passed tests)
+            passed_trials = [t for t in trials if t.value > 0]
+            if passed_trials:
+                best_trial = max(passed_trials, key=lambda t: t.value)
+        else:
+            # Optuna format
+            for trial_data in results.get("trials", []):
+                trial = self._parse_trial(trial_data, run_path)
+                trials.append(trial)
+            if results.get("best_trial"):
+                best_trial = self._parse_trial(results["best_trial"], run_path)
 
         run = OptimizationRun(
             path=run_path,
@@ -154,7 +166,7 @@ class ResultsLoader:
         return run
 
     def _parse_trial(self, data: dict, run_path: Path) -> TrialData:
-        """Parse trial data from dictionary."""
+        """Parse trial data from Optuna format dictionary."""
         trial_num = data["trial_number"]
 
         # Find segmentation file
@@ -180,6 +192,50 @@ class ResultsLoader:
             user_attrs=data.get("user_attrs", {}),
             intermediate_values=data.get("intermediate_values", {}),
             segmentation_path=seg_path,
+            screenshots=screenshots,
+        )
+
+    def _parse_test_result(self, data: dict, index: int, run_path: Path) -> TrialData:
+        """Parse trial data from test runner format dictionary."""
+        # Test runner format has: name, passed, duration_seconds, screenshots, assertions, metrics
+
+        # Find screenshots in the screenshots folder
+        screenshots = []
+        ss_dir = run_path / "screenshots"
+        if ss_dir.exists():
+            # Screenshots are listed by filename in the data
+            for ss_name in data.get("screenshots", []):
+                ss_path = ss_dir / ss_name
+                if ss_path.exists():
+                    screenshots.append(ss_path)
+
+        # Extract metrics as params
+        params = {"test_name": data.get("name", f"test_{index}")}
+        metrics_data = data.get("metrics", {})
+        for metric in metrics_data.get("metrics", []):
+            params[metric["name"]] = metric["value"]
+
+        # Value is 1.0 if passed, 0.0 if failed
+        # Or use dice score if available in metrics
+        value = 1.0 if data.get("passed", False) else 0.0
+        for metric in metrics_data.get("metrics", []):
+            if "dice" in metric["name"].lower():
+                value = metric["value"]
+                break
+
+        return TrialData(
+            trial_number=index + 1,
+            params=params,
+            value=value,
+            duration_ms=data.get("duration_seconds", 0.0) * 1000,
+            pruned=False,
+            user_attrs={
+                "passed": data.get("passed", False),
+                "error": data.get("error"),
+                "assertions": data.get("assertions", []),
+            },
+            intermediate_values={},
+            segmentation_path=None,
             screenshots=screenshots,
         )
 
