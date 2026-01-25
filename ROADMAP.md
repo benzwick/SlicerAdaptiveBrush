@@ -155,12 +155,14 @@
   - [x] AlgorithmReportGenerator for markdown reports
   - [x] Strengths, weaknesses, and use case recommendations
 
-- [ ] Results Review Module (ADR-012)
-  - [ ] SegmentEditorAdaptiveBrushReviewer Slicer module
-  - [ ] Dual segmentation display (gold vs test)
-  - [ ] Screenshot thumbnail viewer
-  - [ ] Save-as-gold-standard functionality
-  - [ ] Visual comparison modes (outline, transparent, fill)
+- [x] Results Review Module (ADR-012)
+  - [x] SegmentEditorAdaptiveBrushReviewer Slicer module
+  - [x] Dual segmentation display (gold vs test)
+  - [x] Screenshot thumbnail viewer
+  - [x] Save-as-gold-standard functionality
+  - [x] Visual comparison modes (outline, transparent, fill)
+  - [x] Export markdown report
+  - [x] Algorithm comparison dialog
 
 - [ ] Documentation
   - [x] ADR-011: Optimization Framework
