@@ -454,7 +454,8 @@ def run_segmentation(
                 time.sleep(0.05)
 
                 # Capture "before" screenshot with brush circle showing where we'll paint
-                before_path = strokes_dir / f"stroke_{i+1:02d}_before.png"
+                # Use "1_before" and "2_after" so they sort correctly
+                before_path = strokes_dir / f"stroke_{i+1:02d}_1_before.png"
                 capture_screenshot(red_widget, before_path)
                 stroke_screenshots.append(str(before_path))
             except Exception as e:
@@ -483,7 +484,7 @@ def run_segmentation(
                 slicer.app.processEvents()
                 time.sleep(0.05)
 
-                after_path = strokes_dir / f"stroke_{i+1:02d}_after.png"
+                after_path = strokes_dir / f"stroke_{i+1:02d}_2_after.png"
                 capture_screenshot(red_widget, after_path)
                 stroke_screenshots.append(str(after_path))
             except Exception as e:
