@@ -346,7 +346,11 @@ class SteppingRecipeRunner:
         Returns:
             The branched ActionRecipe.
         """
-        from .ActionRecipe import ActionRecipe
+        # Import ActionRecipe - handle both package and standalone contexts
+        try:
+            from .ActionRecipe import ActionRecipe as ActionRecipeClass
+        except ImportError:
+            from ActionRecipe import ActionRecipe as ActionRecipeClass  # type: ignore[no-redef]
 
         if not self._recording_branch:
             logger.warning("Not recording a branch")
@@ -360,7 +364,7 @@ class SteppingRecipeRunner:
         base_actions = self.recipe.actions[: self._branch_start_step + 1]
         all_actions = base_actions + self._branch_actions
 
-        branched = ActionRecipe(
+        branched = ActionRecipeClass(
             name=name,
             sample_data=self.recipe.sample_data,
             segment_name=self.recipe.segment_name,
