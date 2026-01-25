@@ -58,6 +58,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.screenshot_viewer = None
         self.current_run = None
         self.current_trial = None
+        self.selected_screenshot_path = None
 
     def setup(self):
         """Set up the widget UI."""
@@ -329,7 +330,43 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _load_screenshots(self, trial):
         """Load screenshot thumbnails for trial."""
         self.screenshotList.clear()
-        # TODO: Load actual screenshots from trial data
+        self.selected_screenshot_path = None
+        self.screenshotPathLabel.setText("Selected: -")
+
+        # Load from trial's screenshot list
+        for screenshot_path in trial.screenshots:
+            if not screenshot_path.exists():
+                continue
+
+            item = qt.QListWidgetItem()
+            item.setData(qt.Qt.UserRole, str(screenshot_path))
+            item.setToolTip(screenshot_path.name)
+
+            # Load thumbnail
+            pixmap = qt.QPixmap(str(screenshot_path))
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(80, 60, qt.Qt.KeepAspectRatio, qt.Qt.SmoothTransformation)
+                item.setIcon(qt.QIcon(scaled))
+
+            self.screenshotList.addItem(item)
+
+        # If no trial-specific screenshots, try loading from run's screenshots folder
+        if self.screenshotList.count == 0 and self.current_run:
+            ss_dir = self.current_run.path / "screenshots"
+            if ss_dir.exists():
+                for png_file in sorted(ss_dir.glob("*.png"))[:20]:  # Limit to 20
+                    item = qt.QListWidgetItem()
+                    item.setData(qt.Qt.UserRole, str(png_file))
+                    item.setToolTip(png_file.name)
+
+                    pixmap = qt.QPixmap(str(png_file))
+                    if not pixmap.isNull():
+                        scaled = pixmap.scaled(
+                            80, 60, qt.Qt.KeepAspectRatio, qt.Qt.SmoothTransformation
+                        )
+                        item.setIcon(qt.QIcon(scaled))
+
+                    self.screenshotList.addItem(item)
 
     def _on_view_mode_changed(self, button):
         """Handle view mode change."""
@@ -341,16 +378,64 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_load_gold(self):
         """Load gold standard segmentation."""
         if not self.current_run:
+            slicer.util.warningDisplay("No run loaded")
             return
-        # TODO: Get gold standard path from run config
-        # self.viz_controller.load_gold_segmentation(gold_path)
+
+        # Try to get gold standard path from run config
+        gold_path = self.results_loader.get_gold_standard_path(self.current_run)
+
+        if gold_path and gold_path.exists():
+            if self.viz_controller.load_gold_segmentation(gold_path):
+                slicer.util.infoDisplay(f"Loaded gold standard: {gold_path.name}")
+            else:
+                slicer.util.errorDisplay(f"Failed to load: {gold_path}")
+        else:
+            # Try using GoldStandardManager if path not in config
+            try:
+                from SegmentEditorAdaptiveBrushTesterLib import GoldStandardManager
+
+                manager = GoldStandardManager()
+
+                # Get gold name from config or trial
+                gold_name = None
+                if self.current_run.config.get("recipes"):
+                    recipe = self.current_run.config["recipes"][0]
+                    gold_name = recipe.get("gold_standard")
+
+                if gold_name:
+                    gold_node, metadata = manager.load_gold(gold_name)
+                    if gold_node:
+                        # Apply gold color and register with viz controller
+                        self.viz_controller.gold_seg_node = gold_node
+                        self.viz_controller._apply_color(gold_node, self.viz_controller.GOLD_COLOR)
+                        self.viz_controller._set_display_mode(
+                            gold_node, self.viz_controller.view_mode
+                        )
+                        gold_node.SetName("Gold Standard")
+                        slicer.util.infoDisplay(f"Loaded gold standard: {gold_name}")
+                        return
+
+                slicer.util.warningDisplay("No gold standard found in run configuration")
+            except Exception as e:
+                logging.exception(f"Failed to load gold standard: {e}")
+                slicer.util.errorDisplay(f"Failed to load gold standard: {e}")
 
     def _on_load_test(self):
         """Load test segmentation."""
         if not self.current_trial:
+            slicer.util.warningDisplay("No trial selected")
             return
-        # TODO: Get segmentation path from trial
-        # self.viz_controller.load_test_segmentation(test_path)
+
+        seg_path = self.current_trial.segmentation_path
+        if seg_path and seg_path.exists():
+            if self.viz_controller.load_test_segmentation(seg_path):
+                slicer.util.infoDisplay(f"Loaded test segmentation: {seg_path.name}")
+            else:
+                slicer.util.errorDisplay(f"Failed to load: {seg_path}")
+        else:
+            slicer.util.warningDisplay(
+                f"No segmentation file found for trial #{self.current_trial.trial_number}"
+            )
 
     def _on_toggle_gold(self, state):
         """Toggle gold standard visibility."""
@@ -372,18 +457,26 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         """Handle screenshot selection."""
         path = item.data(qt.Qt.UserRole)
         if path:
+            self.selected_screenshot_path = path
             self.screenshotPathLabel.setText(f"Selected: {Path(path).name}")
 
     def _on_copy_path(self):
         """Copy selected screenshot path to clipboard."""
-        # TODO: Get selected screenshot path and copy to clipboard
-        pass
+        if not self.selected_screenshot_path:
+            slicer.util.warningDisplay("No screenshot selected")
+            return
+
+        clipboard = qt.QApplication.clipboard()
+        clipboard.setText(self.selected_screenshot_path)
+        slicer.util.infoDisplay(f"Copied: {self.selected_screenshot_path}")
 
     def _on_view_full(self):
         """Open selected screenshot in system viewer."""
-        # TODO: Get selected screenshot path
-        # qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(path))
-        pass
+        if not self.selected_screenshot_path:
+            slicer.util.warningDisplay("No screenshot selected")
+            return
+
+        qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(self.selected_screenshot_path))
 
     def _on_save_as_gold(self):
         """Save current trial as gold standard."""
@@ -391,8 +484,69 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             slicer.util.warningDisplay("No trial selected")
             return
 
-        # TODO: Implement save as gold standard
-        slicer.util.infoDisplay("Save as gold standard - Not yet implemented")
+        # Check if test segmentation is loaded
+        test_node = self.viz_controller.get_test_node()
+        if not test_node:
+            slicer.util.warningDisplay("Load a test segmentation first")
+            return
+
+        # Ask for gold standard name
+        default_name = f"trial_{self.current_trial.trial_number:03d}"
+        if self.current_run:
+            default_name = f"{self.current_run.name}_{default_name}"
+
+        name, ok = qt.QInputDialog.getText(
+            slicer.util.mainWindow(),
+            "Save as Gold Standard",
+            "Gold standard name:",
+            qt.QLineEdit.Normal,
+            default_name,
+        )
+
+        if not ok or not name:
+            return
+
+        try:
+            from SegmentEditorAdaptiveBrushTesterLib import GoldStandardManager
+
+            manager = GoldStandardManager()
+
+            # Get segment ID
+            segmentation = test_node.GetSegmentation()
+            segment_id = (
+                segmentation.GetNthSegmentID(0) if segmentation.GetNumberOfSegments() > 0 else None
+            )
+
+            if not segment_id:
+                slicer.util.errorDisplay("No segments found in test segmentation")
+                return
+
+            # Find source volume if possible
+            volume_node = None
+            # Try to find from current scene
+            volume_nodes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+            if volume_nodes:
+                volume_node = volume_nodes[0]
+
+            manager.save_gold(
+                name=name,
+                segmentation_node=test_node,
+                segment_id=segment_id,
+                volume_node=volume_node,
+                metadata={
+                    "source": "reviewer",
+                    "run": self.current_run.name if self.current_run else "unknown",
+                    "trial_number": self.current_trial.trial_number,
+                    "dice": self.current_trial.value,
+                    "params": self.current_trial.params,
+                },
+            )
+
+            slicer.util.infoDisplay(f"Saved gold standard: {name}")
+
+        except Exception as e:
+            logging.exception(f"Failed to save gold standard: {e}")
+            slicer.util.errorDisplay(f"Failed to save gold standard: {e}")
 
     def _on_export_report(self):
         """Export comparison report."""
@@ -400,8 +554,78 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             slicer.util.warningDisplay("No run loaded")
             return
 
-        # TODO: Implement report export
-        slicer.util.infoDisplay("Export report - Not yet implemented")
+        report_path = self.current_run.path / "review_report.md"
+
+        lines = [
+            "# Optimization Review Report",
+            "",
+            f"**Run:** {self.current_run.name}",
+            f"**Total Trials:** {len(self.current_run.trials)}",
+            "",
+        ]
+
+        # Best trial info
+        if self.current_run.best_trial:
+            best = self.current_run.best_trial
+            lines.extend(
+                [
+                    "## Best Trial",
+                    "",
+                    f"- **Trial #:** {best.trial_number}",
+                    f"- **Dice:** {best.value:.4f}",
+                    f"- **Duration:** {best.duration_ms:.0f}ms",
+                    "",
+                    "### Parameters",
+                    "",
+                ]
+            )
+            for k, v in best.params.items():
+                lines.append(f"- {k}: {v}")
+            lines.append("")
+
+        # Parameter importance
+        if self.current_run.parameter_importance:
+            lines.extend(
+                [
+                    "## Parameter Importance",
+                    "",
+                    "| Parameter | Importance |",
+                    "|-----------|------------|",
+                ]
+            )
+            sorted_importance = sorted(
+                self.current_run.parameter_importance.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            for param, importance in sorted_importance:
+                lines.append(f"| {param} | {importance:.4f} |")
+            lines.append("")
+
+        # All trials table
+        lines.extend(
+            [
+                "## All Trials",
+                "",
+                "| # | Dice | Duration (ms) | Status |",
+                "|---|------|---------------|--------|",
+            ]
+        )
+
+        for trial in sorted(self.current_run.trials, key=lambda t: t.value, reverse=True):
+            status = "Pruned" if trial.pruned else "Complete"
+            lines.append(
+                f"| {trial.trial_number} | {trial.value:.4f} | {trial.duration_ms:.0f} | {status} |"
+            )
+
+        lines.append("")
+
+        # Write report
+        with open(report_path, "w") as f:
+            f.write("\n".join(lines))
+
+        slicer.util.infoDisplay(f"Report saved: {report_path}")
+        qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(report_path)))
 
     def _on_compare_algorithms(self):
         """Show algorithm comparison view."""
@@ -409,8 +633,60 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             slicer.util.warningDisplay("No run loaded")
             return
 
-        # TODO: Implement algorithm comparison
-        slicer.util.infoDisplay("Compare algorithms - Not yet implemented")
+        # Group trials by algorithm
+        algo_trials: dict[str, list] = {}
+        for trial in self.current_run.trials:
+            algo = trial.params.get("algorithm", "unknown")
+            if algo not in algo_trials:
+                algo_trials[algo] = []
+            algo_trials[algo].append(trial)
+
+        if not algo_trials:
+            slicer.util.warningDisplay("No algorithm data found in trials")
+            return
+
+        # Build comparison text
+        lines = ["Algorithm Comparison", "=" * 40, ""]
+
+        for algo, trials in sorted(algo_trials.items()):
+            values = [t.value for t in trials if not t.pruned]
+            if not values:
+                continue
+
+            best_val = max(values)
+            mean_val = sum(values) / len(values)
+            times = [t.duration_ms for t in trials if not t.pruned]
+            mean_time = sum(times) / len(times) if times else 0
+
+            lines.extend(
+                [
+                    f"{algo}:",
+                    f"  Trials: {len(trials)} ({len(values)} completed)",
+                    f"  Best Dice: {best_val:.4f}",
+                    f"  Mean Dice: {mean_val:.4f}",
+                    f"  Mean Time: {mean_time:.0f}ms",
+                    "",
+                ]
+            )
+
+        # Show in a dialog
+        dialog = qt.QDialog(slicer.util.mainWindow())
+        dialog.setWindowTitle("Algorithm Comparison")
+        dialog.setMinimumSize(400, 300)
+
+        layout = qt.QVBoxLayout(dialog)
+
+        text_edit = qt.QTextEdit()
+        text_edit.setReadOnly(True)
+        text_edit.setPlainText("\n".join(lines))
+        text_edit.setFont(qt.QFont("Courier", 10))
+        layout.addWidget(text_edit)
+
+        close_button = qt.QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        layout.addWidget(close_button)
+
+        dialog.exec_()
 
     def cleanup(self):
         """Clean up when module is closed."""
