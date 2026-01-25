@@ -944,6 +944,23 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.algorithmCombo.setToolTip(_("Segmentation algorithm to use"))
         brushLayout.addRow(_("Algorithm:"), self.algorithmCombo)
 
+        # Quick Select Parameters Wizard button
+        self.wizardButton = qt.QPushButton(_("Quick Select Parameters..."))
+        self.wizardButton.setToolTip(
+            _(
+                "Launch an interactive wizard to help determine optimal\n"
+                "algorithm and parameters for your specific image and target.\n\n"
+                "The wizard will guide you through:\n"
+                "1. Sampling the target structure (foreground)\n"
+                "2. Sampling the surrounding area (background)\n"
+                "3. Optionally tracing the boundary\n"
+                "4. Answering questions about the imaging type\n"
+                "5. Reviewing recommended parameters"
+            )
+        )
+        self.wizardButton.clicked.connect(self.onWizardClicked)
+        brushLayout.addRow(self.wizardButton)
+
         # Radius slider
         self.radiusSlider = ctk.ctkSliderWidget()
         self.radiusSlider.setToolTip(_("Brush radius in millimeters"))
@@ -2028,6 +2045,61 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.eraseMode = self.eraseModeRadio.isChecked()
         # Update any visible brush preview to show new color
         self._updateBrushColors()
+
+    def onWizardClicked(self):
+        """Launch the Quick Select Parameters wizard."""
+        try:
+            from ParameterWizard import ParameterWizard
+
+            wizard = ParameterWizard(self)
+            wizard.start()
+        except Exception as e:
+            logging.exception("Failed to start parameter wizard")
+            slicer.util.errorDisplay(
+                f"Failed to start wizard: {e}",
+                windowTitle="Wizard Error",
+            )
+
+    def setAlgorithm(self, algorithm: str) -> None:
+        """Set the current algorithm.
+
+        Args:
+            algorithm: Algorithm identifier string.
+        """
+        # Find the algorithm in the combo box
+        index = self.algorithmCombo.findData(algorithm)
+        if index >= 0:
+            self.algorithmCombo.setCurrentIndex(index)
+        self.algorithm = algorithm
+        self._updateAlgorithmParamsVisibility()
+
+    def setRadiusMm(self, radius_mm: float) -> None:
+        """Set the brush radius.
+
+        Args:
+            radius_mm: Brush radius in millimeters.
+        """
+        self.radiusMm = max(1.0, min(100.0, radius_mm))
+        self.radiusSlider.value = self.radiusMm
+
+    def setEdgeSensitivity(self, sensitivity: int) -> None:
+        """Set the edge sensitivity.
+
+        Args:
+            sensitivity: Edge sensitivity value (0-100).
+        """
+        self.edgeSensitivity = max(0, min(100, sensitivity))
+        self.sensitivitySlider.value = self.edgeSensitivity
+
+    def setThresholdRange(self, lower: float, upper: float) -> None:
+        """Set the threshold range for threshold-based algorithms.
+
+        Args:
+            lower: Lower threshold value.
+            upper: Upper threshold value.
+        """
+        self.lowerThresholdSlider.value = lower
+        self.upperThresholdSlider.value = upper
 
     def _updateBrushColors(self):
         """Update brush outline colors based on current erase mode."""

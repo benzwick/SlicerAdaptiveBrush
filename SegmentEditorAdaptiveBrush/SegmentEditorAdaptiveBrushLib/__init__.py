@@ -14,4 +14,10 @@ __all__ = [
     "PerformanceCache",
     "DependencyManager",
     "dependency_manager",
+    "WizardDataStructures",
+    "WizardAnalyzer",
+    "ParameterRecommender",
+    "WizardSampler",
+    "WizardUI",
+    "ParameterWizard",
 ]

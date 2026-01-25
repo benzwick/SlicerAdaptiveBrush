@@ -208,6 +208,50 @@
 - [ ] Documentation updates dynamically with code changes
 - [ ] User guide with auto-captured screenshots
 
+## Version 0.16.0 - Quick Select Parameters Wizard ✓
+
+- [x] Interactive parameter selection wizard (ADR-015)
+  - [x] WizardDataStructures: Sample, analysis result, and recommendation dataclasses
+  - [x] WizardAnalyzer: Intensity and shape analysis algorithms
+  - [x] ParameterRecommender: Algorithm selection decision tree
+  - [x] WizardSampler: Interactive sampling in slice views
+  - [x] WizardUI: Qt-based wizard dialog with 5 pages
+  - [x] ParameterWizard: Main coordinator class
+
+- [x] Analysis Features
+  - [x] Intensity separation scoring (0-1 scale)
+  - [x] Overlap percentage calculation
+  - [x] Automatic threshold suggestion
+  - [x] Shape analysis (diameter, circularity, boundary roughness)
+  - [x] 3D structure detection
+
+- [x] Recommendation Engine
+  - [x] Algorithm scoring based on intensity separation
+  - [x] Boundary-aware algorithm selection
+  - [x] Structure size considerations
+  - [x] Modality hints (CT, MRI T1/T2, Ultrasound, PET)
+  - [x] Structure type hints (tumor, vessel, bone, brain tissue, organ)
+  - [x] User priority support (speed vs precision vs balanced)
+  - [x] Confidence scoring
+  - [x] Warning generation
+  - [x] Alternative algorithm suggestions
+
+- [x] User Interface
+  - [x] "Quick Select Parameters..." button in Brush Settings
+  - [x] 5-step wizard (foreground, background, boundary, questions, results)
+  - [x] Real-time sample count display
+  - [x] Detailed explanations for all recommendations
+  - [x] Apply parameters on wizard completion
+
+- [x] Documentation
+  - [x] ADR-015: Parameter Wizard architecture decision
+  - [x] Update ROADMAP.md with v0.16.0 section
+
+- [x] Testing
+  - [x] test_wizard_data_structures.py (24 tests)
+  - [x] test_wizard_analyzer.py (22 tests)
+  - [x] test_parameter_recommender.py (23 tests)
+
 ## Version 1.0.0 - Production Ready
 
 - [ ] All tests passing (unit + integration)
@@ -223,4 +267,4 @@
 - [ ] C++ optimization of critical paths
 - [ ] Adaptive radius based on local features
 - [ ] Background computation thread
-- [ ] Auto-parameter suggestion based on image characteristics
+- [x] Auto-parameter suggestion based on image characteristics (see v0.16.0 wizard)
