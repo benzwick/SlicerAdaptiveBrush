@@ -204,6 +204,9 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-004**: Caching strategy for performance
 - **ADR-005**: Mouse and keyboard controls
 - **ADR-010**: Slicer testing framework architecture
+- **ADR-011**: Smart optimization framework (Optuna integration) - *partially implemented*
+- **ADR-012**: Results review module - *implemented*
+- **ADR-013**: Segmentation recipes - *implemented*
 
 ## Slicer Testing Framework
 

@@ -2,7 +2,16 @@
 
 ## Status
 
-Accepted
+Implemented
+
+The recipe system is fully functional with:
+- Recipe class for complete segmentation workflows
+- Action class for individual operations
+- RecipeRunner for executing recipes in Slicer
+- RecipeRecorder for capturing manual sessions
+- RecipeTestRunner for regression testing against gold standards
+- Example recipes (brain_tumor_1.py, template.py)
+- Gold standard: MRBrainTumor1_tumor (Dice: 0.858, HD95: 3.28mm)
 
 ## Context
 

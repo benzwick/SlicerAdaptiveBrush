@@ -135,25 +135,26 @@
   - [x] RecipeRecorder for capturing manual sessions
   - [x] RecipeTestRunner for regression testing against gold standards
   - [x] Example recipes (brain_tumor_1.py, template.py)
+  - [x] Gold standard: MRBrainTumor1_tumor (Dice: 0.858, HD95: 3.28mm)
 
-- [x] Optuna Integration (ADR-011)
-  - [x] OptunaOptimizer with TPE sampler
+- [ ] Optuna Integration (ADR-011)
+  - [x] OptunaOptimizer class with TPE sampler
   - [x] HyperbandPruner for early stopping (~4x speedup)
   - [x] Hierarchical parameter suggestion (algorithm-specific)
   - [x] FAnova parameter importance analysis
   - [x] SQLite persistence for study resumption
-
-- [x] YAML Configuration
-  - [x] OptimizationConfig for reproducible runs
-  - [x] Parameter space definition
-  - [x] Algorithm substitution support
+  - [x] OptimizationConfig for YAML configuration
   - [x] Example configs (default.yaml, tumor_optimization.yaml, quick_test.yaml)
+  - [ ] run_optimization.py script (wire up OptunaOptimizer)
+  - [ ] run-optimization skill working end-to-end
 
-- [x] Algorithm Characterization
-  - [x] AlgorithmProfile with performance metrics
-  - [x] AlgorithmCharacterizer for profile generation
-  - [x] AlgorithmReportGenerator for markdown reports
-  - [x] Strengths, weaknesses, and use case recommendations
+- [ ] Algorithm Characterization
+  - [x] AlgorithmProfile class with performance metrics
+  - [x] AlgorithmCharacterizer class for profile generation
+  - [x] AlgorithmReportGenerator class for markdown reports
+  - [ ] Generate algorithm profiles from test data
+  - [ ] Update default parameters based on optimization findings
+  - [ ] Algorithm recommendation documentation
 
 - [x] Results Review Module (ADR-012)
   - [x] SegmentEditorAdaptiveBrushReviewer Slicer module
@@ -163,6 +164,7 @@
   - [x] Visual comparison modes (outline, transparent, fill)
   - [x] Export markdown report
   - [x] Algorithm comparison dialog
+  - [x] ResultsLoader supporting test runner and Optuna formats
 
 - [ ] Documentation
   - [x] ADR-011: Optimization Framework
@@ -170,6 +172,11 @@
   - [x] ADR-013: Segmentation Recipes
   - [ ] User guide for recipe creation
   - [ ] Optimization tutorial
+
+- [ ] Integration Testing
+  - [x] 5/5 test cases passing (algorithm, optimization, regression, UI, workflow)
+  - [x] 83 screenshots captured per test run
+  - [ ] Multi-dataset regression suite (currently only MRBrainTumor1)
 
 ## Version 0.15.0 - Living Documentation
 

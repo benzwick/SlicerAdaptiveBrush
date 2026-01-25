@@ -1,5 +1,8 @@
 # run-optimization
 
+> **Status:** NOT WORKING - `scripts/run_optimization.py` does not exist yet.
+> The OptunaOptimizer class is implemented but has no entry point script.
+
 Run parameter optimization for segmentation algorithms.
 
 ## Usage

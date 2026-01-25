@@ -2,7 +2,19 @@
 
 ## Status
 
-Accepted
+Partially Implemented
+
+**Implemented:**
+- OptunaOptimizer class with TPE sampler and HyperbandPruner
+- OptimizationConfig for YAML configuration loading
+- FAnova parameter importance analysis
+- SQLite persistence for study resumption
+- Example configuration files
+
+**Not Yet Implemented:**
+- `scripts/run_optimization.py` entry point script
+- `/run-optimization` skill integration (script missing)
+- End-to-end optimization workflow
 
 ## Context
 

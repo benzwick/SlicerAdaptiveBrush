@@ -2,7 +2,16 @@
 
 ## Status
 
-Accepted
+Implemented
+
+The SegmentEditorAdaptiveBrushReviewer module is fully functional with:
+- Dual segmentation display (gold vs test)
+- Screenshot thumbnail viewer with copy path functionality
+- Save-as-gold-standard workflow
+- Visual comparison modes (outline, transparent, fill)
+- Export markdown report
+- Algorithm comparison dialog
+- Support for both test runner and Optuna result formats
 
 ## Context
 
