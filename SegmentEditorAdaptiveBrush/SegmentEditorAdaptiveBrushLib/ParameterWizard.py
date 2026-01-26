@@ -164,7 +164,7 @@ class ParameterWizard:
 
         view_widget = self._get_active_slice_widget()
         if view_widget:
-            self._fg_sampler.activate(view_widget)
+            self._fg_sampler.activate(view_widget, sample_type="foreground")
             self._current_sampler = self._fg_sampler
             logger.debug("Foreground sampling activated")
 
@@ -175,7 +175,7 @@ class ParameterWizard:
 
         view_widget = self._get_active_slice_widget()
         if view_widget:
-            self._bg_sampler.activate(view_widget)
+            self._bg_sampler.activate(view_widget, sample_type="background")
             self._current_sampler = self._bg_sampler
             logger.debug("Background sampling activated")
 
@@ -186,7 +186,7 @@ class ParameterWizard:
 
         view_widget = self._get_active_slice_widget()
         if view_widget:
-            self._boundary_sampler.activate(view_widget)
+            self._boundary_sampler.activate(view_widget, sample_type="boundary")
             self._current_sampler = self._boundary_sampler
             logger.debug("Boundary sampling activated")
 
@@ -234,19 +234,27 @@ class ParameterWizard:
         if viewWidget.className() != "qMRMLSliceWidget":
             return False
 
-        # Map VTK event IDs to string names for the sampler
-        event_map = {
-            vtk.vtkCommand.LeftButtonPressEvent: "LeftButtonPressEvent",
-            vtk.vtkCommand.LeftButtonReleaseEvent: "LeftButtonReleaseEvent",
-            vtk.vtkCommand.MouseMoveEvent: "MouseMoveEvent",
-        }
-
-        event_name = event_map.get(eventId)
-        if event_name:
-            # Store the view widget reference for coordinate conversion
+        # Only handle left-button events - let everything else (zoom, pan) pass through
+        if eventId == vtk.vtkCommand.LeftButtonPressEvent:
             self._current_sampler._view_widget = viewWidget
-            return bool(self._current_sampler.process_event(callerInteractor, event_name))
+            self._current_sampler.process_event(callerInteractor, "LeftButtonPressEvent")
+            return True  # Consume to prevent default paint behavior
 
+        elif eventId == vtk.vtkCommand.LeftButtonReleaseEvent:
+            self._current_sampler._view_widget = viewWidget
+            self._current_sampler.process_event(callerInteractor, "LeftButtonReleaseEvent")
+            return True
+
+        elif eventId == vtk.vtkCommand.MouseMoveEvent:
+            # Only consume mouse move if we're actively sampling (left button down)
+            if callerInteractor.GetLeftButtonDown():
+                self._current_sampler._view_widget = viewWidget
+                self._current_sampler.process_event(callerInteractor, "MouseMoveEvent")
+                return True
+            # Let mouse move pass through when not sampling (for hover effects, etc.)
+            return False
+
+        # Let all other events (wheel, right-click, etc.) pass through for zoom/pan
         return False
 
     def on_foreground_sampled(self, points: list, intensities: np.ndarray) -> None:
