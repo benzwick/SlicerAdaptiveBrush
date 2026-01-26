@@ -3228,8 +3228,14 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                     f"Paint stroke: ijk={ijk}, voxels={voxels_modified}, "
                     f"time={elapsed_ms:.1f}ms, algorithm={self.algorithm}"
                 )
-        except Exception as e:
-            logging.exception(f"Error computing adaptive mask: {e}")
+        except RuntimeError as e:
+            # SimpleITK filter failure - show user-facing error
+            logging.exception(f"Algorithm '{self.algorithm}' failed")
+            slicer.util.errorDisplay(
+                f"Segmentation algorithm '{self.algorithm}' failed:\n\n{e}\n\n"
+                "Try a different algorithm or adjust parameters.",
+                windowTitle="Adaptive Brush Error",
+            )
 
     def _xyToIjk(self, xy, viewWidget):
         """Convert screen XY coordinates to volume IJK (internal helper).
@@ -3586,22 +3592,18 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         markers = sitk.Cast(markers, sitk.sitkUInt8)
 
         # Run watershed
-        try:
-            watershed = sitk.MorphologicalWatershedFromMarkers(
-                gradient, markers, markWatershedLine=False, fullyConnected=True
-            )
-            # Extract foreground (label 1)
-            result = sitk.BinaryThreshold(watershed, 1, 1, 1, 0)
-            mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+        watershed = sitk.MorphologicalWatershedFromMarkers(
+            gradient, markers, markWatershedLine=False, fullyConnected=True
+        )
+        # Extract foreground (label 1)
+        result = sitk.BinaryThreshold(watershed, 1, 1, 1, 0)
+        mask = sitk.GetArrayFromImage(result).astype(np.uint8)
 
-            # Also constrain by intensity thresholds for safety
-            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
-            mask = mask & intensity_mask.astype(np.uint8)
+        # Also constrain by intensity thresholds for safety
+        intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+        mask = mask & intensity_mask.astype(np.uint8)
 
-            return mask
-        except Exception as e:
-            logging.error(f"Watershed failed: {e}")
-            return self._connectedThreshold(roi, localSeed, thresholds)
+        return mask
 
     def _levelSet(self, roi, localSeed, thresholds, params):
         """Level set segmentation using threshold-based approach.
@@ -3627,53 +3629,48 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Use ThresholdSegmentationLevelSetImageFilter which is more reliable
         # It grows/shrinks based on whether pixels are in threshold range
-        try:
-            # Smooth input slightly
-            smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
 
-            # Create seed image with signed distance from seed point
-            radius_voxels = params.get("radius_voxels", [5, 5, 5])
-            init_radius = max(2, min(radius_voxels) / 3)
+        # Smooth input slightly
+        smoothed = sitk.SmoothingRecursiveGaussian(sitkRoi, sigma=0.5)
 
-            # Create distance from seed
-            shape = roi.shape
-            z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
-            dist_from_seed = np.sqrt(
-                (x - localSeed[0]) ** 2 + (y - localSeed[1]) ** 2 + (z - localSeed[2]) ** 2
-            )
-            # Signed distance: negative inside, positive outside
-            init_levelset = dist_from_seed - init_radius
-            seedImage = sitk.GetImageFromArray(init_levelset.astype(np.float32))
+        # Create seed image with signed distance from seed point
+        radius_voxels = params.get("radius_voxels", [5, 5, 5])
+        init_radius = max(2, min(radius_voxels) / 3)
 
-            # Configure level set filter
-            lsFilter = sitk.ThresholdSegmentationLevelSetImageFilter()
-            lsFilter.SetLowerThreshold(float(thresholds["lower"]))
-            lsFilter.SetUpperThreshold(float(thresholds["upper"]))
+        # Create distance from seed
+        shape = roi.shape
+        z, y, x = np.ogrid[: shape[0], : shape[1], : shape[2]]
+        dist_from_seed = np.sqrt(
+            (x - localSeed[0]) ** 2 + (y - localSeed[1]) ** 2 + (z - localSeed[2]) ** 2
+        )
+        # Signed distance: negative inside, positive outside
+        init_levelset = dist_from_seed - init_radius
+        seedImage = sitk.GetImageFromArray(init_levelset.astype(np.float32))
 
-            # Propagation: positive = grow into threshold region
-            # Curvature: smooths the boundary
-            # Combine user params with edge_sensitivity for fine control
-            # Higher edge sensitivity = more curvature, less propagation
-            effective_prop = level_set_propagation * (1.0 - 0.5 * edge_sensitivity)
-            effective_curv = level_set_curvature * (0.5 + edge_sensitivity)
+        # Configure level set filter
+        lsFilter = sitk.ThresholdSegmentationLevelSetImageFilter()
+        lsFilter.SetLowerThreshold(float(thresholds["lower"]))
+        lsFilter.SetUpperThreshold(float(thresholds["upper"]))
 
-            lsFilter.SetPropagationScaling(effective_prop)
-            lsFilter.SetCurvatureScaling(effective_curv)
-            lsFilter.SetMaximumRMSError(0.02)
-            lsFilter.SetNumberOfIterations(int(level_set_iterations))
+        # Propagation: positive = grow into threshold region
+        # Curvature: smooths the boundary
+        # Combine user params with edge_sensitivity for fine control
+        # Higher edge sensitivity = more curvature, less propagation
+        effective_prop = level_set_propagation * (1.0 - 0.5 * edge_sensitivity)
+        effective_curv = level_set_curvature * (0.5 + edge_sensitivity)
 
-            levelSet = lsFilter.Execute(seedImage, smoothed)
+        lsFilter.SetPropagationScaling(effective_prop)
+        lsFilter.SetCurvatureScaling(effective_curv)
+        lsFilter.SetMaximumRMSError(0.02)
+        lsFilter.SetNumberOfIterations(int(level_set_iterations))
 
-            # Threshold: inside is negative in level set convention
-            # BinaryThreshold with only upperThreshold=0 has lowerThreshold default of 0,
-            # creating range [0,0] which only keeps exactly 0. We need <= 0.
-            levelSetArray = sitk.GetArrayFromImage(levelSet)
-            return (levelSetArray <= 0).astype(np.uint8)
+        levelSet = lsFilter.Execute(seedImage, smoothed)
 
-        except Exception as e:
-            logging.error(f"Level set failed: {e}")
-            # Fall back to connected threshold
-            return self._connectedThreshold(roi, localSeed, thresholds)
+        # Threshold: inside is negative in level set convention
+        # BinaryThreshold with only upperThreshold=0 has lowerThreshold default of 0,
+        # creating range [0,0] which only keeps exactly 0. We need <= 0.
+        levelSetArray = sitk.GetArrayFromImage(levelSet)
+        return (levelSetArray <= 0).astype(np.uint8)
 
     def _regionGrowing(self, roi, localSeed, thresholds, params):
         """Region growing segmentation.
@@ -3702,25 +3699,21 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         effective_multiplier = region_growing_multiplier * (1.0 - 0.5 * edge_sensitivity)
         effective_multiplier = max(0.5, effective_multiplier)  # Keep minimum multiplier
 
-        try:
-            result = sitk.ConfidenceConnected(
-                sitkRoi,
-                seedList=[sitkSeed],
-                numberOfIterations=int(region_growing_iterations),
-                multiplier=effective_multiplier,
-                initialNeighborhoodRadius=2,
-                replaceValue=1,
-            )
-            mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+        result = sitk.ConfidenceConnected(
+            sitkRoi,
+            seedList=[sitkSeed],
+            numberOfIterations=int(region_growing_iterations),
+            multiplier=effective_multiplier,
+            initialNeighborhoodRadius=2,
+            replaceValue=1,
+        )
+        mask = sitk.GetArrayFromImage(result).astype(np.uint8)
 
-            # Also constrain by intensity thresholds
-            intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
-            mask = mask & intensity_mask.astype(np.uint8)
+        # Also constrain by intensity thresholds
+        intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+        mask = mask & intensity_mask.astype(np.uint8)
 
-            return mask
-        except Exception as e:
-            logging.error(f"Region growing failed: {e}")
-            return np.zeros_like(roi, dtype=np.uint8)
+        return mask
 
     def _thresholdBrush(self, roi, localSeed, params):
         """Threshold brush with auto or manual thresholds.
@@ -3844,48 +3837,42 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         speed = sitk.GetImageFromArray(speedArray.astype(np.float32))
 
         # Run Fast Marching to compute geodesic distance from seed
-        try:
-            # FastMarching computes arrival times (geodesic distances)
-            fastMarching = sitk.FastMarchingImageFilter()
-            fastMarching.SetStoppingValue(avg_radius * 3)  # Stop at 3x radius
+        # FastMarching computes arrival times (geodesic distances)
+        fastMarching = sitk.FastMarchingImageFilter()
+        fastMarching.SetStoppingValue(avg_radius * 3)  # Stop at 3x radius
 
-            # Set trial points (seeds)
-            fastMarching.AddTrialPoint(sitkSeed)
+        # Set trial points (seeds)
+        fastMarching.AddTrialPoint(sitkSeed)
 
-            distance = fastMarching.Execute(speed)
-            distArray = sitk.GetArrayFromImage(distance)
+        distance = fastMarching.Execute(speed)
+        distArray = sitk.GetArrayFromImage(distance)
 
-            # Threshold at radius to get mask
-            # distance_scale allows user to expand/contract the result
-            # Higher sensitivity = tighter boundary
-            base_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)
-            dist_threshold = base_threshold * geodesic_distance_scale
-            mask = (distArray < dist_threshold).astype(np.uint8)
+        # Threshold at radius to get mask
+        # distance_scale allows user to expand/contract the result
+        # Higher sensitivity = tighter boundary
+        base_threshold = avg_radius * (1.5 - 0.5 * edge_sensitivity)
+        dist_threshold = base_threshold * geodesic_distance_scale
+        mask = (distArray < dist_threshold).astype(np.uint8)
 
-            # Final intensity threshold (should already be satisfied but for safety)
-            mask = mask & intensity_mask.astype(np.uint8)
+        # Final intensity threshold (should already be satisfied but for safety)
+        mask = mask & intensity_mask.astype(np.uint8)
 
-            # Filter to only regions connected to seed (important for narrow segments)
-            # RuntimeError: seed outside mask or SimpleITK failure
-            # Result: may include disconnected blobs if this fails
-            if np.any(mask):
-                sitkMask = sitk.GetImageFromArray(mask)
-                try:
-                    connected = sitk.ConnectedThreshold(
-                        sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
-                    )
-                    mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
-                except RuntimeError as e:
-                    logging.warning(
-                        f"Connectivity filter failed (may have disconnected regions): {e}"
-                    )
+        # Filter to only regions connected to seed (important for narrow segments)
+        if np.any(mask):
+            sitkMask = sitk.GetImageFromArray(mask)
+            try:
+                connected = sitk.ConnectedThreshold(
+                    sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
+                )
+                mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
+            except RuntimeError as e:
+                # Seed outside mask after thresholding - result may have disconnected blobs
+                # This is a known edge case that doesn't warrant failing the whole operation
+                logging.warning(
+                    f"Connectivity filter failed (result may have disconnected regions): {e}"
+                )
 
-            return mask
-
-        except Exception as e:
-            logging.error(f"Geodesic distance failed: {e}")
-            # Fall back to connected threshold
-            return self._connectedThreshold(roi, localSeed, thresholds)
+        return mask
 
     def _randomWalker(self, roi, localSeed, thresholds, params):
         """Random Walker segmentation using scikit-image.
@@ -3914,20 +3901,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         beta = base_beta * (0.5 + edge_sensitivity)  # 65-195 range at default
 
         if HAS_SKIMAGE_RW:
-            try:
-                return self._randomWalkerSkimage(roi, localSeed, thresholds, beta, radius_voxels)
-            except Exception as e:
-                logging.error(f"scikit-image Random Walker failed: {e}, using fallback")
-                # Only show UI warning once per session to avoid spamming
-                if not getattr(self, "_randomWalkerErrorShown", False):
-                    self._randomWalkerErrorShown = True
-                    slicer.util.warningDisplay(
-                        f"Random Walker algorithm failed: {e}\n\n"
-                        "Using fallback algorithm. Results may be less accurate.",
-                        windowTitle="Random Walker Error",
-                    )
+            return self._randomWalkerSkimage(roi, localSeed, thresholds, beta, radius_voxels)
 
-        # Fallback: gradient-weighted region growing
+        # scikit-image not available - use gradient-weighted fallback
         return self._randomWalkerFallback(roi, localSeed, thresholds, params)
 
     def _randomWalkerSkimage(self, roi, localSeed, thresholds, beta, radius_voxels):
@@ -3979,8 +3955,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Ensure we have both foreground and background markers
         if not np.any(markers == 1) or not np.any(markers == 2):
-            logging.debug("Random Walker: insufficient markers, using fallback")
-            return self._connectedThreshold(roi, localSeed, thresholds)
+            raise RuntimeError(
+                "Random Walker: insufficient markers. "
+                "Try increasing brush size or adjusting thresholds."
+            )
 
         # Run Random Walker
         # mode='cg' (conjugate gradient) is faster for larger images
@@ -4067,34 +4045,35 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         weight_at_seed = weight[localSeed[2], localSeed[1], localSeed[0]]
 
-        if weight_at_seed > 0.1:
-            weighted_lower = thresholds["lower"] * weight_at_seed * 0.5
-            weighted_upper = thresholds["upper"] * weight_at_seed * 1.5
+        if weight_at_seed <= 0.1:
+            raise RuntimeError(
+                f"Random Walker: seed weight too low ({weight_at_seed:.3f}). "
+                "Seed may be on an edge. Try clicking in a more homogeneous region."
+            )
 
-            try:
-                result = sitk.ConnectedThreshold(
-                    sitkWeighted,
-                    seedList=[sitkSeed],
-                    lower=float(weighted_lower),
-                    upper=float(weighted_upper),
-                    replaceValue=1,
-                )
-                mask = sitk.GetArrayFromImage(result).astype(np.uint8)
+        # weight_at_seed > 0.1 - proceed with weighted connected threshold
+        weighted_lower = thresholds["lower"] * weight_at_seed * 0.5
+        weighted_upper = thresholds["upper"] * weight_at_seed * 1.5
 
-                # Morphological cleanup
-                maskSitk = sitk.GetImageFromArray(mask)
-                maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
-                mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
+        result = sitk.ConnectedThreshold(
+            sitkWeighted,
+            seedList=[sitkSeed],
+            lower=float(weighted_lower),
+            upper=float(weighted_upper),
+            replaceValue=1,
+        )
+        mask = sitk.GetArrayFromImage(result).astype(np.uint8)
 
-                # Constrain by original intensity thresholds
-                intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
-                mask = mask & intensity_mask.astype(np.uint8)
+        # Morphological cleanup
+        maskSitk = sitk.GetImageFromArray(mask)
+        maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, [1, 1, 1])
+        mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
 
-                return mask
-            except Exception as e:
-                logging.error(f"Random walker fallback failed: {e}")
+        # Constrain by original intensity thresholds
+        intensity_mask = (roi >= thresholds["lower"]) & (roi <= thresholds["upper"])
+        mask = mask & intensity_mask.astype(np.uint8)
 
-        return self._connectedThreshold(roi, localSeed, thresholds)
+        return mask
 
     def _applyBrushMask(self, mask, localSeed, radiusVoxels):
         """Apply circular/spherical brush constraint.

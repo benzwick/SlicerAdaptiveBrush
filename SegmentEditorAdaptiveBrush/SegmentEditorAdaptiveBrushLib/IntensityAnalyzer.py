@@ -159,8 +159,10 @@ class IntensityAnalyzer:
             return self._simple_statistics(roi, seed_intensity, edge_sensitivity)
 
         # Subsample if too large (for speed)
+        # Use seeded RNG for reproducibility (matches GMM random_state=42)
         if len(roi) > 10000:
-            indices = np.random.choice(len(roi), 10000, replace=False)
+            rng = np.random.default_rng(42)
+            indices = rng.choice(len(roi), 10000, replace=False)
             roi_sample = roi[indices]
         else:
             roi_sample = roi
