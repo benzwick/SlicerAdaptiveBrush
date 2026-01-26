@@ -1,0 +1,196 @@
+{
+  "_comment": "Algorithm profiles for SlicerAdaptiveBrush - recommendations based on optimization results",
+  "_generated": "2026-01-26",
+  "_version": "1.0.0",
+
+  "parameter_importance": {
+    "algorithm": 0.731,
+    "brush_radius_mm": 0.186,
+    "threshold_zone": 0.051,
+    "edge_sensitivity": 0.032
+  },
+
+  "algorithms": {
+    "watershed": {
+      "speed": "medium",
+      "precision": "high",
+      "boundary_adherence": "excellent",
+      "description": "Best general-purpose algorithm. Uses morphological watershed on gradient magnitude.",
+      "recommended_for": ["tumor", "lesion", "brain_tissue", "soft_tissue", "general"],
+      "parameters": {
+        "gradient_scale": {"range": [0.5, 3.0], "optimal": 1.1},
+        "smoothing": {"range": [0.1, 1.0], "optimal": 0.78}
+      },
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.9991,
+          "edge_sensitivity": 70,
+          "threshold_zone": 60,
+          "brush_radius_mm": 25.0
+        }
+      }
+    },
+    "connected_threshold": {
+      "speed": "very_fast",
+      "precision": "low",
+      "boundary_adherence": "poor",
+      "description": "Fastest algorithm. Segments connected voxels within intensity range.",
+      "recommended_for": ["quick_rough", "homogeneous_fluid", "air"],
+      "parameters": {},
+      "benchmarks": {}
+    },
+    "region_growing": {
+      "speed": "fast",
+      "precision": "medium",
+      "boundary_adherence": "fair",
+      "description": "Confidence-connected growing based on intensity statistics.",
+      "recommended_for": ["homogeneous_regions", "moderate_precision"],
+      "parameters": {},
+      "benchmarks": {}
+    },
+    "threshold_brush": {
+      "speed": "very_fast",
+      "precision": "variable",
+      "boundary_adherence": "none",
+      "description": "Simple intensity thresholding with auto-detection.",
+      "recommended_for": ["known_intensity", "bone", "high_contrast"],
+      "parameters": {
+        "auto_methods": ["Otsu", "Huang", "Triangle", "MaximumEntropy", "IsoData", "Li"]
+      },
+      "benchmarks": {}
+    },
+    "geodesic_distance": {
+      "speed": "medium",
+      "precision": "high",
+      "boundary_adherence": "good",
+      "description": "Fast marching with edge-weighted speed function.",
+      "recommended_for": ["clear_edges", "vessels", "tubular_structures"],
+      "parameters": {
+        "edge_weight": {"range": [0, 1], "optimal": 0.5},
+        "smoothing": {"range": [0.1, 1.0], "optimal": 0.5}
+      },
+      "benchmarks": {}
+    },
+    "level_set": {
+      "speed": "slow",
+      "precision": "very_high",
+      "boundary_adherence": "excellent",
+      "description": "Geodesic active contours with smooth evolution.",
+      "recommended_for": ["high_precision", "smooth_boundaries"],
+      "parameters": {
+        "iterations": {"range": [30, 150], "optimal": 100},
+        "propagation": {"range": [0.5, 2.0], "optimal": 1.0}
+      },
+      "benchmarks": {}
+    },
+    "random_walker": {
+      "speed": "slow",
+      "precision": "high",
+      "boundary_adherence": "good",
+      "description": "Probabilistic diffusion from seed points.",
+      "recommended_for": ["complex_boundaries", "multiple_regions"],
+      "parameters": {
+        "beta": {"range": [10, 200], "optimal": 100}
+      },
+      "benchmarks": {}
+    }
+  },
+
+  "modality_recommendations": {
+    "ct": {
+      "bone": {
+        "primary": "threshold_brush",
+        "alternatives": ["connected_threshold"],
+        "preset": "ct_bone",
+        "notes": "High contrast makes simple thresholding effective"
+      },
+      "soft_tissue": {
+        "primary": "watershed",
+        "alternatives": ["region_growing"],
+        "preset": "ct_soft_tissue",
+        "notes": "Liver, kidney, spleen benefit from boundary-aware algorithms"
+      },
+      "lung": {
+        "primary": "connected_threshold",
+        "alternatives": ["threshold_brush"],
+        "preset": "ct_lung",
+        "notes": "Very low intensity (-800 to -900 HU) makes thresholding effective"
+      },
+      "vessel_contrast": {
+        "primary": "geodesic_distance",
+        "alternatives": ["watershed"],
+        "preset": "ct_vessel_contrast",
+        "notes": "Tubular structures benefit from edge-weighted algorithms"
+      }
+    },
+    "mri_t1": {
+      "white_matter": {
+        "primary": "watershed",
+        "alternatives": ["region_growing"],
+        "preset": "mri_t1_brain_wm",
+        "notes": "Bright signal with gradual boundaries"
+      },
+      "gray_matter": {
+        "primary": "watershed",
+        "alternatives": ["level_set"],
+        "preset": "mri_t1_brain_gm",
+        "notes": "Cortical boundaries benefit from precision algorithms"
+      },
+      "ventricles": {
+        "primary": "region_growing",
+        "alternatives": ["connected_threshold"],
+        "preset": "default",
+        "notes": "CSF is homogeneous and dark in T1"
+      }
+    },
+    "mri_t1_gd": {
+      "tumor": {
+        "primary": "watershed",
+        "alternatives": ["level_set"],
+        "preset": "mri_t1gd_tumor",
+        "notes": "Contrast enhancement creates clear boundaries. Watershed achieved 99.91% Dice in optimization."
+      }
+    },
+    "mri_t2": {
+      "lesion": {
+        "primary": "watershed",
+        "alternatives": ["region_growing"],
+        "preset": "mri_t2_lesion",
+        "notes": "Hyperintense lesions with variable boundaries"
+      }
+    }
+  },
+
+  "structure_recommendations": {
+    "tumor": {
+      "primary": "watershed",
+      "edge_sensitivity": [45, 70],
+      "brush_radius_factor": 0.8,
+      "notes": "Brush should be slightly smaller than tumor"
+    },
+    "organ": {
+      "primary": "watershed",
+      "edge_sensitivity": [40, 60],
+      "brush_radius_factor": 0.5,
+      "notes": "Multiple clicks often needed for organs"
+    },
+    "vessel": {
+      "primary": "geodesic_distance",
+      "edge_sensitivity": [50, 70],
+      "brush_radius_factor": 1.0,
+      "notes": "Edge weighting helps follow vessel walls"
+    },
+    "bone": {
+      "primary": "threshold_brush",
+      "edge_sensitivity": [60, 80],
+      "brush_radius_factor": 0.6,
+      "notes": "High contrast makes thresholding reliable"
+    },
+    "fluid": {
+      "primary": "connected_threshold",
+      "edge_sensitivity": [30, 50],
+      "brush_radius_factor": 0.5,
+      "notes": "Homogeneous regions segment easily"
+    }
+  }
+}

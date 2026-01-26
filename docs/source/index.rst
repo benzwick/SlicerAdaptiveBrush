@@ -21,6 +21,7 @@ features (edges, boundaries) rather than using a fixed geometric shape.
    developer_guide/optimization_tutorial
    developer_guide/testing_workflow
    developer_guide/creating_recipes
+   developer_guide/algorithm_profiles
    developer_guide/api_reference
 
 Indices and tables
