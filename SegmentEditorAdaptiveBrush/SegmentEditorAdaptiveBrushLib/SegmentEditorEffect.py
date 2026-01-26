@@ -3972,12 +3972,13 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             )
 
         # Run Random Walker
-        # mode='cg' (conjugate gradient) is faster for larger images
+        # mode='cg_j' (conjugate gradient with Jacobi preconditioning) avoids
+        # UMFPACK dependency warning and is typically faster
         labels = skimage_random_walker(
             roi_norm,
             markers,
             beta=beta,
-            mode="cg",
+            mode="cg_j",
             return_full_prob=False,
         )
 
