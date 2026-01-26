@@ -280,6 +280,8 @@ class TestGeodesicDistanceAlgorithm(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        # Reset lastIjk to avoid "same voxel" optimization skip between tests
+        scripted_effect.lastIjk = None
 
         import time
 
@@ -413,6 +415,8 @@ class TestLevelSetAlgorithm(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        # Reset lastIjk to avoid "same voxel" optimization skip between tests
+        scripted_effect.lastIjk = None
 
         import time
 
@@ -542,6 +546,8 @@ class TestConnectedThresholdAlgorithm(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        # Reset lastIjk to avoid "same voxel" optimization skip between tests
+        scripted_effect.lastIjk = None
 
         import time
 
@@ -671,6 +677,8 @@ class TestRegionGrowingAlgorithm(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        # Reset lastIjk to avoid "same voxel" optimization skip between tests
+        scripted_effect.lastIjk = None
 
         import time
 
@@ -832,6 +840,8 @@ class TestThresholdBrushAlgorithm(TestCase):
             scripted_effect.scriptedEffect.saveStateForUndo()
             scripted_effect.isDrawing = True
             scripted_effect._currentStrokeEraseMode = False
+            # Reset lastIjk to avoid "same voxel" optimization skip between iterations
+            scripted_effect.lastIjk = None
 
             import time
 

@@ -163,6 +163,7 @@ class TestAddModePainting(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
         scripted_effect.processPoint(center_xy, self.red_widget)
         scripted_effect.isDrawing = False
         slicer.app.processEvents()
@@ -185,6 +186,7 @@ class TestAddModePainting(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
         scripted_effect.processPoint(offset_xy, self.red_widget)
         scripted_effect.isDrawing = False
         slicer.app.processEvents()
@@ -309,6 +311,7 @@ class TestEraseModePainting(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
         scripted_effect.processPoint(center_xy, self.red_widget)
         scripted_effect.isDrawing = False
         slicer.app.processEvents()
@@ -339,6 +342,7 @@ class TestEraseModePainting(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = True
+        scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
         scripted_effect.processPoint(center_xy, self.red_widget)
         scripted_effect.isDrawing = False
         slicer.app.processEvents()
@@ -465,6 +469,7 @@ class TestUndoRedo(TestCase):
         scripted_effect.scriptedEffect.saveStateForUndo()
         scripted_effect.isDrawing = True
         scripted_effect._currentStrokeEraseMode = False
+        scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
         scripted_effect.processPoint(center_xy, self.red_widget)
         scripted_effect.isDrawing = False
         slicer.app.processEvents()
@@ -625,6 +630,7 @@ class TestMultipleStrokes(TestCase):
             scripted_effect.scriptedEffect.saveStateForUndo()
             scripted_effect.isDrawing = True
             scripted_effect._currentStrokeEraseMode = False
+            scripted_effect.lastIjk = None  # Reset to avoid same-voxel skip
             scripted_effect.processPoint(pos, self.red_widget)
             scripted_effect.isDrawing = False
             slicer.app.processEvents()
