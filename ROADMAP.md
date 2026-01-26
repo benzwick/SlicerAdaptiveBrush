@@ -148,12 +148,12 @@
   - [x] run_optimization.py script (Dice-based optimization working)
   - [x] Lab notebook generation with parameter importance
 
-- [ ] Optimization-Review-Gold Workflow Integration
-  - [ ] Record click locations during optimization trials
-  - [ ] Save screenshots per trial (before/after each click)
-  - [ ] Save trial segmentations for review
-  - [ ] Fix Reviewer save_as_gold() function signature
-  - [ ] Integrated skill for optimize → review → save workflow
+- [x] Optimization-Review-Gold Workflow Integration
+  - [x] Record click locations during optimization trials
+  - [x] Save screenshots per trial (before/after each click)
+  - [x] Save trial segmentations for review
+  - [x] Fix Reviewer save_as_gold() function signature
+  - [x] Integrated skill for optimize → review → save workflow
 
 - [ ] Algorithm Characterization
   - [x] AlgorithmProfile class with performance metrics
@@ -163,11 +163,11 @@
   - [ ] Update default parameters based on optimization findings
   - [ ] Algorithm recommendation documentation
 
-- [ ] Results Review Module (ADR-012)
+- [x] Results Review Module (ADR-012)
   - [x] SegmentEditorAdaptiveBrushReviewer Slicer module
   - [x] Dual segmentation display (gold vs test)
   - [x] Screenshot thumbnail viewer
-  - [ ] Save-as-gold-standard functionality (BROKEN: wrong function signature)
+  - [x] Save-as-gold-standard functionality
   - [x] Visual comparison modes (outline, transparent, fill)
   - [x] Export markdown report
   - [x] Algorithm comparison dialog
