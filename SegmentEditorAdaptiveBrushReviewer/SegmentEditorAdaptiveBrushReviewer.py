@@ -971,18 +971,31 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             if volume_nodes:
                 volume_node = volume_nodes[0]
 
-            manager.save_gold(
-                name=name,
+            # Extract click locations from trial params if available
+            # Trial params may contain click info from optimization
+            click_locations: list[dict] = []
+            if hasattr(self.current_trial, "click_locations"):
+                click_locations = self.current_trial.click_locations
+
+            # Build description from trial metadata
+            run_name = self.current_run.name if self.current_run else "unknown"
+            description = (
+                f"Created from {run_name} trial {self.current_trial.trial_number}. "
+                f"Dice: {self.current_trial.value:.4f}"
+            )
+
+            # Extract algorithm from params
+            algorithm = self.current_trial.params.get("algorithm", "")
+
+            manager.save_as_gold(
                 segmentation_node=test_node,
-                segment_id=segment_id,
                 volume_node=volume_node,
-                metadata={
-                    "source": "reviewer",
-                    "run": self.current_run.name if self.current_run else "unknown",
-                    "trial_number": self.current_trial.trial_number,
-                    "dice": self.current_trial.value,
-                    "params": self.current_trial.params,
-                },
+                segment_id=segment_id,
+                name=name,
+                click_locations=click_locations,
+                description=description,
+                algorithm=algorithm,
+                parameters=self.current_trial.params,
             )
 
             slicer.util.infoDisplay(f"Saved gold standard: {name}")
