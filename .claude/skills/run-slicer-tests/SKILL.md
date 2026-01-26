@@ -63,10 +63,12 @@ When using `--exit`, the return code indicates:
 
 Test output is saved to:
 - `test_runs/<timestamp>_<suite>/results.json` - Test results
-- `test_runs/<timestamp>_<suite>/screenshots/<test_name>/` - Screenshots per test
-- `test_runs/<timestamp>_<suite>/logs/` - Test and Slicer logs
+- `test_runs/<timestamp>_<suite>/metrics.json` - Performance metrics
+- `test_runs/<timestamp>_<suite>/screenshots/` - Screenshots per test
+- `test_runs/<timestamp>_<suite>/logs/test_run.log` - Test execution log
+- `test_runs/<timestamp>_<suite>/logs/slicer_session.log` - Slicer application log
 
-Use `/review-test-results` to analyze the output with the test-reviewer agent.
+Use `/review-test-results` to analyze the output (errors, warnings, failures, performance).
 
 ## Output Location
 
