@@ -597,8 +597,20 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         # Parameter presets by modality and tissue type
         # These set common parameters (edge sensitivity, threshold zone, etc.)
         # Algorithm selection is separate - user picks algorithm, then picks preset
-        # For algorithm recommendations, see user documentation
+        # For algorithm recommendations, see user documentation or use the wizard
+        #
+        # Preset parameters:
+        #   edge_sensitivity: 0-100, higher = more edge-following
+        #   threshold_zone: 0-100, higher = wider intensity acceptance
+        #   sampling_method: "mean_std", "percentile", or "histogram"
+        #   gaussian_sigma: 0.1-2.0, smoothing before segmentation
+        #   std_multiplier: 1.0-4.0, threshold width multiplier
+        #   fill_holes: True/False, fill holes in result
+        #   closing_radius: 0-3, morphological closing radius
         self._presets = {
+            # ================================================================
+            # DEFAULT / BALANCED
+            # ================================================================
             "default": {
                 "name": "Default",
                 "description": "Balanced settings for general use",
@@ -610,23 +622,25 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            # === CT Presets ===
+            # ================================================================
+            # CT PRESETS
+            # ================================================================
             "ct_bone": {
                 "name": "CT - Bone",
-                "description": "High contrast bone segmentation in CT",
+                "description": "High contrast bone (cortical and trabecular)",
                 "edge_sensitivity": 70,
-                "threshold_zone": 40,
+                "threshold_zone": 35,
                 "sampling_method": "percentile",
-                "gaussian_sigma": 0.3,
+                "gaussian_sigma": 0.25,
                 "std_multiplier": 1.5,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
             "ct_soft_tissue": {
-                "name": "CT - Soft Tissue",
-                "description": "Organs in CT (liver, kidney, spleen, muscle)",
+                "name": "CT - Soft Tissue/Organ",
+                "description": "Organs (liver, kidney, spleen, pancreas)",
                 "edge_sensitivity": 50,
-                "threshold_zone": 60,
+                "threshold_zone": 55,
                 "sampling_method": "mean_std",
                 "gaussian_sigma": 0.5,
                 "std_multiplier": 2.5,
@@ -634,31 +648,77 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
                 "closing_radius": 1,
             },
             "ct_lung": {
-                "name": "CT - Lung",
-                "description": "Lung parenchyma and airways in CT",
-                "edge_sensitivity": 60,
-                "threshold_zone": 50,
+                "name": "CT - Lung Parenchyma",
+                "description": "Lung tissue (preserves airways)",
+                "edge_sensitivity": 55,
+                "threshold_zone": 45,
                 "sampling_method": "percentile",
-                "gaussian_sigma": 0.4,
+                "gaussian_sigma": 0.35,
                 "std_multiplier": 2.0,
-                "fill_holes": False,  # Preserve airways
+                "fill_holes": False,
+                "closing_radius": 0,
+            },
+            "ct_airway": {
+                "name": "CT - Airway",
+                "description": "Trachea and bronchi (tubular low-density)",
+                "edge_sensitivity": 60,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 2.0,
+                "fill_holes": False,
                 "closing_radius": 0,
             },
             "ct_vessel_contrast": {
-                "name": "CT - Vessels (Contrast)",
-                "description": "Contrast-enhanced blood vessels in CTA",
+                "name": "CT - Vessels (CTA)",
+                "description": "Contrast-enhanced vessels",
                 "edge_sensitivity": 65,
                 "threshold_zone": 35,
                 "sampling_method": "percentile",
-                "gaussian_sigma": 0.3,
+                "gaussian_sigma": 0.25,
                 "std_multiplier": 1.5,
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            # === MRI T1 Presets ===
-            "mri_t1_brain": {
-                "name": "MRI T1 - Brain Tissue",
-                "description": "Gray/white matter in T1-weighted MRI",
+            "ct_muscle": {
+                "name": "CT - Muscle",
+                "description": "Skeletal muscle tissue",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "ct_fat": {
+                "name": "CT - Fat/Adipose",
+                "description": "Subcutaneous and visceral fat",
+                "edge_sensitivity": 55,
+                "threshold_zone": 50,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "ct_lymph_node": {
+                "name": "CT - Lymph Node",
+                "description": "Lymph nodes (with or without contrast)",
+                "edge_sensitivity": 50,
+                "threshold_zone": 55,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # MRI T1 PRESETS
+            # ================================================================
+            "mri_t1_brain_gm": {
+                "name": "MRI T1 - Gray Matter",
+                "description": "Cortical gray matter in T1",
                 "edge_sensitivity": 55,
                 "threshold_zone": 50,
                 "sampling_method": "mean_std",
@@ -667,33 +727,9 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            "mri_t1_fat": {
-                "name": "MRI T1 - Fat/Adipose",
-                "description": "Adipose tissue (bright in T1-weighted MRI)",
-                "edge_sensitivity": 40,
-                "threshold_zone": 70,
-                "sampling_method": "mean_std",
-                "gaussian_sigma": 0.6,
-                "std_multiplier": 2.5,
-                "fill_holes": True,
-                "closing_radius": 1,
-            },
-            # === MRI T1+Gd (Contrast) Presets ===
-            "mri_t1gd_tumor": {
-                "name": "MRI T1+Gd - Enhancing Tumor",
-                "description": "Contrast-enhancing tumors in post-gadolinium T1",
-                "edge_sensitivity": 45,
-                "threshold_zone": 60,
-                "sampling_method": "mean_std",
-                "gaussian_sigma": 0.6,
-                "std_multiplier": 2.5,
-                "fill_holes": True,
-                "closing_radius": 1,
-            },
-            # === MRI T2/FLAIR Presets ===
-            "mri_t2_lesion": {
-                "name": "MRI T2/FLAIR - Lesion",
-                "description": "Hyperintense lesions in T2/FLAIR (edema, MS, etc.)",
+            "mri_t1_brain_wm": {
+                "name": "MRI T1 - White Matter",
+                "description": "Deep white matter in T1",
                 "edge_sensitivity": 50,
                 "threshold_zone": 55,
                 "sampling_method": "mean_std",
@@ -702,14 +738,202 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
                 "fill_holes": True,
                 "closing_radius": 0,
             },
-            # === Generic/Multi-modality Presets ===
-            "generic_tumor": {
-                "name": "Generic - Tumor/Mass",
-                "description": "General tumor/mass with irregular boundaries",
+            "mri_t1_fat": {
+                "name": "MRI T1 - Fat/Adipose",
+                "description": "Adipose tissue (bright in T1)",
+                "edge_sensitivity": 40,
+                "threshold_zone": 65,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.55,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "mri_t1_muscle": {
+                "name": "MRI T1 - Muscle",
+                "description": "Skeletal muscle in T1",
                 "edge_sensitivity": 45,
                 "threshold_zone": 60,
                 "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            # ================================================================
+            # MRI T1+Gd (CONTRAST) PRESETS
+            # ================================================================
+            "mri_t1gd_tumor": {
+                "name": "MRI T1+Gd - Enhancing Tumor",
+                "description": "Contrast-enhancing tumors",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.55,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "mri_t1gd_vessel": {
+                "name": "MRI T1+Gd - Vessel (MRA)",
+                "description": "Contrast-enhanced vessels in MRA",
+                "edge_sensitivity": 60,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.35,
+                "std_multiplier": 1.8,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # MRI T2/FLAIR PRESETS
+            # ================================================================
+            "mri_t2_lesion": {
+                "name": "MRI T2 - Lesion/Edema",
+                "description": "Hyperintense lesions in T2",
+                "edge_sensitivity": 50,
+                "threshold_zone": 55,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "mri_flair_lesion": {
+                "name": "MRI FLAIR - WM Lesion",
+                "description": "White matter lesions (MS, ischemia)",
+                "edge_sensitivity": 55,
+                "threshold_zone": 50,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "mri_t2_csf": {
+                "name": "MRI T2 - CSF/Fluid",
+                "description": "Cerebrospinal fluid (very bright in T2)",
+                "edge_sensitivity": 60,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.35,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # MRI DWI PRESETS
+            # ================================================================
+            "mri_dwi_stroke": {
+                "name": "MRI DWI - Acute Stroke",
+                "description": "Restricted diffusion in acute stroke",
+                "edge_sensitivity": 55,
+                "threshold_zone": 55,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.7,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            # ================================================================
+            # PET PRESETS
+            # ================================================================
+            "pet_tumor": {
+                "name": "PET - Hypermetabolic Tumor",
+                "description": "FDG-avid tumors and metastases",
+                "edge_sensitivity": 50,
+                "threshold_zone": 55,
+                "sampling_method": "percentile",
                 "gaussian_sigma": 0.6,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "pet_suv_threshold": {
+                "name": "PET - SUV-based",
+                "description": "SUV threshold-based segmentation",
+                "edge_sensitivity": 45,
+                "threshold_zone": 45,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # ULTRASOUND PRESETS
+            # ================================================================
+            "us_general": {
+                "name": "Ultrasound - General",
+                "description": "General ultrasound (noisy, speckle)",
+                "edge_sensitivity": 55,
+                "threshold_zone": 65,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 1.0,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "us_cyst": {
+                "name": "Ultrasound - Cyst/Fluid",
+                "description": "Anechoic cysts and fluid collections",
+                "edge_sensitivity": 50,
+                "threshold_zone": 60,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.8,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # CBCT PRESETS
+            # ================================================================
+            "cbct_bone": {
+                "name": "CBCT - Bone/Dental",
+                "description": "Bone and teeth in cone-beam CT",
+                "edge_sensitivity": 65,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 1.8,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # MICROSCOPY PRESETS
+            # ================================================================
+            "micro_cell": {
+                "name": "Microscopy - Cell",
+                "description": "Individual cells in microscopy",
+                "edge_sensitivity": 60,
+                "threshold_zone": 45,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "micro_nucleus": {
+                "name": "Microscopy - Nucleus",
+                "description": "Cell nuclei (often DAPI stained)",
+                "edge_sensitivity": 65,
+                "threshold_zone": 40,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.25,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            # ================================================================
+            # GENERIC / MULTI-MODALITY PRESETS
+            # ================================================================
+            "generic_tumor": {
+                "name": "Generic - Tumor/Mass",
+                "description": "Tumors with irregular boundaries",
+                "edge_sensitivity": 45,
+                "threshold_zone": 60,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.55,
                 "std_multiplier": 2.5,
                 "fill_holes": True,
                 "closing_radius": 1,
@@ -721,6 +945,75 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
                 "threshold_zone": 35,
                 "sampling_method": "percentile",
                 "gaussian_sigma": 0.3,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "generic_organ": {
+                "name": "Generic - Organ",
+                "description": "Solid organs with smooth boundaries",
+                "edge_sensitivity": 50,
+                "threshold_zone": 55,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.5,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            "generic_lesion": {
+                "name": "Generic - Small Lesion",
+                "description": "Small focal lesions",
+                "edge_sensitivity": 55,
+                "threshold_zone": 50,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.4,
+                "std_multiplier": 2.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "generic_high_contrast": {
+                "name": "Generic - High Contrast",
+                "description": "Structures with strong edges",
+                "edge_sensitivity": 70,
+                "threshold_zone": 35,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 1.5,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "generic_low_contrast": {
+                "name": "Generic - Low Contrast",
+                "description": "Subtle intensity differences",
+                "edge_sensitivity": 40,
+                "threshold_zone": 65,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.6,
+                "std_multiplier": 2.5,
+                "fill_holes": True,
+                "closing_radius": 1,
+            },
+            # ================================================================
+            # SPEED / PRECISION PRESETS
+            # ================================================================
+            "speed_fast": {
+                "name": "Speed - Fast Rough",
+                "description": "Quick approximate segmentation",
+                "edge_sensitivity": 40,
+                "threshold_zone": 70,
+                "sampling_method": "mean_std",
+                "gaussian_sigma": 0.3,
+                "std_multiplier": 3.0,
+                "fill_holes": True,
+                "closing_radius": 0,
+            },
+            "precision_high": {
+                "name": "Precision - Careful Edges",
+                "description": "Maximum boundary accuracy",
+                "edge_sensitivity": 75,
+                "threshold_zone": 35,
+                "sampling_method": "percentile",
+                "gaussian_sigma": 0.25,
                 "std_multiplier": 1.5,
                 "fill_holes": True,
                 "closing_radius": 0,

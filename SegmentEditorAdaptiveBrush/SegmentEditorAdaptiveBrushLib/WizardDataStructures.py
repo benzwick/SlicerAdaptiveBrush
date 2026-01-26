@@ -256,6 +256,32 @@ class WizardRecommendation:
     alternative_algorithms: list[tuple[str, str]] = field(default_factory=list)
     """List of (algorithm_id, reason) tuples for alternatives."""
 
+    # Algorithm-specific parameters
+    algorithm_params: dict[str, Any] = field(default_factory=dict)
+    """Algorithm-specific parameter overrides (e.g., watershed gradient scale)."""
+
+    # Common parameters beyond edge sensitivity
+    threshold_zone: int = 50
+    """Recommended threshold zone (0-100)."""
+
+    sampling_method: str = "mean_std"
+    """Recommended sampling method (mean_std, percentile, histogram)."""
+
+    gaussian_sigma: float = 0.5
+    """Recommended Gaussian smoothing sigma."""
+
+    std_multiplier: float = 2.0
+    """Recommended standard deviation multiplier for thresholding."""
+
+    fill_holes: bool = True
+    """Whether to fill holes in segmentation."""
+
+    closing_radius: int = 0
+    """Morphological closing radius in voxels."""
+
+    recommended_preset: Optional[str] = None
+    """ID of best-matching preset, if any."""
+
     def is_high_confidence(self, threshold: float = 0.75) -> bool:
         """Check if recommendation has high confidence.
 
