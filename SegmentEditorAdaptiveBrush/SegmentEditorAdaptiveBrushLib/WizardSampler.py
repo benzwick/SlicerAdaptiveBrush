@@ -273,40 +273,15 @@ class WizardSampler:
                 f"WizardBoundary_{stroke_num}",
             )
 
-            # Use linear interpolation so the curve follows exactly what user draws
-            # (default is spline which smooths and looks wrong)
+            # Use linear interpolation (not spline) so curve follows exactly what user draws
             curve.SetCurveTypeToLinear()
 
+            # Just set color to yellow, keep other defaults like Markups module
             display_node = curve.GetDisplayNode()
             if display_node:
-                # Yellow for boundary - bright color for visibility
                 display_node.SetSelectedColor(1.0, 1.0, 0.0)
                 display_node.SetColor(1.0, 1.0, 0.0)
-                display_node.SetActiveColor(1.0, 1.0, 0.0)
-
-                # Line appearance - thick and visible
-                display_node.SetLineThickness(5.0)  # Very thick line
-                display_node.SetTextScale(0)
-                display_node.SetPointLabelsVisibility(False)
-                display_node.SetGlyphScale(0.0)  # Hide control points
-
-                # Visibility settings
-                display_node.SetVisibility(True)
-                display_node.SetVisibility2D(True)
-                display_node.SetVisibility3D(True)
-
-                # Slice intersection - key for 2D visibility
-                display_node.SetSliceIntersectionVisibility(True)
-                display_node.SetSliceIntersectionThickness(5)
-
-                # Projection settings for curves not on slice plane
-                display_node.SetSliceProjection(True)
-                display_node.SetSliceProjectionUseFiducialColor(True)
-                display_node.SetSliceProjectionOpacity(1.0)
-
-                # Ensure visible even when "behind" slice
-                display_node.SetOccludedVisibility(True)
-                display_node.SetOccludedOpacity(1.0)
+                display_node.SetTextScale(0)  # No labels
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
