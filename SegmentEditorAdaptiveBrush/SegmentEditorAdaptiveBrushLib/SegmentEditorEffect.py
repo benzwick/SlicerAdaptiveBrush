@@ -9,6 +9,7 @@ import logging
 import os
 import sys
 import time
+from typing import Any, Optional
 
 import ctk
 import numpy as np  # noqa: E402
@@ -1130,7 +1131,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         )
         return state
 
-    def register(self):
+    def register(self) -> None:
         """Register the effect with the segment editor effect factory.
 
         This method is copied from AbstractScriptedSegmentEditorEffect since
@@ -1141,7 +1142,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         effectFactorySingleton = slicer.qSlicerSegmentEditorEffectFactory.instance()
         effectFactorySingleton.registerEffect(self.scriptedEffect)
 
-    def clone(self):
+    def clone(self) -> Any:
         """Create a copy of this effect.
 
         Returns:
@@ -1153,7 +1154,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         clonedEffect.setPythonSource(__file__)
         return clonedEffect
 
-    def icon(self):
+    def icon(self) -> Any:
         """Return the effect icon.
 
         Returns:
@@ -1169,15 +1170,16 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     # in qSlicerSegmentEditorAbstractEffect::createCursor is used, which creates
     # a cursor combining NullEffect.png with our icon() result
 
-    def helpText(self):
+    def helpText(self) -> str:
         """Return help text for the effect.
 
         Returns:
             HTML string with usage instructions.
             First line before <br>. shown as collapsed summary.
         """
-        return "<html>" + _(
-            """Paint with a brush that adapts to image intensity boundaries<br>.
+        return "<html>" + str(
+            _(
+                """Paint with a brush that adapts to image intensity boundaries<br>.
 Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+scroll to adjust brush size.<p>
 <b>Brush Circles:</b>
 <ul style="margin: 0">
@@ -1193,6 +1195,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 <li><b>Region Growing</b>: Fast, good for homogeneous regions
 <li><b>Threshold Brush</b>: Simple intensity thresholding
 </ul>"""
+            )
         )
 
     def setupOptionsFrame(self):
@@ -2540,7 +2543,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.backend = self.backendCombo.currentData
         self.cache.invalidate()
 
-    def activate(self):
+    def activate(self) -> None:
         """Called when the effect is selected."""
         self.cache.clear()
         self._createOutlinePipelines()
@@ -2559,7 +2562,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
                 self.intensityAnalyzer = IntensityAnalyzer()
 
-    def deactivate(self):
+    def deactivate(self) -> None:
         """Called when the effect is deselected."""
         self.cache.clear()
         self.isDrawing = False
@@ -2571,19 +2574,19 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
     # AttributeError which could trigger recursive exception handlers
     # -------------------------------------------------------------------------
 
-    def setMRMLDefaults(self):
+    def setMRMLDefaults(self) -> None:
         """Called to set default MRML parameters. No-op for this effect."""
         pass
 
-    def updateGUIFromMRML(self):
+    def updateGUIFromMRML(self) -> None:
         """Called to sync GUI from MRML parameters. No-op for this effect."""
         pass
 
-    def updateMRMLFromGUI(self):
+    def updateMRMLFromGUI(self) -> None:
         """Called to sync MRML from GUI. No-op for this effect."""
         pass
 
-    def interactionNodeModified(self, interactionNode):
+    def interactionNodeModified(self, interactionNode: Any) -> None:
         """Called when the interaction node changes. No-op for this effect."""
         pass
 
@@ -3050,7 +3053,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         finally:
             self._updatingThresholdRanges = False
 
-    def processInteractionEvents(self, callerInteractor, eventId, viewWidget):
+    def processInteractionEvents(
+        self, callerInteractor: Any, eventId: int, viewWidget: Any
+    ) -> bool:
         """Handle mouse interaction events.
 
         Args:
@@ -3064,8 +3069,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # When wizard is active, forward events to the wizard's sampler
         if getattr(self, "_wizardActive", False):
             if hasattr(self, "_activeWizard") and self._activeWizard:
-                return self._activeWizard.handle_interaction_event(
-                    callerInteractor, eventId, viewWidget
+                return bool(
+                    self._activeWizard.handle_interaction_event(
+                        callerInteractor, eventId, viewWidget
+                    )
                 )
             return False
 
@@ -3285,7 +3292,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         return ijk
 
-    def computeAdaptiveMask(self, sourceVolumeNode, seedIjk, viewWidget):
+    def computeAdaptiveMask(
+        self, sourceVolumeNode: Any, seedIjk: tuple[int, int, int], viewWidget: Any
+    ) -> Optional[np.ndarray]:
         """Compute the adaptive segmentation mask.
 
         Args:
@@ -3357,7 +3366,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         }
 
         # Use cache for drag operations
-        mask = self.cache.computeOrGetCached(
+        mask: Optional[np.ndarray] = self.cache.computeOrGetCached(
             volumeArray,
             seedIjk,
             params,
@@ -4334,7 +4343,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             f"{seed_intensity + tolerance:.1f}]"
         )
 
-    def applyMaskToSegment(self, mask, erase=False):
+    def applyMaskToSegment(self, mask: np.ndarray, erase: bool = False) -> None:
         """Apply the computed mask to the current segment.
 
         Args:
