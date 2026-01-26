@@ -114,6 +114,22 @@ The brush uses a zone-based threshold override that samples intensities from a c
 8. Apply circular/spherical brush mask
 9. Apply to segment via OR operation
 
+### Reproducibility
+
+Algorithm reproducibility for identical inputs:
+
+| Algorithm | Deterministic | Notes |
+|-----------|---------------|-------|
+| Geodesic Distance | ✓ Yes | |
+| Watershed | ✓ Yes | |
+| Connected Threshold | ✓ Yes | |
+| Region Growing | ✓ Yes | |
+| Threshold Brush | ✓ Yes | |
+| Level Set | ✓ Yes | |
+| Random Walker | ✓ Yes | Uses scikit-image defaults |
+
+**GMM Threshold Estimation:** Deterministic (uses `random_state=42` and seeded subsampling with `np.random.default_rng(42)`).
+
 ## Development Guidelines
 
 ### AI Assistant Rules

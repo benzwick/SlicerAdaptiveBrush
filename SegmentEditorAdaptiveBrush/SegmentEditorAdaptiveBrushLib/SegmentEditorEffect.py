@@ -2143,7 +2143,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Update algorithm parameters visibility (since signals were blocked)
         self._updateAlgorithmParamsVisibility()
 
-        logging.debug(f"Applied preset: {preset['name']}")
+        logging.info(f"Applied preset: {preset['name']}")
 
     # =========================================================================
     # Public API for scripting and recipes
@@ -2376,18 +2376,24 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         """Set the brush radius.
 
         Args:
-            radius_mm: Brush radius in millimeters.
+            radius_mm: Brush radius in millimeters (clamped to 1.0-100.0).
         """
-        self.radiusMm = max(1.0, min(100.0, radius_mm))
+        clamped = max(1.0, min(100.0, radius_mm))
+        if clamped != radius_mm:
+            logging.info(f"Brush radius clamped: requested={radius_mm}, applied={clamped}")
+        self.radiusMm = clamped
         self.radiusSlider.value = self.radiusMm
 
     def setEdgeSensitivity(self, sensitivity: int) -> None:
         """Set the edge sensitivity.
 
         Args:
-            sensitivity: Edge sensitivity value (0-100).
+            sensitivity: Edge sensitivity value (clamped to 0-100).
         """
-        self.edgeSensitivity = max(0, min(100, sensitivity))
+        clamped = max(0, min(100, sensitivity))
+        if clamped != sensitivity:
+            logging.info(f"Edge sensitivity clamped: requested={sensitivity}, applied={clamped}")
+        self.edgeSensitivity = clamped
         self.sensitivitySlider.value = self.edgeSensitivity
 
     def setThresholdRange(self, lower: float, upper: float) -> None:
