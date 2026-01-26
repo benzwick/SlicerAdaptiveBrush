@@ -273,6 +273,10 @@ class WizardSampler:
                 f"WizardBoundary_{stroke_num}",
             )
 
+            # Use linear interpolation so the curve follows exactly what user draws
+            # (default is spline which smooths and looks wrong)
+            curve.SetCurveTypeToLinear()
+
             display_node = curve.GetDisplayNode()
             if display_node:
                 # Yellow for boundary - make it visible
@@ -287,6 +291,8 @@ class WizardSampler:
                 display_node.SetGlyphScale(0.0)  # Hide control points
                 display_node.SetSliceProjection(True)  # Project onto slices
                 display_node.SetSliceProjectionOpacity(1.0)
+                # Use absolute size mode for consistent line thickness
+                display_node.SetCurveLineSizeMode(slicer.vtkMRMLMarkupsDisplayNode.UseLineThickness)
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
