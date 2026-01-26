@@ -173,13 +173,14 @@
   - [x] Algorithm comparison dialog
   - [x] ResultsLoader supporting test runner and Optuna formats
 
-- [ ] Documentation
+- [x] Documentation
   - [x] ADR-011: Optimization Framework
   - [x] ADR-012: Results Review Module
   - [x] ADR-013: Segmentation Recipes
-  - [ ] User guide for recipe creation
-  - [ ] Optimization tutorial
-  - [ ] Full testing/optimization workflow guide
+  - [x] User guide for recipe creation
+  - [x] Optimization tutorial
+  - [x] Full testing/optimization workflow guide
+  - [x] Sphinx documentation with ReadTheDocs setup
 
 - [ ] Integration Testing
   - [x] 5/5 test cases passing (algorithm, optimization, regression, UI, workflow)
