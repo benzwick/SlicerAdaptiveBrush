@@ -279,22 +279,28 @@ class TestBrushOutlineColors(TestCase):
         """Verify mode colors are correct."""
         logger.info("Verifying brush colors")
 
-        # Visual verification via screenshots is the primary test for colors
-        # The run() method captured screenshots of:
-        # - Yellow brush in add mode
-        # - Red/orange brush in erase mode
-        # - Yellow brush restored after switching back to add mode
-
         scripted_effect = self.effect.self()
-        ctx.assert_is_not_none(scripted_effect, "Effect should be active")
 
-        # Verify the effect has the mode tracking capability
-        ctx.assert_true(
-            hasattr(scripted_effect, "eraseMode") or hasattr(scripted_effect, "_eraseMode"),
-            "Effect should track erase mode state",
+        # Verify add mode colors
+        add_color = scripted_effect.BRUSH_COLOR_ADD
+        ctx.assert_equal(len(add_color), 3, "Add mode color should have 3 components")
+        ctx.log(f"Add mode color: RGB({add_color[0]:.2f}, {add_color[1]:.2f}, {add_color[2]:.2f})")
+
+        # Verify erase mode colors
+        erase_color = scripted_effect.BRUSH_COLOR_ERASE
+        ctx.assert_equal(len(erase_color), 3, "Erase mode color should have 3 components")
+        ctx.log(
+            f"Erase mode color: RGB({erase_color[0]:.2f}, {erase_color[1]:.2f}, {erase_color[2]:.2f})"
         )
 
-        ctx.log("Color changes verified via screenshots (add=yellow, erase=red/orange)")
+        # Colors should be different
+        colors_different = (
+            add_color[0] != erase_color[0]
+            or add_color[1] != erase_color[1]
+            or add_color[2] != erase_color[2]
+        )
+        ctx.assert_true(colors_different, "Add and erase colors should be different")
+
         ctx.screenshot("[verify] Brush colors verification complete")
 
     def teardown(self, ctx: TestContext) -> None:
