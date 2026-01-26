@@ -97,6 +97,12 @@ The adaptive brush provides **multiple user-selectable algorithms**, all impleme
 
 ## Development Guidelines
 
+### AI Assistant Rules
+
+- **Never make unverified claims** - Do not assert behavior, features, or facts without first verifying them in the code or documentation. If uncertain, say so.
+- **Read before writing** - Always read relevant files before making changes or claims about how they work.
+- **Test claims** - If you claim something works a certain way, verify it by reading the implementation or running a test.
+
 ### Test-Driven Development (TDD)
 
 **Always follow the TDD cycle:**
