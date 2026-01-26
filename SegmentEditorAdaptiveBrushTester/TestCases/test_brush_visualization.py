@@ -486,16 +486,16 @@ class TestCrosshairStyles(TestCase):
 
         center_xy = _get_slice_center_xy(self.red_widget)
 
-        # Check if crosshair combo exists
-        if not hasattr(scripted_effect, "crosshairCombo"):
-            ctx.log("Crosshair combo not found - may be in collapsed section")
+        # Check if crosshair combo exists (actual attribute name is crosshairStyleCombo)
+        if not hasattr(scripted_effect, "crosshairStyleCombo"):
+            ctx.log("Crosshair style combo not found - may be in collapsed section")
             scripted_effect._updateBrushPreview(center_xy, self.red_widget, eraseMode=False)
             self.red_widget.sliceView().forceRender()
             slicer.app.processEvents()
             ctx.screenshot("[default] Default crosshair style")
             return
 
-        crosshair_combo = scripted_effect.crosshairCombo
+        crosshair_combo = scripted_effect.crosshairStyleCombo
 
         # Test each crosshair style
         for i in range(crosshair_combo.count):
@@ -520,12 +520,18 @@ class TestCrosshairStyles(TestCase):
 
         scripted_effect = self.effect.self()
 
-        # Verify crosshair style property exists
-        if hasattr(scripted_effect, "crosshairStyle"):
-            style = scripted_effect.crosshairStyle
-            ctx.log(f"Current crosshair style: {style}")
+        # Verify crosshair style - it's on the pipeline objects, not the effect
+        if hasattr(scripted_effect, "outlinePipelines") and scripted_effect.outlinePipelines:
+            # Check the first pipeline's crosshair style
+            for view_name, pipeline in scripted_effect.outlinePipelines.items():
+                if hasattr(pipeline, "crosshairStyle"):
+                    style = pipeline.crosshairStyle
+                    ctx.log(f"Crosshair style on {view_name} pipeline: {style}")
+                    break
+            else:
+                ctx.log("No pipeline with crosshairStyle found")
         else:
-            ctx.log("Crosshair style attribute not found")
+            ctx.log("Outline pipelines not initialized")
 
         ctx.screenshot("[verify] Crosshair verification complete")
 

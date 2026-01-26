@@ -1030,17 +1030,6 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         }
         self._currentPreset = "default"
 
-    def __getattr__(self, name):
-        """Log access to undefined attributes to help debug recursion.
-
-        This is called when an attribute is not found through normal lookup.
-        """
-        # Avoid recursion in logging itself
-        if name.startswith("_"):
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-        logging.warning(f"__getattr__ called for undefined attribute: {name}")
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-
     def __repr__(self):
         """Return string representation to prevent default recursion."""
         return "<SegmentEditorEffect 'Adaptive Brush'>"
