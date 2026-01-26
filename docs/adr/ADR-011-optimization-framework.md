@@ -2,19 +2,22 @@
 
 ## Status
 
-Partially Implemented
+**Implemented** (2026-01-26)
 
-**Implemented:**
-- OptunaOptimizer class with TPE sampler and HyperbandPruner
-- OptimizationConfig for YAML configuration loading
+**Components:**
+- `scripts/run_optimization.py` - Entry point script for running optimization in Slicer
+- `OptunaOptimizer` class with TPE sampler and HyperbandPruner
+- `OptimizationConfig` for YAML configuration loading
 - FAnova parameter importance analysis
 - SQLite persistence for study resumption
-- Example configuration files
+- Example configuration files (`quick_test.yaml`, `default.yaml`, `tumor_optimization.yaml`)
+- Lab notebook generation with parameter importance and trial history
+- `/run-optimization` skill documentation
 
-**Not Yet Implemented:**
-- `scripts/run_optimization.py` entry point script
-- `/run-optimization` skill integration (script missing)
-- End-to-end optimization workflow
+**Usage:**
+```bash
+Slicer --python-script scripts/run_optimization.py configs/quick_test.yaml
+```
 
 ## Context
 

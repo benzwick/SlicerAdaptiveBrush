@@ -1,58 +1,57 @@
 # run-optimization
 
-> **Status:** NOT WORKING - `scripts/run_optimization.py` does not exist yet.
-> The OptunaOptimizer class is implemented but has no entry point script.
-
-Run parameter optimization for segmentation algorithms.
+Run Optuna parameter optimization for Adaptive Brush segmentation algorithms.
 
 ## Usage
 
 ```
-/run-optimization <algorithm> --gold <gold_name> [--trials <n>]
+/run-optimization [config.yaml] [--trials N] [--no-exit]
 ```
 
 Where:
-- `algorithm` - Algorithm to optimize (watershed, level_set_cpu, connected_threshold, etc.)
-- `--gold` - Gold standard to compare against
-- `--trials` - Number of trials (default: 20)
+- `config.yaml` - Path to YAML config (default: configs/quick_test.yaml)
+- `--trials N` - Override number of trials
+- `--no-exit` - Keep Slicer open after completion for inspection
 
 ## What This Skill Does
 
-1. Loads the specified gold standard
-2. Runs N trials with different parameter combinations
-3. Uses exactly 5 clicks per trial (from gold standard metadata)
-4. Tracks Dice/Hausdorff after each stroke
-5. Identifies best parameters and diminishing returns
-6. Saves results and generates lab notebook
+1. Loads Slicer with the optimization script
+2. Loads sample data and gold standard segmentation
+3. Runs N trials with Optuna TPE sampler and HyperbandPruner
+4. For each trial:
+   - Applies suggested parameters to the effect
+   - Paints all clicks from the gold standard
+   - Computes Dice coefficient after each click (for pruning)
+   - Reports final Dice as objective value
+5. Saves results and generates lab notebook
 
 ## Prerequisites
 
-1. Gold standard exists in `GoldStandards/<gold_name>/`
-2. Slicer is available (set in .env file)
+1. Slicer path set in `.env` file: `SLICER_PATH=/path/to/Slicer`
+2. Gold standard exists in `SegmentEditorAdaptiveBrushTester/GoldStandards/`
+3. Config YAML exists in `SegmentEditorAdaptiveBrushTester/configs/`
 
 ## Execution Steps
 
-### Step 1: Launch Slicer with Optimization Script
-
-First, read the .env file to get SLICER_PATH, then launch:
+### Step 1: Read .env and Launch Slicer
 
 ```bash
-<SLICER_PATH> --python-script scripts/run_optimization.py <algorithm> <gold_name> <trials>
+source .env && "$SLICER_PATH" --python-script scripts/run_optimization.py configs/quick_test.yaml
 ```
 
 ### Step 2: Monitor Progress
 
-The script outputs progress to stdout:
+The script outputs progress to terminal:
 
 ```
-Trial 1/20: edge_sensitivity=30, threshold_zone=50, brush_radius=20
-  Stroke 1: Dice=0.42
-  Stroke 2: Dice=0.67
-  Stroke 3: Dice=0.81
-  Stroke 4: Dice=0.85
-  Stroke 5: Dice=0.87
-  Final: Dice=0.87, HD95=5.2mm
+14:30:01 [INFO] optimization: Loaded config: Quick Test
+14:30:05 [INFO] optimization: Loaded gold standard: MRBrainTumor1_tumor with 5 clicks
+14:30:06 [INFO] optimization: Starting optimization: 10 trials
+14:30:08 [INFO] optimization: Trial 0: {'algorithm': 'geodesic_distance', 'edge_sensitivity': 50, ...}
+14:30:08 [INFO] optimization:   Click 1/5: Dice=0.3421
+14:30:09 [INFO] optimization:   Click 2/5: Dice=0.5234
 ...
+14:30:12 [INFO] optimization:   Final Dice: 0.8734 (4200ms)
 ```
 
 ### Step 3: Review Results
@@ -60,82 +59,87 @@ Trial 1/20: edge_sensitivity=30, threshold_zone=50, brush_radius=20
 Results are saved to:
 
 ```
-test_runs/<timestamp>_optimization/
-├── optimization_results.json    # All trial data
-├── best_params.json             # Best parameters found
-├── screenshots/                 # Best trial visualization
-└── lab_notebook.md              # Human-readable summary
+optimization_results/<timestamp>_<config_name>/
+├── config.yaml              # Copy of config used
+├── optuna_study.db          # SQLite database (resumable)
+├── results.json             # Full results with all trials
+├── parameter_importance.json # FAnova importance scores
+└── lab_notebook.md          # Human-readable summary
 ```
+
+## Available Configs
+
+| Config | Trials | Purpose |
+|--------|--------|---------|
+| `quick_test.yaml` | 10 | Fast testing (random sampler) |
+| `default.yaml` | 50 | General optimization |
+| `tumor_optimization.yaml` | 100 | Thorough tumor optimization |
 
 ## Output Format
 
-### optimization_results.json
+### results.json
 
 ```json
 {
-  "algorithm": "watershed",
-  "gold_standard": "MRBrainTumor1_tumor",
-  "trials": [
-    {
-      "trial_id": 1,
-      "params": {
-        "edge_sensitivity": 30,
-        "threshold_zone": 50,
-        "brush_radius_mm": 20
-      },
-      "dice": 0.87,
-      "hausdorff_95": 5.2,
-      "strokes": 5,
-      "duration_ms": 1234
-    }
-  ],
-  "summary": {
-    "best_dice": 0.92,
-    "best_params": {...}
+  "config_name": "Quick Test",
+  "n_trials": 10,
+  "best_trial": {
+    "trial_number": 7,
+    "params": {
+      "algorithm": "geodesic_distance",
+      "edge_sensitivity": 50,
+      "threshold_zone": 50
+    },
+    "value": 0.8734,
+    "duration_ms": 4200
+  },
+  "parameter_importance": {
+    "algorithm": 0.45,
+    "edge_sensitivity": 0.30,
+    "threshold_zone": 0.15
   }
 }
 ```
 
 ### lab_notebook.md
 
-Human-readable markdown document:
+Human-readable markdown with:
+- Summary statistics
+- Best parameters
+- Parameter importance table
+- Top 5 trials
+- Complete trial history
 
-```markdown
-# Watershed Parameter Optimization
+## Examples
 
-**Date:** 2026-01-24
-**Gold Standard:** MRBrainTumor1_tumor
-
-## Summary
-- Best Dice: 0.92
-- Best Hausdorff 95%: 3.4mm
-- Trials: 20
-
-## Best Parameters
-- edge_sensitivity: 40
-- threshold_zone: 60
-- brush_radius_mm: 25
-
-## Parameter Sensitivity
-- edge_sensitivity: Strong correlation (r=0.67)
-- threshold_zone: Moderate correlation (r=0.34)
-...
+### Quick test run
+```bash
+source .env && "$SLICER_PATH" --python-script scripts/run_optimization.py \
+    SegmentEditorAdaptiveBrushTester/configs/quick_test.yaml
 ```
 
-## Search Strategy
+### Full optimization with 100 trials
+```bash
+source .env && "$SLICER_PATH" --python-script scripts/run_optimization.py \
+    SegmentEditorAdaptiveBrushTester/configs/tumor_optimization.yaml
+```
 
-By default, uses random search over parameter space:
+### Override trials and keep Slicer open
+```bash
+source .env && "$SLICER_PATH" --python-script scripts/run_optimization.py \
+    SegmentEditorAdaptiveBrushTester/configs/default.yaml --trials 20 --no-exit
+```
 
-| Parameter | Range | Step |
-|-----------|-------|------|
-| edge_sensitivity | 10-90 | 10 |
-| threshold_zone | 30-70 | 10 |
-| brush_radius_mm | 10-40 | 5 |
-| (algorithm-specific) | ... | ... |
+### Resume previous study
+```bash
+source .env && "$SLICER_PATH" --python-script scripts/run_optimization.py \
+    SegmentEditorAdaptiveBrushTester/configs/tumor_optimization.yaml --resume
+```
 
 ## Tips
 
-- Start with 20 trials to explore the space
-- If promising region found, run more trials in that region
-- Look for diminishing returns - when Dice improvement < 0.01
-- Check the lab notebook for parameter sensitivity analysis
+- Start with `quick_test.yaml` to verify setup
+- Use `--no-exit` to inspect results visually in Slicer
+- The SQLite database allows resuming interrupted runs
+- Parameter importance helps focus future optimization
+- Look for diminishing returns in trial history

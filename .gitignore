@@ -44,5 +44,8 @@ Thumbs.db
 # Test run output
 test_runs/
 
+# Optimization results (can be regenerated)
+optimization_results/
+
 # Generated screenshots (can be regenerated)
 reference_screenshots/

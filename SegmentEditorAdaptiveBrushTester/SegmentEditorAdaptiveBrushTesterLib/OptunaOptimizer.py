@@ -323,6 +323,7 @@ class OptunaOptimizer:
                 value = objective(trial, params)
 
                 # Record result
+                # Note: intermediate_values removed in Optuna 4.x
                 result = OptunaTrialResult(
                     trial_number=trial.number,
                     params=params,
@@ -330,7 +331,7 @@ class OptunaOptimizer:
                     duration_ms=(time.time() - trial_start) * 1000,
                     pruned=False,
                     user_attrs=dict(trial.user_attrs),
-                    intermediate_values=dict(trial.intermediate_values),
+                    intermediate_values={},  # Tracking intermediate values removed in Optuna 4.x
                 )
                 self.trial_results.append(result)
 
@@ -344,7 +345,7 @@ class OptunaOptimizer:
                     duration_ms=(time.time() - trial_start) * 1000,
                     pruned=True,
                     user_attrs=dict(trial.user_attrs),
-                    intermediate_values=dict(trial.intermediate_values),
+                    intermediate_values={},  # Tracking intermediate values removed in Optuna 4.x
                 )
                 self.trial_results.append(result)
                 raise
