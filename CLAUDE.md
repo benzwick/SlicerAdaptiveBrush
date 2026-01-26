@@ -405,6 +405,34 @@ reviews/
 | medium | Style violation, maintainability |
 | low | Minor inconsistency |
 
+### Gold Standards
+
+Gold standards are expert-annotated segmentations used for regression testing and optimization.
+
+**Internal** (in `GoldStandards/`, git-tracked):
+- `MRBrainTumor1_tumor` - Manually created from Slicer SampleData
+
+**External** (metadata in `ExternalGoldStandards/`, data in `PublicDatasets/`):
+- From Medical Segmentation Decathlon (CC-BY-SA 4.0): Brain tumor, Lung, Heart
+- From CT-ORG (CC-BY 4.0): Bone, Lung, multi-organ
+
+**Downloading public datasets:**
+```bash
+# List available datasets
+python scripts/download_public_datasets.py --list
+
+# Download specific datasets
+python scripts/download_public_datasets.py --msd brain lung
+python scripts/download_public_datasets.py --ct-org
+
+# Download all (~19GB)
+python scripts/download_public_datasets.py --all
+```
+
+Or download in Slicer: **File > Download Sample Data > Adaptive Brush Gold Standards**
+
+See [ADR-016](docs/adr/ADR-016-public-gold-standard-datasets.md) for details.
+
 ### Claude Code Skills
 
 **Testing Skills:**

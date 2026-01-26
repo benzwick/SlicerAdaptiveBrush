@@ -1,0 +1,6 @@
+# Ignore all downloaded data files (large)
+*
+
+# But track this .gitignore and README
+!.gitignore
+!README.md

@@ -56,8 +56,15 @@ brush segmentation tools. Inspired by ITK-SNAP and ImFusion Labels.
         # Show module in selector so users can find usage instructions
         self.parent.hidden = False
 
-        # Register effect on startup
+        # Register effect and sample data on startup
         slicer.app.connect("startupCompleted()", self.registerEditorEffect)
+        slicer.app.connect("startupCompleted()", self.registerSampleData)
+
+    def registerSampleData(self):
+        """Register gold standard datasets as sample data sources."""
+        from SegmentEditorAdaptiveBrushLib.SampleDataSources import registerSampleDataSources
+
+        registerSampleDataSources()
 
     def registerEditorEffect(self):
         """Register the Adaptive Brush effect with Segment Editor."""
