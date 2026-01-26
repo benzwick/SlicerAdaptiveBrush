@@ -154,8 +154,9 @@ class EmbeddedWizardPanel:
 
         # Step 2: Boundary tracing (optional)
         boundary_page = self._build_sampling_page(
-            "Optionally, trace <b>ALONG THE EDGE</b> of the structure.\n"
-            "This helps estimate boundary roughness. (Skip if not needed)",
+            "Optionally, <b>click and drag</b> to trace <b>ALONG THE EDGE</b> "
+            "of the structure.\nThis helps estimate boundary roughness. "
+            "(Skip if not needed)",
             "boundary",
             optional=True,
         )
