@@ -66,7 +66,7 @@ SlicerAdaptiveBrush/
 
 ### Key Classes
 
-- **SegmentEditorEffect**: Main effect class inheriting from `AbstractScriptedSegmentEditorEffect`. Contains UI creation, mouse event processing, and all algorithm implementations (`_watershed`, `_levelSet`, `_connectedThreshold`, `_regionGrowing`, `_thresholdBrush`).
+- **SegmentEditorEffect**: Main effect class inheriting from `AbstractScriptedSegmentEditorEffect`. Contains UI creation, mouse event processing, and all algorithm implementations (`_geodesicDistance`, `_watershed`, `_randomWalker`, `_levelSet`, `_connectedThreshold`, `_regionGrowing`, `_thresholdBrush`).
 - **BrushOutlinePipeline**: VTK 2D pipeline for brush outline visualization in slice views.
 - **IntensityAnalyzer**: Automatic threshold estimation using Gaussian Mixture Model (GMM) with simple statistics fallback.
 - **PerformanceCache**: Cache structure for drag operations (infrastructure ready, optimization pending).
@@ -78,8 +78,11 @@ The adaptive brush provides **multiple user-selectable algorithms**, all impleme
 **Available Algorithms:**
 | Algorithm | Speed | Precision | Best For |
 |-----------|-------|-----------|----------|
-| Watershed | Medium | High | General use (default) |
-| Level Set | Slow | Very High | High precision needs |
+| Geodesic Distance | Fast | High | General use (default) |
+| Watershed | Medium | High | Marker-based segmentation |
+| Random Walker | Medium | High | Probabilistic diffusion |
+| Level Set (GPU) | Slow | Very High | High precision (GPU planned) |
+| Level Set (CPU) | Slow | Very High | High precision fallback |
 | Connected Threshold | Very Fast | Low | Quick rough segmentation |
 | Region Growing | Fast | Medium | Homogeneous regions |
 | Threshold Brush | Very Fast | Variable | Simple threshold painting |
@@ -88,12 +91,29 @@ The adaptive brush provides **multiple user-selectable algorithms**, all impleme
 - Otsu, Huang, Triangle, Maximum Entropy, IsoData, Li
 - Auto-detects whether to segment above or below threshold based on seed intensity
 
+**Zone-Based Threshold System:**
+
+The brush uses a zone-based threshold override that samples intensities from a configurable inner zone around the seed point, overriding the IntensityAnalyzer thresholds:
+
+- `threshold_zone` - Inner radius as percentage of brush radius (0.0-1.0)
+- `sampling_method` - How intensities are sampled:
+  - `mean_std` - Weighted mean ± std_multiplier * std
+  - `percentile` - Weighted percentiles (default 5th-95th)
+  - `gaussian_weighting` - Gaussian falloff from seed
+  - `histogram_peak` - Mode detection
+
 **Shared Pipeline (all algorithms):**
 1. ROI Extraction around cursor (1.2x brush radius margin)
-2. Intensity Analysis (GMM-based threshold estimation)
-3. Algorithm-specific segmentation
-4. Post-processing (apply circular/spherical brush mask)
-5. Apply to segment via OR operation
+2. Local seed calculation within ROI
+3. Zone-based threshold computation (if enabled, overrides analyzer)
+4. Intensity Analysis (GMM-based threshold estimation)
+5. Algorithm-specific segmentation
+6. Post-processing:
+   - Binary fill holes (if `fill_holes=True`, default)
+   - Morphological closing (if `closing_radius > 0`)
+7. Inner zone inclusion (voxels within threshold zone ORed with result)
+8. Apply circular/spherical brush mask
+9. Apply to segment via OR operation
 
 ## Development Guidelines
 
@@ -161,13 +181,104 @@ def processInteractionEvents(self, callerInteractor, eventId, viewWidget)  # Han
 | 3D brush (10mm) | < 200ms | < 50ms |
 | Drag operation | < 30ms | < 10ms |
 
-### Error Handling
+### Exception Handling Philosophy: Fail Fast
 
-- Use specific exception types
-- Provide meaningful error messages
-- Log errors with `logging.error()` or `logging.exception()`
-- Graceful degradation for optional features (e.g., sklearn GMM)
-- Algorithm methods catch exceptions and fall back to simpler algorithms
+This codebase follows **fail-fast, test-driven development** with detailed logging:
+
+1. **Errors should surface immediately** - Never hide or swallow errors
+2. **Catch specific exceptions** - Never use bare `except:` or `except Exception:`
+3. **All exceptions must be logged** - For human and LLM debugging
+4. **Document why suppression is valid** - If catching is necessary, explain why
+5. **Tests catch bugs early** - Not error suppression in production
+
+#### Bad Practices (NEVER do these)
+
+```python
+# BAD - Swallows ALL errors silently
+try:
+    do_something()
+except:
+    pass
+
+# BAD - Too broad, catches keyboard interrupts
+try:
+    do_something()
+except Exception:
+    pass
+
+# BAD - Logs but continues as if nothing happened
+try:
+    do_something()
+except Exception as e:
+    logger.error(e)
+    pass
+```
+
+#### Good Practices (DO these)
+
+```python
+# GOOD - Specific exception, documented reason, appropriate log level
+try:
+    self.viewWidget.scheduleRender()
+except RuntimeError as e:
+    # Widget deleted during cleanup - expected, non-critical
+    logging.debug(f"Render skipped (widget deleted): {e}")
+
+# GOOD - Specific exception, re-raise after logging
+try:
+    result = process_data()
+except ValueError as e:
+    logging.exception("Data processing failed")
+    raise
+
+# GOOD - Specific exception, valid fallback with documentation
+try:
+    from sklearn.mixture import GaussianMixture
+    HAS_GMM = True
+except ImportError:
+    # sklearn is optional - fall back to simple statistics
+    logging.info("sklearn not available, using simple threshold estimation")
+    HAS_GMM = False
+```
+
+#### Valid Exception Handling Cases
+
+Not all exception handling is bad. Valid cases include:
+
+1. **Optional feature degradation** - Import errors for optional dependencies
+2. **Widget lifecycle** - RuntimeError when widgets deleted during cleanup
+3. **Post-processing failures** - SimpleITK filter failures where result is still valid
+4. **User input validation** - Catching parse errors to show user-friendly messages
+
+For each valid case, document:
+- The specific exception type being caught
+- Why this exception can occur (root cause)
+- What happens if this exception occurs (consequence)
+- Why catching is valid (rather than letting it propagate)
+
+#### Exception Handling Decision Tree
+
+```
+Is this a programming error (bug)?
+├─ Yes → Let it crash (don't catch)
+└─ No → Can user/system recover?
+         ├─ Yes → Catch, log, handle gracefully
+         └─ No → Catch, log with context, re-raise or wrap
+
+When catching:
+├─ Can you name the specific exception?
+│   ├─ Yes → Catch that specific type
+│   └─ No → Research what exceptions can occur
+└─ Is logging added?
+    ├─ Yes → Good
+    └─ No → Add logger.exception() call
+```
+
+#### Skills for Exception Handling
+
+- **/audit-code-quality** - Find exception handling issues
+- **/fix-bad-practices** - Systematically fix bad patterns
+- **/autonomous-code-review** - Full automated review cycle
 
 ## Commit Message Format
 
@@ -209,10 +320,16 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-003**: Testing strategy
 - **ADR-004**: Caching strategy for performance
 - **ADR-005**: Mouse and keyboard controls
+- **ADR-006**: Iconography
+- **ADR-007**: Dependency management
+- **ADR-008**: CI/CD pipeline
+- **ADR-009**: Living documentation
 - **ADR-010**: Slicer testing framework architecture
 - **ADR-011**: Smart optimization framework (Optuna integration) - *implemented*
 - **ADR-012**: Results review module - *implemented*
 - **ADR-013**: Segmentation recipes - *implemented*
+- **ADR-014**: Enhanced testing with recipe replay
+- **ADR-015**: Parameter wizard - *implemented*
 
 ## Slicer Testing Framework
 
@@ -281,12 +398,15 @@ reviews/
 - **/add-test-case**: Create new test case from template
 
 **Review Skills:**
-- **/review-code-quality**: Analyze exception handling, logging, type hints, dead code
+- **/review-code-quality**: Analyze exception handling (fail-fast), logging, type hints, dead code
 - **/review-documentation**: Verify ADRs, README, CLAUDE.md against implementation
 - **/review-tests**: Find coverage gaps, stale tests, quality issues
 - **/review-algorithms**: Verify algorithm implementations match documentation
 - **/review-medical-compliance**: Check audit logging, input validation, error handling
 - **/review-full-audit**: Run all reviews, generate aggregate report with action items
+
+**Fix Skills:**
+- **/fix-bad-practices**: Systematically fix exception handling and other bad patterns
 
 ### Claude Code Agents
 
