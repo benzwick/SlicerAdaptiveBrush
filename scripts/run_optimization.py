@@ -302,6 +302,28 @@ def clear_segment(segmentation_node, segment_id: str) -> str:
     return segment_id
 
 
+def copy_slicer_log(output_dir: Path) -> Path:
+    """Copy Slicer session log to output directory.
+
+    Args:
+        output_dir: Output directory.
+
+    Returns:
+        Path to copied log file.
+    """
+    import shutil
+
+    import slicer
+
+    slicer_log = Path(slicer.app.errorLogModel().filePath)
+    logs_dir = output_dir / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    dest = logs_dir / "slicer_session.log"
+    shutil.copy2(slicer_log, dest)
+    logger.info(f"Copied Slicer log to: {dest}")
+    return dest
+
+
 def run_optimization(
     config_path: Path,
     n_trials_override: int | None = None,
@@ -391,7 +413,12 @@ def run_optimization(
     # Set up effect
     effect, segment_editor_widget = setup_effect(segmentation_node, volume_node)
 
-    # Create optimizer
+    # Create optimizer with absolute output path
+    if output_dir is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        output_dir = (
+            PROJECT_ROOT / "optimization_results" / f"{timestamp}_{config.name.replace(' ', '_')}"
+        )
     optimizer = OptunaOptimizer(config, output_dir=output_dir)
     logger.info(f"Output directory: {optimizer.output_dir}")
 
@@ -530,6 +557,9 @@ def run_optimization(
 
     # Generate lab notebook
     generate_lab_notebook(optimizer.output_dir, results, config, gold_metadata)
+
+    # Copy Slicer log for review
+    copy_slicer_log(optimizer.output_dir)
 
     return dict(results.to_dict())  # type: ignore[arg-type]
 
