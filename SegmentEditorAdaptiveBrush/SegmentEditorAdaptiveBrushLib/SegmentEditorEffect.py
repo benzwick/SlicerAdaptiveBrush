@@ -498,6 +498,14 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     This effect provides an adaptive brush that segments based on image intensity.
     """
 
+    # Brush outline colors for add mode (yellow outer, cyan inner)
+    BRUSH_COLOR_ADD = (1.0, 0.9, 0.1)
+    BRUSH_COLOR_ADD_INNER = (0.2, 0.9, 1.0)
+
+    # Brush outline colors for erase mode (red/orange outer, lighter inner)
+    BRUSH_COLOR_ERASE = (1.0, 0.3, 0.1)
+    BRUSH_COLOR_ERASE_INNER = (1.0, 0.5, 0.3)
+
     def __init__(self, scriptedEffect):
         """Initialize the effect.
 
@@ -2414,12 +2422,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         for pipeline in self.outlinePipelines.values():
             if self.eraseMode:
                 # Erase mode: red/orange colors
-                pipeline.outerActor.GetProperty().SetColor(1.0, 0.3, 0.1)
-                pipeline.innerActor.GetProperty().SetColor(1.0, 0.5, 0.3)
+                pipeline.outerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ERASE)
+                pipeline.innerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ERASE_INNER)
             else:
                 # Add mode: yellow/cyan colors
-                pipeline.outerActor.GetProperty().SetColor(1.0, 0.9, 0.1)
-                pipeline.innerActor.GetProperty().SetColor(0.2, 0.9, 1.0)
+                pipeline.outerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ADD)
+                pipeline.innerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ADD_INNER)
         # Request render for visible views
         for pipeline in self.outlinePipelines.values():
             if pipeline.sliceWidget is not None:
@@ -2772,12 +2780,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             effectiveEraseMode = eraseMode if eraseMode is not None else self.eraseMode
             if effectiveEraseMode:
                 # Erase mode: red/orange colors
-                pipeline.outerActor.GetProperty().SetColor(1.0, 0.3, 0.1)
-                pipeline.innerActor.GetProperty().SetColor(1.0, 0.5, 0.3)
+                pipeline.outerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ERASE)
+                pipeline.innerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ERASE_INNER)
             else:
                 # Add mode: yellow/cyan colors
-                pipeline.outerActor.GetProperty().SetColor(1.0, 0.9, 0.1)
-                pipeline.innerActor.GetProperty().SetColor(0.2, 0.9, 1.0)
+                pipeline.outerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ADD)
+                pipeline.innerActor.GetProperty().SetColor(*self.BRUSH_COLOR_ADD_INNER)
 
         # Hide outlines in other views
         for name, pipeline in self.outlinePipelines.items():
