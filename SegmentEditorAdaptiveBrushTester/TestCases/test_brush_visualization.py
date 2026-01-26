@@ -146,18 +146,18 @@ class TestBrushOutlineVisibility(TestCase):
 
         scripted_effect = self.effect.self()
 
-        # Verify brush pipelines exist for Red widget
+        # Verify outline pipelines dictionary exists
         ctx.assert_is_not_none(
-            scripted_effect.brushPipelines,
-            "Brush pipelines dictionary should exist",
+            scripted_effect.outlinePipelines,
+            "Outline pipelines dictionary should exist",
         )
 
-        # Check if Red widget has a pipeline
-        red_key = self.red_widget.sliceView()
-        if red_key in scripted_effect.brushPipelines:
-            pipeline = scripted_effect.brushPipelines[red_key]
-            ctx.assert_is_not_none(pipeline, "Red widget should have brush pipeline")
-            ctx.log("Brush pipeline verified for Red widget")
+        # Check if Red widget has a pipeline (key is view name string, e.g., "Red")
+        red_key = "Red"
+        if red_key in scripted_effect.outlinePipelines:
+            pipeline = scripted_effect.outlinePipelines[red_key]
+            ctx.assert_is_not_none(pipeline, "Red widget should have outline pipeline")
+            ctx.log("Outline pipeline verified for Red widget")
 
         ctx.screenshot("[verify] Brush outline verification complete")
 
