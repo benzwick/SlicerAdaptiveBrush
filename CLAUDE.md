@@ -249,18 +249,57 @@ test_runs/2026-01-24_143025_algorithms/
     └── slicer_session.log # Slicer log copy
 ```
 
+### Review Output
+
+Reviews are saved to `reviews/` (git-ignored):
+
+```
+reviews/
+├── reports/
+│   └── <timestamp>_<type>/
+│       ├── report.json    # Machine-readable findings
+│       └── report.md      # Human-readable summary
+├── history/
+│   └── issues.jsonl       # Issue tracking over time
+└── baselines/
+    └── <date>_baseline.json  # For comparison
+```
+
+**Issue severity levels:**
+| Level | Criteria |
+|-------|----------|
+| critical | Security risk, data loss, patient safety |
+| high | Hides bugs, blocks audit trail |
+| medium | Style violation, maintainability |
+| low | Minor inconsistency |
+
 ### Claude Code Skills
 
+**Testing Skills:**
 - **/run-slicer-tests**: Launch Slicer, run test suite, leave open for manual testing
 - **/review-test-results**: Analyze test output with specialized agent
 - **/add-test-case**: Create new test case from template
 
+**Review Skills:**
+- **/review-code-quality**: Analyze exception handling, logging, type hints, dead code
+- **/review-documentation**: Verify ADRs, README, CLAUDE.md against implementation
+- **/review-tests**: Find coverage gaps, stale tests, quality issues
+- **/review-algorithms**: Verify algorithm implementations match documentation
+- **/review-medical-compliance**: Check audit logging, input validation, error handling
+- **/review-full-audit**: Run all reviews, generate aggregate report with action items
+
 ### Claude Code Agents
 
+**Testing Agents:**
 - **test-reviewer**: Reviews results, suggests improvements
 - **bug-fixer**: Analyzes failures, proposes fixes
 - **algorithm-improver**: Reviews metrics, suggests optimizations
 - **ui-improver**: Reviews screenshots, suggests UI improvements
+
+**Review Agents:**
+- **code-quality-reviewer**: Deep code analysis for quality issues
+- **documentation-auditor**: Cross-references docs with implementation
+- **medical-compliance-reviewer**: Medical imaging software best practices
 
 ### Writing Test Cases
 

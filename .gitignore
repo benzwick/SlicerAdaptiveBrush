@@ -52,3 +52,6 @@ reference_screenshots/
 
 # Sphinx build output
 docs/_build/
+
+# Review reports (can be regenerated)
+reviews/
