@@ -279,20 +279,34 @@ class WizardSampler:
 
             display_node = curve.GetDisplayNode()
             if display_node:
-                # Yellow for boundary - make it visible
+                # Yellow for boundary - bright color for visibility
                 display_node.SetSelectedColor(1.0, 1.0, 0.0)
                 display_node.SetColor(1.0, 1.0, 0.0)
-                display_node.SetLineThickness(3.0)  # Thick line for visibility
+                display_node.SetActiveColor(1.0, 1.0, 0.0)
+
+                # Line appearance - thick and visible
+                display_node.SetLineThickness(5.0)  # Very thick line
                 display_node.SetTextScale(0)
-                display_node.SetVisibility(True)
-                display_node.SetVisibility2D(True)  # Show in 2D slice views
-                display_node.SetVisibility3D(True)
                 display_node.SetPointLabelsVisibility(False)
                 display_node.SetGlyphScale(0.0)  # Hide control points
-                display_node.SetSliceProjection(True)  # Project onto slices
+
+                # Visibility settings
+                display_node.SetVisibility(True)
+                display_node.SetVisibility2D(True)
+                display_node.SetVisibility3D(True)
+
+                # Slice intersection - key for 2D visibility
+                display_node.SetSliceIntersectionVisibility(True)
+                display_node.SetSliceIntersectionThickness(5)
+
+                # Projection settings for curves not on slice plane
+                display_node.SetSliceProjection(True)
+                display_node.SetSliceProjectionUseFiducialColor(True)
                 display_node.SetSliceProjectionOpacity(1.0)
-                # Use absolute size mode for consistent line thickness
-                display_node.SetCurveLineSizeMode(slicer.vtkMRMLMarkupsDisplayNode.UseLineThickness)
+
+                # Ensure visible even when "behind" slice
+                display_node.SetOccludedVisibility(True)
+                display_node.SetOccludedOpacity(1.0)
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
@@ -318,7 +332,11 @@ class WizardSampler:
     def _add_curve_point(self, ras: tuple[float, float, float]) -> None:
         """Add a point to the current boundary curve."""
         if self._current_curve:
-            self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
+            n = self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
+            if n < 3:  # Log first few points for debugging
+                logger.debug(
+                    f"Added curve point {n}: RAS=({ras[0]:.1f}, {ras[1]:.1f}, {ras[2]:.1f})"
+                )
 
     # ========== Event Handling ==========
 
