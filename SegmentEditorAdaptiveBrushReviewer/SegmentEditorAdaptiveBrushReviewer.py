@@ -39,7 +39,7 @@ class SegmentEditorAdaptiveBrushReviewer(ScriptedLoadableModule):
         - Screenshot thumbnail viewer
         - Save trial results as new gold standards
 
-        See <a href="https://github.com/your-repo/SlicerAdaptiveBrush">documentation</a>.
+        See <a href="https://github.com/benzwick/SlicerAdaptiveBrush">documentation</a>.
         """
         self.parent.acknowledgementText = """
         Part of the SlicerAdaptiveBrush extension.
