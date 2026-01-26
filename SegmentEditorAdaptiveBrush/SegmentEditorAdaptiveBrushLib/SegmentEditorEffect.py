@@ -2050,10 +2050,13 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Schedule render in all slice views with pipelines
         for pipeline in self.outlinePipelines.values():
             if pipeline.sliceWidget is not None:
+                # Note: Widget may be deleted during Slicer shutdown, causing
+                # RuntimeError. This is expected and non-critical for refresh.
                 try:
                     pipeline.sliceWidget.sliceView().scheduleRender()
-                except Exception:
-                    pass
+                except RuntimeError as e:
+                    # Widget deleted - expected during cleanup, non-critical
+                    logging.debug(f"Render skipped (widget deleted): {e}")
 
     def onPresetChanged(self, index):
         """Handle preset selection change."""
@@ -2642,8 +2645,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 widget = getattr(self, widget_name, None)
                 if widget is not None:
                     widget.disconnect()
-            except Exception:
-                pass  # Widget may already be deleted or not connected
+            except RuntimeError as e:
+                # Widget already deleted during Slicer shutdown - expected, non-critical
+                logging.debug(f"Widget {widget_name} disconnect skipped (deleted): {e}")
 
         # Clean up brush outline pipelines
         self._cleanupOutlinePipelines()
@@ -2679,7 +2683,14 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         pass
 
     def _getCurrentSourceVolumeId(self):
-        """Get the ID of the current source volume, or None."""
+        """Get the ID of the current source volume, or None if not set.
+
+        Returns:
+            Volume ID string, or None if no source volume is configured.
+
+        Note:
+            Returns None during Slicer state transitions when effect not fully initialized.
+        """
         try:
             parameterSetNode = self.scriptedEffect.parameterSetNode()
             if parameterSetNode is None:
@@ -2688,7 +2699,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             if sourceVolumeNode is None:
                 return None
             return sourceVolumeNode.GetID()
-        except Exception:
+        except (AttributeError, RuntimeError) as e:
+            # Effect not fully initialized or Slicer shutting down
+            logging.debug(f"Source volume query during transition: {e}")
             return None
 
     def _createOutlinePipelines(self):
@@ -2909,7 +2922,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             volumeNode: The volume node.
 
         Returns:
-            Slice index (int) or None.
+            Slice index (int) or None if index cannot be determined.
+
+        Note:
+            Returns None for oblique views or during widget state transitions.
         """
         try:
             sliceLogic = viewWidget.sliceLogic()
@@ -2945,7 +2961,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
             return sliceIndex
 
-        except Exception:
+        except (AttributeError, RuntimeError) as e:
+            # Widget not fully initialized or volume without image data
+            logging.debug(f"Slice index query during transition: {e}")
             return None
 
     def _updateThresholdRanges(self):
@@ -3400,20 +3418,24 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         if np.any(mask) and (fill_holes or closing_radius > 0):
             maskSitk = sitk.GetImageFromArray(mask)
 
-            # Fill holes inside the segmentation
+            # Fill holes inside the segmentation (optional post-processing)
+            # RuntimeError: SimpleITK filter failure (e.g., degenerate mask)
+            # Result: segmentation still valid, just without hole filling
             if fill_holes:
                 try:
                     maskSitk = sitk.BinaryFillhole(maskSitk)
-                except Exception:
-                    pass  # Skip if fillhole fails
+                except RuntimeError as e:
+                    logging.warning(f"Binary fillhole failed (result may have holes): {e}")
 
-            # Close small gaps (morphological closing)
+            # Close small gaps (optional morphological post-processing)
+            # RuntimeError: SimpleITK filter failure (e.g., invalid kernel size)
+            # Result: segmentation still valid, just without gap closing
             if closing_radius > 0:
                 try:
                     kernel_size = [int(closing_radius)] * 3
                     maskSitk = sitk.BinaryMorphologicalClosing(maskSitk, kernel_size)
-                except Exception:
-                    pass  # Skip if closing fails
+                except RuntimeError as e:
+                    logging.warning(f"Morphological closing failed (result may have gaps): {e}")
 
             mask = sitk.GetArrayFromImage(maskSitk).astype(np.uint8)
 
@@ -3735,14 +3757,16 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             sitkMask = sitk.GetImageFromArray(mask)
             sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
 
-            # Use connected threshold on the binary mask to get only connected region
+            # Filter to only regions connected to seed (optional post-processing)
+            # RuntimeError: seed outside mask or SimpleITK failure
+            # Result: may include disconnected blobs if this fails
             try:
                 connected = sitk.ConnectedThreshold(
                     sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
                 )
                 mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
-            except Exception:
-                pass  # Keep original mask if connectivity fails
+            except RuntimeError as e:
+                logging.warning(f"Connectivity filter failed (may have disconnected regions): {e}")
 
         return mask
 
@@ -3841,8 +3865,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             # Final intensity threshold (should already be satisfied but for safety)
             mask = mask & intensity_mask.astype(np.uint8)
 
-            # Ensure result is connected to seed using connected components
-            # This is crucial for narrow segments to avoid disconnected blobs
+            # Filter to only regions connected to seed (important for narrow segments)
+            # RuntimeError: seed outside mask or SimpleITK failure
+            # Result: may include disconnected blobs if this fails
             if np.any(mask):
                 sitkMask = sitk.GetImageFromArray(mask)
                 try:
@@ -3850,8 +3875,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                         sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
                     )
                     mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
-                except Exception:
-                    pass  # Keep original mask if connectivity check fails
+                except RuntimeError as e:
+                    logging.warning(
+                        f"Connectivity filter failed (may have disconnected regions): {e}"
+                    )
 
             return mask
 
@@ -3971,7 +3998,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Constrain to intensity range for safety
         mask = mask & intensity_mask.astype(np.uint8)
 
-        # Ensure connectivity to seed
+        # Filter to only regions connected to seed
+        # RuntimeError: seed outside mask or SimpleITK failure
+        # Result: may include disconnected blobs if this fails
         if np.any(mask):
             sitkSeed = (int(localSeed[0]), int(localSeed[1]), int(localSeed[2]))
             sitkMask = sitk.GetImageFromArray(mask)
@@ -3980,8 +4009,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                     sitkMask, seedList=[sitkSeed], lower=1, upper=1, replaceValue=1
                 )
                 mask = sitk.GetArrayFromImage(connected).astype(np.uint8)
-            except Exception:
-                pass  # Keep original mask if connectivity check fails
+            except RuntimeError as e:
+                logging.warning(f"Connectivity filter failed (may have disconnected regions): {e}")
 
         return mask
 

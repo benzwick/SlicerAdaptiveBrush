@@ -378,13 +378,18 @@ class ParameterWizard:
             self._show_error(f"Failed to generate recommendation: {e}")
 
     def _get_volume_spacing(self) -> tuple[float, float, float]:
-        """Get voxel spacing from the source volume."""
+        """Get voxel spacing from the source volume.
+
+        Returns:
+            Tuple of (x, y, z) spacing in mm, defaults to (1.0, 1.0, 1.0) if unavailable.
+        """
         try:
             if self.samples.volume_node:
                 spacing = self.samples.volume_node.GetSpacing()
                 return (spacing[0], spacing[1], spacing[2])
-        except Exception:
-            pass
+        except (AttributeError, RuntimeError) as e:
+            # Volume node deleted or not fully initialized
+            logger.debug(f"Volume spacing unavailable (using default): {e}")
         return (1.0, 1.0, 1.0)
 
     def apply_recommendation(self, recommendation: WizardRecommendation) -> None:
@@ -471,7 +476,11 @@ class ParameterWizard:
             import slicer
 
             slicer.util.errorDisplay(message, windowTitle="Wizard Error")
-        except Exception:
+        except (ImportError, RuntimeError) as e:
+            # ImportError: slicer module not available (running outside Slicer)
+            # RuntimeError: Qt/slicer not initialized or shutting down
+            # Fallback: log the error message directly
+            logger.warning(f"Could not display error dialog (falling back to log): {e}")
             logger.error(message)
 
     def clear_samples(self) -> None:

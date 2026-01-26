@@ -26,8 +26,11 @@ Implement **multiple algorithm backends** that users can select from the UI, wit
 
 | Algorithm | Backend | Speed | Precision | Best For |
 |-----------|---------|-------|-----------|----------|
-| Watershed | CPU (SimpleITK) | Medium | High | General use (default) |
-| Level Set | CPU (SimpleITK) | Slow | Very High | High precision needs |
+| Geodesic Distance | CPU (SimpleITK) | Fast | High | General use (default) |
+| Watershed | CPU (SimpleITK) | Medium | High | Marker-based segmentation |
+| Random Walker | CPU (scikit-image) | Medium | High | Probabilistic diffusion |
+| Level Set (GPU) | GPU (planned) | Slow | Very High | High precision (planned) |
+| Level Set (CPU) | CPU (SimpleITK) | Slow | Very High | High precision fallback |
 | Connected Threshold | CPU (SimpleITK) | Very Fast | Low | Quick rough segmentation |
 | Region Growing | CPU (SimpleITK) | Fast | Medium | Homogeneous regions |
 | Threshold Brush | CPU (SimpleITK) | Very Fast | Variable | Simple threshold painting |
@@ -36,7 +39,10 @@ Implement **multiple algorithm backends** that users can select from the UI, wit
 
 ```
 Algorithm: [Dropdown]
-├── Watershed (Recommended)
+├── Geodesic Distance (Recommended)
+├── Watershed
+├── Random Walker
+├── Level Set (GPU)
 ├── Level Set (CPU)
 ├── Connected Threshold (Fast)
 ├── Region Growing
