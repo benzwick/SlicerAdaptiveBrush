@@ -2,7 +2,25 @@
 
 ## Installation
 
-SlicerAdaptiveBrush is available through the 3D Slicer Extension Manager.
+```{todo}
+SlicerAdaptiveBrush is not yet available in the Extension Index.
+Once released, installation will be via Extension Manager.
+```
+
+### Current Installation (Pre-release)
+
+Until the extension is published to the Extension Index, install from GitHub:
+
+1. Download the latest release from [GitHub](https://github.com/benzwick/SlicerAdaptiveBrush/releases)
+   - Or clone the repository: `git clone https://github.com/benzwick/SlicerAdaptiveBrush.git`
+2. Open 3D Slicer
+3. Go to **Edit** → **Application Settings** → **Modules**
+4. Add the path to `SlicerAdaptiveBrush/SlicerAdaptiveBrush` to **Additional module paths**
+5. Restart Slicer
+
+### Future Installation (After Release)
+
+Once published, installation will be simpler:
 
 1. Open 3D Slicer
 2. Go to **View** → **Extension Manager**
