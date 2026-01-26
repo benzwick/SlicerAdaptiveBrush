@@ -49,7 +49,7 @@ ALL_ALGORITHMS = [
     "region_growing",
     "threshold_brush",
     "geodesic_distance",
-    "level_set",
+    "level_set_cpu",
     "random_walker",
 ]
 
@@ -66,7 +66,7 @@ ALGORITHM_PARAMS: dict[str, dict[str, dict[str, float]]] = {
         "geodesic_edge_weight": {"low": 1.0, "high": 15.0},
         "geodesic_smoothing": {"low": 0.1, "high": 1.0},
     },
-    "level_set": {
+    "level_set_cpu": {
         "level_set_iterations": {"low": 30, "high": 150},
     },
     "random_walker": {

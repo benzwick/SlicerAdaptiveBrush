@@ -103,20 +103,23 @@
         }
       }
     },
-    "level_set": {
+    "level_set_cpu": {
       "speed": "slow",
       "precision": "very_high",
       "boundary_adherence": "excellent",
-      "description": "Geodesic active contours with smooth evolution. NOTE: Currently has issues - needs debugging.",
+      "description": "Geodesic active contours with smooth evolution.",
       "recommended_for": ["high_precision", "smooth_boundaries"],
       "parameters": {
-        "iterations": {"range": [30, 150], "optimal": 100},
+        "iterations": {"range": [30, 150], "optimal": 147},
         "propagation": {"range": [0.5, 2.0], "optimal": 1.0}
       },
       "benchmarks": {
         "MRBrainTumor1_tumor": {
-          "dice": 0.0,
-          "notes": "Failed in batch optimization - needs investigation"
+          "dice": 0.9411,
+          "edge_sensitivity": 60,
+          "threshold_zone": 66,
+          "brush_radius_mm": 15.0,
+          "level_set_iterations": 147
         }
       }
     },
