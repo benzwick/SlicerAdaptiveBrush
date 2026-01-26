@@ -1269,8 +1269,10 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.zoneSlider = ctk.ctkSliderWidget()
         self.zoneSlider.setToolTip(
             _(
-                "Size of inner zone (cyan circle) used to sample intensities for threshold "
-                "calculation. This zone is also guaranteed to be included in the result."
+                "Size of inner zone (cyan circle) as percentage of brush radius.\n"
+                "Intensities are sampled from this zone to compute thresholds.\n\n"
+                "Larger zone = more samples = more robust thresholds.\n"
+                "Smaller zone = samples closer to cursor = more precise."
             )
         )
         self.zoneSlider.decimals = 0
@@ -1298,12 +1300,11 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.includeZoneCheckbox = qt.QCheckBox(_("Guarantee inner zone in result"))
         self.includeZoneCheckbox.setToolTip(
             _(
-                "When enabled, the inner threshold zone (cyan circle) is always\n"
-                "included in the segmentation result, regardless of algorithm output.\n\n"
-                "• OFF (recommended): Algorithm determines all boundaries naturally\n"
-                "• ON: Guarantees at least the inner zone is painted\n\n"
-                "Enable if the brush sometimes produces empty results when clicking\n"
-                "on valid tissue. Keep OFF for maximum boundary accuracy."
+                "Guarantees that clicking always paints at least the inner zone (cyan circle).\n\n"
+                "• OFF (default): Only paint what the algorithm detects as similar tissue.\n"
+                "  Best for accurate boundaries.\n\n"
+                "• ON: Force-paint the inner zone even if the algorithm finds nothing.\n"
+                "  Use if clicks sometimes produce no result on valid tissue."
             )
         )
         self.includeZoneCheckbox.checked = self.includeZoneInResult

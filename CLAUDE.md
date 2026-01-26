@@ -110,7 +110,7 @@ The brush uses a zone-based threshold override that samples intensities from a c
 6. Post-processing:
    - Binary fill holes (if `fill_holes=True`, default)
    - Morphological closing (if `closing_radius > 0`)
-7. Inner zone inclusion (voxels within threshold zone ORed with result)
+7. Inner zone inclusion (if "Guarantee inner zone" enabled; OFF by default)
 8. Apply circular/spherical brush mask
 9. Apply to segment via OR operation
 
