@@ -49,3 +49,6 @@ optimization_results/
 
 # Generated screenshots (can be regenerated)
 reference_screenshots/
+
+# Sphinx build output
+docs/_build/
