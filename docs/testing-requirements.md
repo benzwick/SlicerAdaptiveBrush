@@ -210,18 +210,17 @@ test_runs/2026-01-24_143025_all/
 
 ## Algorithms to Test
 
-All 8 algorithms must be tested:
+All 7 algorithms must be tested:
 
 | Algorithm | Data Value | Display Name |
 |-----------|------------|--------------|
+| Geodesic Distance | `geodesic_distance` | Geodesic Distance (Recommended) |
 | Watershed | `watershed` | Watershed |
-| Level Set CPU | `level_set_cpu` | Level Set (CPU) |
-| Level Set GPU | `level_set_gpu` | Level Set (GPU) |
-| Connected Threshold | `connected_threshold` | Connected Threshold |
-| Region Growing | `region_growing` | Region Growing |
-| Threshold Brush | `threshold_brush` | Threshold Brush |
-| Geodesic Distance | `geodesic_distance` | Geodesic Distance |
 | Random Walker | `random_walker` | Random Walker |
+| Level Set | `level_set` | Level Set |
+| Connected Threshold | `connected_threshold` | Connected Threshold (Fast) |
+| Region Growing | `region_growing` | Region Growing |
+| Threshold Brush | `threshold_brush` | Threshold Brush (Simple) |
 
 ### Threshold Brush Sub-methods
 - Otsu (`otsu`)
@@ -281,8 +280,7 @@ Track and report:
 | connected_threshold | 80,098 | 1,328 | 60.3 |
 | threshold_brush | 16,116 | 1,475 | 10.9 |
 | geodesic_distance | 15,508 | 1,538 | 10.1 |
-| level_set_cpu | 14,034 | 1,474 | 9.5 |
-| level_set_gpu | 14,034 | 1,498 | 9.4 |
+| level_set | 14,034 | 1,474 | 9.5 |
 | watershed | 13,383 | 2,831 | 4.7 |
 | region_growing | 11,273 | 1,465 | 7.7 |
 | random_walker | 3,843 | 9,069 | 0.4 |
@@ -291,7 +289,7 @@ Track and report:
 - connected_threshold produces most voxels but may over-segment
 - watershed is slower but provides good boundary detection
 - random_walker is slowest due to sparse linear system solving
-- level_set_cpu/gpu produce identical results (no GPU implementation yet)
+- level_set uses CPU-based SimpleITK implementation
 
 ## Known Issues and Solutions
 

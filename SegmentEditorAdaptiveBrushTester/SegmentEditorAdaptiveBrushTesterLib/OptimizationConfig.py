@@ -437,7 +437,7 @@ def create_default_config() -> OptimizationConfig:
                 max_val=1.0,
             ),
         },
-        "level_set_cpu": {
+        "level_set": {
             "levelSetIterations": ParameterSpec(
                 name="levelSetIterations",
                 param_type="int",

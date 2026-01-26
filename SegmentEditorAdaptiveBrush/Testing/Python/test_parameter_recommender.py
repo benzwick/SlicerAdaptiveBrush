@@ -188,8 +188,7 @@ class TestParameterRecommenderAlgorithmSelection(unittest.TestCase):
         # With low separation, should prefer Watershed or Level Set
         edge_algorithms = [
             "watershed",
-            "level_set_cpu",
-            "level_set_gpu",
+            "level_set",
             "geodesic_distance",
             "random_walker",
         ]
@@ -223,8 +222,7 @@ class TestParameterRecommenderAlgorithmSelection(unittest.TestCase):
             "geodesic_distance",
             "watershed",
             "random_walker",
-            "level_set_gpu",
-            "level_set_cpu",
+            "level_set",
             "connected_threshold",
             "region_growing",
             "threshold_brush",
@@ -474,8 +472,8 @@ class TestParameterRecommenderPriority(unittest.TestCase):
 
         # Should prefer algorithms known for precision
         precision_algorithms = [
-            "level_set_cpu",
-            "level_set_gpu",
+            "level_set",
+            "level_set",
             "watershed",
             "geodesic_distance",
             "random_walker",

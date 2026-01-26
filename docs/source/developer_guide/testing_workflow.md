@@ -140,7 +140,7 @@ parameter_space:
 
   algorithm_substitution:
     enabled: true
-    candidates: ["watershed", "geodesic_distance", "level_set_cpu"]
+    candidates: ["watershed", "geodesic_distance", "level_set"]
 ```
 
 ### 3.2 Run Optimization

@@ -261,7 +261,7 @@ Define different search spaces per algorithm:
 algorithms:
   watershed:
     watershed_gradient_scale: {type: float, range: [0.5, 2.5]}
-  level_set_cpu:
+  level_set:
     level_set_iterations: {type: int, range: [30, 150], step: 20}
     level_set_propagation: {type: float, range: [0.5, 2.0]}
 ```

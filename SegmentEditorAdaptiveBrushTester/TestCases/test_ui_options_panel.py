@@ -149,7 +149,7 @@ class TestUIOptionsPanel(TestCase):
         # List of algorithms to test (use correct names)
         algorithms = [
             "watershed",
-            "level_set_cpu",
+            "level_set",
             "connected_threshold",
             "region_growing",
             "threshold_brush",

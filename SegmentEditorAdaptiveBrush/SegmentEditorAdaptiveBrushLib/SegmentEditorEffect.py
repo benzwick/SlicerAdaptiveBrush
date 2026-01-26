@@ -1230,8 +1230,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.algorithmCombo.addItem(_("Geodesic Distance (Recommended)"), "geodesic_distance")
         self.algorithmCombo.addItem(_("Watershed"), "watershed")
         self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
-        self.algorithmCombo.addItem(_("Level Set (GPU)"), "level_set_gpu")
-        self.algorithmCombo.addItem(_("Level Set (CPU)"), "level_set_cpu")
+        self.algorithmCombo.addItem(_("Level Set"), "level_set")
         self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
         self.algorithmCombo.addItem(_("Region Growing"), "region_growing")
         self.algorithmCombo.addItem(_("Threshold Brush (Simple)"), "threshold_brush")
@@ -2422,8 +2421,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             "geodesic_distance": _("Geodesic Distance"),
             "watershed": _("Watershed"),
             "random_walker": _("Random Walker"),
-            "level_set_gpu": _("Level Set (GPU)"),
-            "level_set_cpu": _("Level Set (CPU)"),
+            "level_set": _("Level Set"),
             "connected_threshold": _("Connected Threshold"),
             "region_growing": _("Region Growing"),
             "threshold_brush": _("Threshold Brush"),
@@ -2453,7 +2451,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             self.geodesicParamsGroup.setVisible(True)
         elif self.algorithm == "watershed":
             self.watershedParamsGroup.setVisible(True)
-        elif self.algorithm in ("level_set_gpu", "level_set_cpu"):
+        elif self.algorithm == "level_set":
             self.levelSetParamsGroup.setVisible(True)
         elif self.algorithm == "region_growing":
             self.regionGrowingParamsGroup.setVisible(True)
@@ -3394,7 +3392,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         if algorithm == "connected_threshold":
             mask = self._connectedThreshold(roi, localSeed, thresholds)
-        elif algorithm in ("level_set_gpu", "level_set_cpu"):
+        elif algorithm == "level_set":
             mask = self._levelSet(roi, localSeed, thresholds, params)
         elif algorithm == "region_growing":
             mask = self._regionGrowing(roi, localSeed, thresholds, params)
@@ -3409,8 +3407,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         else:
             raise ValueError(
                 f"Unknown algorithm: '{algorithm}'. "
-                f"Valid algorithms: connected_threshold, level_set_gpu, level_set_cpu, "
-                f"region_growing, threshold_brush, geodesic_distance, random_walker, watershed"
+                f"Valid algorithms: geodesic_distance, watershed, random_walker, level_set, "
+                f"connected_threshold, region_growing, threshold_brush"
             )
 
         # Apply circular brush mask as MAXIMUM extent for ALL algorithms

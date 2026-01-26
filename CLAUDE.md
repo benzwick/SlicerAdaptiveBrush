@@ -81,8 +81,7 @@ The adaptive brush provides **multiple user-selectable algorithms**, all impleme
 | Geodesic Distance | Fast | High | General use (default) |
 | Watershed | Medium | High | Marker-based segmentation |
 | Random Walker | Medium | High | Probabilistic diffusion |
-| Level Set (GPU) | Slow | Very High | High precision (GPU planned) |
-| Level Set (CPU) | Slow | Very High | High precision fallback |
+| Level Set | Slow | Very High | Irregular boundaries |
 | Connected Threshold | Very Fast | Low | Quick rough segmentation |
 | Region Growing | Fast | Medium | Homogeneous regions |
 | Threshold Brush | Very Fast | Variable | Simple threshold painting |

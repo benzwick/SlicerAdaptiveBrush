@@ -118,7 +118,7 @@ class AlgorithmProfile:
     """
 
     # Algorithm identification
-    algorithm: str  # Internal name (watershed, level_set_cpu, etc.)
+    algorithm: str  # Internal name (watershed, level_set, etc.)
     display_name: str  # Human-readable name
 
     # Performance data
@@ -273,8 +273,7 @@ class AlgorithmComparison:
 # Algorithm display names
 ALGORITHM_DISPLAY_NAMES = {
     "watershed": "Watershed",
-    "level_set_cpu": "Level Set (CPU)",
-    "level_set_gpu": "Level Set (GPU)",
+    "level_set": "Level Set",
     "connected_threshold": "Connected Threshold",
     "region_growing": "Region Growing",
     "threshold_brush": "Threshold Brush",

@@ -339,7 +339,7 @@ class TestWizardRecommendation(unittest.TestCase):
             confidence=0.85,
             warnings=["High noise detected"],
             alternative_algorithms=[
-                ("level_set_cpu", "Higher precision but slower"),
+                ("level_set", "Higher precision but slower"),
                 ("connected_threshold", "Faster but less precise"),
             ],
         )

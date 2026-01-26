@@ -137,8 +137,7 @@ Create optimization report with:
 | `watershed` | Gradient-based boundaries | Edge-sensitive segmentation | ✓ Working |
 | `geodesic_distance` | Distance-weighted propagation | Complex boundaries | ✓ Working |
 | `random_walker` | Probabilistic label propagation | Uncertain boundaries | ✓ Working |
-| `level_set_cpu` | CPU level set evolution | High precision | ✓ Working |
-| `level_set_gpu` | GPU level set evolution | High precision + speed | ✓ Working |
+| `level_set` | Level set evolution | High precision | ✓ Working |
 
 ## Parameter Guidelines
 

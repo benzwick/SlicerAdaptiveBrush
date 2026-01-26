@@ -275,27 +275,13 @@ class ParameterRecommender:
                 "high_contrast": {"beta": 80},
             },
         },
-        "level_set_gpu": {
-            "speed": "fast",
-            "precision": "very_high",
-            "edge_aware": True,
-            "handles_irregular": True,
-            "requires_gpu": True,
-            "base_score": 48,
-            "description": "High precision with GPU acceleration",
-            "optimal_params": {
-                "default": {"iterations": 100, "propagation": 1.0, "curvature": 0.5},
-                "irregular": {"iterations": 150, "propagation": 0.8, "curvature": 0.3},
-                "smooth": {"iterations": 80, "propagation": 1.2, "curvature": 0.7},
-            },
-        },
-        "level_set_cpu": {
+        "level_set": {
             "speed": "slow",
             "precision": "very_high",
             "edge_aware": True,
             "handles_irregular": True,
             "base_score": 45,
-            "description": "High precision for irregular boundaries (CPU)",
+            "description": "High precision for irregular boundaries",
             "optimal_params": {
                 "default": {"iterations": 100, "propagation": 1.0, "curvature": 0.5},
                 "irregular": {"iterations": 150, "propagation": 0.8, "curvature": 0.3},
@@ -532,15 +518,13 @@ class ParameterRecommender:
         elif sep >= 0.4:  # Moderate separation
             scores["watershed"] += 20
             scores["geodesic_distance"] += 20
-            scores["level_set_cpu"] += 15
-            scores["level_set_gpu"] += 15
+            scores["level_set"] += 15
             scores["random_walker"] += 10
             scores["connected_threshold"] -= 10
         else:  # Poor separation - need edge-aware
             scores["watershed"] += 30
             scores["geodesic_distance"] += 25
-            scores["level_set_cpu"] += 25
-            scores["level_set_gpu"] += 25
+            scores["level_set"] += 25
             scores["random_walker"] += 20
             scores["connected_threshold"] -= 25
             scores["threshold_brush"] -= 20
@@ -551,15 +535,13 @@ class ParameterRecommender:
         roughness = shape.boundary_roughness
 
         if roughness >= 0.7:  # Very irregular boundary
-            scores["level_set_cpu"] += 25
-            scores["level_set_gpu"] += 25
+            scores["level_set"] += 25
             scores["random_walker"] += 20
             scores["watershed"] += 10
             scores["connected_threshold"] -= 15
             scores["region_growing"] -= 10
         elif roughness >= 0.4:  # Moderate roughness
-            scores["level_set_cpu"] += 10
-            scores["level_set_gpu"] += 10
+            scores["level_set"] += 10
             scores["watershed"] += 15
             scores["geodesic_distance"] += 10
         else:  # Smooth boundary
@@ -571,25 +553,23 @@ class ParameterRecommender:
         # Factor 3: Structure Size (weight: medium)
         # ====================================================================
         if shape.is_small_structure(8.0):  # Very small (<8mm)
-            scores["level_set_cpu"] += 15
-            scores["level_set_gpu"] += 15
+            scores["level_set"] += 15
             scores["random_walker"] += 10
             scores["geodesic_distance"] += 5
             scores["connected_threshold"] -= 10
         elif shape.is_small_structure(15.0):  # Small (<15mm)
-            scores["level_set_cpu"] += 5
-            scores["level_set_gpu"] += 5
+            scores["level_set"] += 5
             scores["geodesic_distance"] += 5
         elif shape.is_large_structure(80.0):  # Very large (>80mm)
             scores["connected_threshold"] += 15
             scores["region_growing"] += 10
             scores["threshold_brush"] += 10
-            scores["level_set_cpu"] -= 15
+            scores["level_set"] -= 15
             scores["random_walker"] -= 20
         elif shape.is_large_structure(50.0):  # Large (>50mm)
             scores["connected_threshold"] += 5
             scores["watershed"] += 5
-            scores["level_set_cpu"] -= 5
+            scores["level_set"] -= 5
 
         # ====================================================================
         # Factor 4: Modality-Specific Adjustments (weight: medium)
@@ -628,8 +608,7 @@ class ParameterRecommender:
                 scores["watershed"] += 10
                 scores["geodesic_distance"] += 5
             elif edge_q == "low":
-                scores["level_set_cpu"] += 10
-                scores["level_set_gpu"] += 10
+                scores["level_set"] += 10
                 scores["random_walker"] += 10
 
         # ====================================================================
@@ -639,8 +618,7 @@ class ParameterRecommender:
             struct = self.STRUCTURE_HINTS.get(structure_type, {})
 
             if struct.get("prefer_level_set"):
-                scores["level_set_cpu"] += 25
-                scores["level_set_gpu"] += 25
+                scores["level_set"] += 25
 
             if struct.get("prefer_geodesic"):
                 scores["geodesic_distance"] += 25
@@ -656,8 +634,7 @@ class ParameterRecommender:
                 scores["region_growing"] += 20
 
             if struct.get("irregular_boundary"):
-                scores["level_set_cpu"] += 10
-                scores["level_set_gpu"] += 10
+                scores["level_set"] += 10
                 scores["random_walker"] += 10
 
             if struct.get("tubular"):
@@ -677,11 +654,10 @@ class ParameterRecommender:
             scores["region_growing"] += 20
             scores["geodesic_distance"] += 15
             scores["watershed"] -= 5
-            scores["level_set_cpu"] -= 25
+            scores["level_set"] -= 25
             scores["random_walker"] -= 35
         elif priority == "precision":
-            scores["level_set_cpu"] += 25
-            scores["level_set_gpu"] += 30
+            scores["level_set"] += 30
             scores["random_walker"] += 25
             scores["watershed"] += 15
             scores["geodesic_distance"] += 10

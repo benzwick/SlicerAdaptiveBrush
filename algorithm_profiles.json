@@ -103,7 +103,7 @@
         }
       }
     },
-    "level_set_cpu": {
+    "level_set": {
       "speed": "slow",
       "precision": "very_high",
       "boundary_adherence": "excellent",

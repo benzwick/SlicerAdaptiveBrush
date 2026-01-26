@@ -38,7 +38,7 @@ TUMOR_CLICK_POINTS = [
 ]
 
 # All available algorithms
-# Note: level_set requires "level_set_cpu" or "level_set_gpu" suffix
+# All available algorithms
 ALGORITHMS = [
     "connected_threshold",
     "region_growing",
@@ -46,8 +46,7 @@ ALGORITHMS = [
     "watershed",
     "geodesic_distance",
     "random_walker",
-    "level_set_cpu",
-    "level_set_gpu",
+    "level_set",
 ]
 
 # Default parameters for optimization (can be tuned)
