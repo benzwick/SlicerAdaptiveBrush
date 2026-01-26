@@ -16,8 +16,13 @@ class WizardSampler:
     """Handles interactive sampling in slice views.
 
     This class captures mouse events in Slicer slice views to collect
-    intensity samples at painted locations.
+    intensity samples at painted locations. Visual feedback is provided
+    via labelmap overlay for foreground/background (paint strokes) and
+    markup curves for boundary tracing.
     """
+
+    # Brush radius in mm for paint-style visual feedback
+    PAINT_BRUSH_RADIUS_MM = 2.0
 
     def __init__(
         self,
@@ -38,9 +43,11 @@ class WizardSampler:
         self._active = False
         self._view_widget: Any = None
 
-        # Visual feedback - use curve nodes for drawing strokes
-        self._curve_nodes: list[Any] = []  # All curves (one per stroke)
-        self._current_curve: Any = None  # Current stroke's curve
+        # Visual feedback - labelmap for paint, curves for boundary
+        self._labelmap_node: Any = None
+        self._labelmap_display_node: Any = None
+        self._curve_nodes: list[Any] = []
+        self._current_curve: Any = None
         self._sample_type: str = "foreground"
 
         # Sampling parameters
@@ -51,6 +58,11 @@ class WizardSampler:
     def is_active(self) -> bool:
         """Return whether sampling mode is currently active."""
         return self._active
+
+    @property
+    def _is_boundary_mode(self) -> bool:
+        """Return whether we're in boundary tracing mode."""
+        return self._sample_type == "boundary"
 
     def activate(self, view_widget: Any, sample_type: str = "foreground") -> None:
         """Activate sampling mode in a slice view."""
@@ -63,8 +75,14 @@ class WizardSampler:
         self._intensities = []
         self._last_sample_pos = None
         self._sample_type = sample_type
-        self._curve_nodes = []
-        self._current_curve = None
+
+        if self._is_boundary_mode:
+            # Boundary uses curves - will create on first stroke
+            self._curve_nodes = []
+            self._current_curve = None
+        else:
+            # Foreground/background use labelmap paint
+            self._create_labelmap_overlay()
 
         logger.debug(f"WizardSampler activated for {sample_type} sampling")
 
@@ -73,48 +91,157 @@ class WizardSampler:
         self._active = False
         self._view_widget = None
         self._last_sample_pos = None
-        self._current_curve = None
+
+        # Clean up both visualization types
+        self._remove_labelmap_overlay()
         self._remove_all_curves()
+
         logger.debug("WizardSampler deactivated")
 
-    def _start_new_curve(self) -> None:
-        """Start a new curve for a new stroke.
+    # ========== Labelmap (Paint) Visualization ==========
 
-        Creates a new curve node for each stroke so strokes don't connect.
-        """
+    def _create_labelmap_overlay(self) -> None:
+        """Create a labelmap volume for paint-style visual feedback."""
+        try:
+            import slicer
+            import vtk
+
+            self._remove_labelmap_overlay()
+
+            if not self.volume_node:
+                return
+
+            # Create labelmap with same geometry as source volume
+            self._labelmap_node = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLLabelMapVolumeNode",
+                f"WizardSampling_{self._sample_type}",
+            )
+
+            # Copy geometry from source volume
+            imageData = vtk.vtkImageData()
+            imageData.SetDimensions(self.volume_node.GetImageData().GetDimensions())
+            imageData.AllocateScalars(vtk.VTK_UNSIGNED_CHAR, 1)
+            imageData.GetPointData().GetScalars().Fill(0)
+
+            self._labelmap_node.SetAndObserveImageData(imageData)
+            self._labelmap_node.CopyOrientation(self.volume_node)
+
+            # Set up display with appropriate color
+            self._labelmap_display_node = self._labelmap_node.GetDisplayNode()
+            if not self._labelmap_display_node:
+                self._labelmap_node.CreateDefaultDisplayNodes()
+                self._labelmap_display_node = self._labelmap_node.GetDisplayNode()
+
+            if self._labelmap_display_node:
+                # Create color table with sample type color
+                colors = {
+                    "foreground": (0, 200, 0),  # Green
+                    "background": (200, 0, 0),  # Red
+                }
+                rgb = colors.get(self._sample_type, (128, 128, 128))
+
+                # Create a simple color node
+                colorNode = slicer.mrmlScene.AddNewNodeByClass(
+                    "vtkMRMLColorTableNode",
+                    f"WizardColor_{self._sample_type}",
+                )
+                colorNode.SetTypeToUser()
+                colorNode.SetNumberOfColors(2)
+                colorNode.SetColor(0, "Background", 0, 0, 0, 0)  # Transparent
+                colorNode.SetColor(1, "Paint", rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, 0.6)
+
+                self._labelmap_display_node.SetAndObserveColorNodeID(colorNode.GetID())
+                self._labelmap_display_node.SetVisibility(True)
+
+            logger.debug(f"Created labelmap overlay for {self._sample_type}")
+
+        except ImportError:
+            self._labelmap_node = None
+
+    def _remove_labelmap_overlay(self) -> None:
+        """Remove the labelmap overlay."""
+        if self._labelmap_node is None:
+            return
+        try:
+            import slicer
+
+            # Remove associated color node
+            if self._labelmap_display_node:
+                colorNodeID = self._labelmap_display_node.GetColorNodeID()
+                if colorNodeID:
+                    colorNode = slicer.mrmlScene.GetNodeByID(colorNodeID)
+                    if colorNode and "WizardColor" in colorNode.GetName():
+                        slicer.mrmlScene.RemoveNode(colorNode)
+
+            slicer.mrmlScene.RemoveNode(self._labelmap_node)
+        except ImportError:
+            pass
+        self._labelmap_node = None
+        self._labelmap_display_node = None
+
+    def _paint_at_ijk(self, ijk: tuple[int, int, int]) -> None:
+        """Paint a brush stroke at the given IJK coordinates."""
+        if not self._labelmap_node:
+            return
+
+        imageData = self._labelmap_node.GetImageData()
+        if not imageData:
+            return
+
+        dims = imageData.GetDimensions()
+        spacing = self.volume_node.GetSpacing()
+
+        # Calculate brush radius in voxels
+        radius_voxels = [max(1, int(self.PAINT_BRUSH_RADIUS_MM / spacing[i])) for i in range(3)]
+
+        # Paint a small sphere/circle at the location
+        for di in range(-radius_voxels[0], radius_voxels[0] + 1):
+            for dj in range(-radius_voxels[1], radius_voxels[1] + 1):
+                # Check if within circular brush (2D painting)
+                if di * di + dj * dj > radius_voxels[0] * radius_voxels[1]:
+                    continue
+
+                ni, nj, nk = ijk[0] + di, ijk[1] + dj, ijk[2]
+
+                # Bounds check
+                if 0 <= ni < dims[0] and 0 <= nj < dims[1] and 0 <= nk < dims[2]:
+                    imageData.SetScalarComponentFromFloat(ni, nj, nk, 0, 1)
+
+        imageData.Modified()
+        self._labelmap_node.Modified()
+
+    # ========== Curve (Boundary) Visualization ==========
+
+    def _start_new_curve(self) -> None:
+        """Start a new curve for boundary tracing."""
         try:
             import slicer
 
             stroke_num = len(self._curve_nodes) + 1
             curve = slicer.mrmlScene.AddNewNodeByClass(
                 "vtkMRMLMarkupsCurveNode",
-                f"WizardSampling_{self._sample_type}_{stroke_num}",
+                f"WizardBoundary_{stroke_num}",
             )
 
             display_node = curve.GetDisplayNode()
             if display_node:
-                colors = {
-                    "foreground": (0.0, 0.8, 0.0),  # Green
-                    "background": (0.8, 0.0, 0.0),  # Red
-                    "boundary": (0.8, 0.8, 0.0),  # Yellow
-                }
-                color = colors.get(self._sample_type, (0.5, 0.5, 0.5))
-                display_node.SetSelectedColor(*color)
-                display_node.SetColor(*color)
-                display_node.SetLineThickness(0.5)  # Thicker line for visibility
-                display_node.SetTextScale(0)  # No labels
+                # Yellow for boundary
+                display_node.SetSelectedColor(0.9, 0.9, 0.0)
+                display_node.SetColor(0.9, 0.9, 0.0)
+                display_node.SetLineThickness(0.8)
+                display_node.SetTextScale(0)
                 display_node.SetVisibility(True)
                 display_node.SetPointLabelsVisibility(False)
-                display_node.SetGlyphScale(0.3)  # Small dots at control points
+                display_node.SetGlyphScale(0.0)  # Hide control points
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
-            logger.debug(f"Started new curve stroke {stroke_num}")
+            logger.debug(f"Started new boundary curve {stroke_num}")
         except ImportError:
             self._current_curve = None
 
     def _remove_all_curves(self) -> None:
-        """Remove all visual feedback curve nodes."""
+        """Remove all boundary curve nodes."""
         if not self._curve_nodes:
             return
         try:
@@ -128,10 +255,12 @@ class WizardSampler:
         self._curve_nodes = []
         self._current_curve = None
 
-    def _add_visual_point(self, ras: tuple[float, float, float]) -> None:
-        """Add a visual point at the given RAS coordinates."""
+    def _add_curve_point(self, ras: tuple[float, float, float]) -> None:
+        """Add a point to the current boundary curve."""
         if self._current_curve:
             self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
+
+    # ========== Event Handling ==========
 
     def process_event(self, caller: Any, event_id: str) -> bool:
         """Process mouse events for sampling."""
@@ -155,8 +284,9 @@ class WizardSampler:
         if not self._active:
             return
 
-        # Start a new curve for this stroke
-        self._start_new_curve()
+        # Start new curve for boundary tracing
+        if self._is_boundary_mode:
+            self._start_new_curve()
 
         xy = self._get_event_position(caller)
         if xy:
@@ -224,8 +354,12 @@ class WizardSampler:
             self._points.append(ijk)
             self._intensities.append(intensity)
 
-            if ras:
-                self._add_visual_point(ras)
+            # Visual feedback based on mode
+            if self._is_boundary_mode:
+                if ras:
+                    self._add_curve_point(ras)
+            else:
+                self._paint_at_ijk(ijk)
 
     def _xy_to_coords(
         self, xy: tuple[int, int]
@@ -247,7 +381,11 @@ class WizardSampler:
 
         # Convert RAS to IJK
         ijk_float = rasToIjk.MultiplyPoint([ras[0], ras[1], ras[2], 1])
-        ijk = (int(round(ijk_float[0])), int(round(ijk_float[1])), int(round(ijk_float[2])))
+        ijk = (
+            int(round(ijk_float[0])),
+            int(round(ijk_float[1])),
+            int(round(ijk_float[2])),
+        )
 
         # Bounds check
         dims = self.volume_node.GetImageData().GetDimensions()
@@ -276,7 +414,18 @@ class WizardSampler:
         self._points = []
         self._intensities = []
         self._last_sample_pos = None
-        self._remove_all_curves()
+
+        # Clear visual feedback based on mode
+        if self._is_boundary_mode:
+            self._remove_all_curves()
+        else:
+            # Clear the labelmap
+            if self._labelmap_node:
+                imageData = self._labelmap_node.GetImageData()
+                if imageData:
+                    imageData.GetPointData().GetScalars().Fill(0)
+                    imageData.Modified()
+                    self._labelmap_node.Modified()
 
     @property
     def sample_count(self) -> int:
