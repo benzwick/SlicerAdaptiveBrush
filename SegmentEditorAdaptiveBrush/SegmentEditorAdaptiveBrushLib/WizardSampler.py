@@ -153,10 +153,57 @@ class WizardSampler:
                 self._labelmap_display_node.SetAndObserveColorNodeID(colorNode.GetID())
                 self._labelmap_display_node.SetVisibility(True)
 
+            # Set labelmap as label layer in all slice views so it's visible
+            self._set_labelmap_in_slice_views(self._labelmap_node)
+
             logger.debug(f"Created labelmap overlay for {self._sample_type}")
 
         except ImportError:
             self._labelmap_node = None
+
+    def _set_labelmap_in_slice_views(self, labelmap_node: Any) -> None:
+        """Set the labelmap as the label layer in all slice views."""
+        try:
+            import slicer
+
+            # Store previous label volumes to restore later
+            self._previous_label_volumes: dict[str, str] = {}
+
+            layoutManager = slicer.app.layoutManager()
+            for sliceViewName in layoutManager.sliceViewNames():
+                sliceWidget = layoutManager.sliceWidget(sliceViewName)
+                compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+
+                # Store previous label volume
+                prevLabelID = compositeNode.GetLabelVolumeID()
+                self._previous_label_volumes[sliceViewName] = prevLabelID
+
+                # Set our labelmap as the label layer
+                compositeNode.SetLabelVolumeID(labelmap_node.GetID())
+                compositeNode.SetLabelOpacity(0.6)
+
+        except Exception as e:
+            logger.warning(f"Failed to set labelmap in slice views: {e}")
+
+    def _restore_previous_label_volumes(self) -> None:
+        """Restore previous label volumes in slice views."""
+        try:
+            import slicer
+
+            if not hasattr(self, "_previous_label_volumes"):
+                return
+
+            layoutManager = slicer.app.layoutManager()
+            for sliceViewName, prevLabelID in self._previous_label_volumes.items():
+                sliceWidget = layoutManager.sliceWidget(sliceViewName)
+                if sliceWidget:
+                    compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+                    compositeNode.SetLabelVolumeID(prevLabelID if prevLabelID else "")
+
+            self._previous_label_volumes = {}
+
+        except Exception as e:
+            logger.warning(f"Failed to restore label volumes: {e}")
 
     def _remove_labelmap_overlay(self) -> None:
         """Remove the labelmap overlay."""
@@ -164,6 +211,9 @@ class WizardSampler:
             return
         try:
             import slicer
+
+            # Restore previous label volumes first
+            self._restore_previous_label_volumes()
 
             # Remove associated color node
             if self._labelmap_display_node:
@@ -225,14 +275,18 @@ class WizardSampler:
 
             display_node = curve.GetDisplayNode()
             if display_node:
-                # Yellow for boundary
-                display_node.SetSelectedColor(0.9, 0.9, 0.0)
-                display_node.SetColor(0.9, 0.9, 0.0)
-                display_node.SetLineThickness(0.8)
+                # Yellow for boundary - make it visible
+                display_node.SetSelectedColor(1.0, 1.0, 0.0)
+                display_node.SetColor(1.0, 1.0, 0.0)
+                display_node.SetLineThickness(3.0)  # Thick line for visibility
                 display_node.SetTextScale(0)
                 display_node.SetVisibility(True)
+                display_node.SetVisibility2D(True)  # Show in 2D slice views
+                display_node.SetVisibility3D(True)
                 display_node.SetPointLabelsVisibility(False)
                 display_node.SetGlyphScale(0.0)  # Hide control points
+                display_node.SetSliceProjection(True)  # Project onto slices
+                display_node.SetSliceProjectionOpacity(1.0)
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
