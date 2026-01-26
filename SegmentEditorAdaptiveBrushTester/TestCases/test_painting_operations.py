@@ -480,7 +480,7 @@ class TestUndoRedo(TestCase):
 
         # Undo
         ctx.log("Testing undo")
-        slicer.util.mainWindow().findChild(slicer.qSlicerSegmentEditorWidget).undo()
+        slicer.util.mainWindow().findChild(slicer.qMRMLSegmentEditorWidget).undo()
         slicer.app.processEvents()
 
         self.red_widget.sliceView().forceRender()
@@ -494,7 +494,7 @@ class TestUndoRedo(TestCase):
 
         # Redo
         ctx.log("Testing redo")
-        slicer.util.mainWindow().findChild(slicer.qSlicerSegmentEditorWidget).redo()
+        slicer.util.mainWindow().findChild(slicer.qMRMLSegmentEditorWidget).redo()
         slicer.app.processEvents()
 
         self.red_widget.sliceView().forceRender()
