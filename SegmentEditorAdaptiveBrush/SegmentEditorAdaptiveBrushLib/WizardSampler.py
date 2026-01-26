@@ -38,8 +38,9 @@ class WizardSampler:
         self._active = False
         self._view_widget: Any = None
 
-        # Visual feedback
-        self._markup_node: Any = None
+        # Visual feedback - use curve nodes for drawing strokes
+        self._curve_nodes: list[Any] = []  # All curves (one per stroke)
+        self._current_curve: Any = None  # Current stroke's curve
         self._sample_type: str = "foreground"
 
         # Sampling parameters
@@ -62,8 +63,9 @@ class WizardSampler:
         self._intensities = []
         self._last_sample_pos = None
         self._sample_type = sample_type
+        self._curve_nodes = []
+        self._current_curve = None
 
-        self._create_visual_feedback()
         logger.debug(f"WizardSampler activated for {sample_type} sampling")
 
     def deactivate(self) -> None:
@@ -71,53 +73,65 @@ class WizardSampler:
         self._active = False
         self._view_widget = None
         self._last_sample_pos = None
-        self._remove_visual_feedback()
+        self._current_curve = None
+        self._remove_all_curves()
         logger.debug("WizardSampler deactivated")
 
-    def _create_visual_feedback(self) -> None:
-        """Create a markup node for visual feedback during sampling."""
+    def _start_new_curve(self) -> None:
+        """Start a new curve for a new stroke.
+
+        Creates a new curve node for each stroke so strokes don't connect.
+        """
         try:
             import slicer
 
-            self._remove_visual_feedback()
-
-            self._markup_node = slicer.mrmlScene.AddNewNodeByClass(
-                "vtkMRMLMarkupsFiducialNode", f"WizardSampling_{self._sample_type}"
+            stroke_num = len(self._curve_nodes) + 1
+            curve = slicer.mrmlScene.AddNewNodeByClass(
+                "vtkMRMLMarkupsCurveNode",
+                f"WizardSampling_{self._sample_type}_{stroke_num}",
             )
 
-            display_node = self._markup_node.GetDisplayNode()
+            display_node = curve.GetDisplayNode()
             if display_node:
                 colors = {
-                    "foreground": (0.0, 0.8, 0.0),
-                    "background": (0.8, 0.0, 0.0),
-                    "boundary": (0.8, 0.8, 0.0),
+                    "foreground": (0.0, 0.8, 0.0),  # Green
+                    "background": (0.8, 0.0, 0.0),  # Red
+                    "boundary": (0.8, 0.8, 0.0),  # Yellow
                 }
                 color = colors.get(self._sample_type, (0.5, 0.5, 0.5))
                 display_node.SetSelectedColor(*color)
                 display_node.SetColor(*color)
-                display_node.SetGlyphScale(1.5)
-                display_node.SetTextScale(0)
+                display_node.SetLineThickness(0.5)  # Thicker line for visibility
+                display_node.SetTextScale(0)  # No labels
                 display_node.SetVisibility(True)
-        except ImportError:
-            # slicer not available (testing outside Slicer)
-            self._markup_node = None
+                display_node.SetPointLabelsVisibility(False)
+                display_node.SetGlyphScale(0.3)  # Small dots at control points
 
-    def _remove_visual_feedback(self) -> None:
-        """Remove the visual feedback markup node."""
-        if self._markup_node is None:
+            self._current_curve = curve
+            self._curve_nodes.append(curve)
+            logger.debug(f"Started new curve stroke {stroke_num}")
+        except ImportError:
+            self._current_curve = None
+
+    def _remove_all_curves(self) -> None:
+        """Remove all visual feedback curve nodes."""
+        if not self._curve_nodes:
             return
         try:
             import slicer
 
-            slicer.mrmlScene.RemoveNode(self._markup_node)
+            for curve in self._curve_nodes:
+                if curve:
+                    slicer.mrmlScene.RemoveNode(curve)
         except ImportError:
             pass
-        self._markup_node = None
+        self._curve_nodes = []
+        self._current_curve = None
 
     def _add_visual_point(self, ras: tuple[float, float, float]) -> None:
         """Add a visual point at the given RAS coordinates."""
-        if self._markup_node:
-            self._markup_node.AddControlPoint(ras[0], ras[1], ras[2])
+        if self._current_curve:
+            self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
 
     def process_event(self, caller: Any, event_id: str) -> bool:
         """Process mouse events for sampling."""
@@ -137,15 +151,18 @@ class WizardSampler:
         return False
 
     def _on_left_button_press(self, caller: Any) -> None:
-        """Handle left mouse button press - start sampling."""
+        """Handle left mouse button press - start sampling stroke."""
         if not self._active:
             return
+
+        # Start a new curve for this stroke
+        self._start_new_curve()
 
         xy = self._get_event_position(caller)
         if xy:
             self._sample_at_xy(xy)
             self._last_sample_pos = xy
-            logger.debug(f"WizardSampler: sampled at {xy}, count={len(self._points)}")
+            logger.debug(f"WizardSampler: started stroke at {xy}, count={len(self._points)}")
 
     def _on_left_button_release(self) -> None:
         """Handle left mouse button release - finalize sampling stroke."""
@@ -164,11 +181,12 @@ class WizardSampler:
                 logger.exception(f"Error in sampling callback: {e}")
 
     def _on_mouse_move(self, caller: Any) -> None:
-        """Handle mouse movement - sample during drag."""
-        if not self._active:
-            return
+        """Handle mouse movement - sample during drag.
 
-        if not caller.GetLeftButtonDown():
+        Note: This is only called when the left button is down (checked by
+        ParameterWizard.handle_interaction_event before forwarding).
+        """
+        if not self._active:
             return
 
         xy = self._get_event_position(caller)
@@ -258,9 +276,7 @@ class WizardSampler:
         self._points = []
         self._intensities = []
         self._last_sample_pos = None
-
-        if self._markup_node:
-            self._markup_node.RemoveAllControlPoints()
+        self._remove_all_curves()
 
     @property
     def sample_count(self) -> int:

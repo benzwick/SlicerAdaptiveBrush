@@ -44,6 +44,7 @@ class ParameterWizard:
         self._boundary_sampler: Optional[WizardSampler] = None
         self._current_sampler: Optional[WizardSampler] = None
         self._hidden_widgets: list = []
+        self._left_button_down: bool = False  # Track button state internally
 
     def start(self) -> None:
         """Launch the wizard by embedding it in the options frame."""
@@ -236,18 +237,20 @@ class ParameterWizard:
 
         # Only handle left-button events - let everything else (zoom, pan) pass through
         if eventId == vtk.vtkCommand.LeftButtonPressEvent:
+            self._left_button_down = True
             self._current_sampler._view_widget = viewWidget
             self._current_sampler.process_event(callerInteractor, "LeftButtonPressEvent")
             return True  # Consume to prevent default paint behavior
 
         elif eventId == vtk.vtkCommand.LeftButtonReleaseEvent:
+            self._left_button_down = False
             self._current_sampler._view_widget = viewWidget
             self._current_sampler.process_event(callerInteractor, "LeftButtonReleaseEvent")
             return True
 
         elif eventId == vtk.vtkCommand.MouseMoveEvent:
             # Only consume mouse move if we're actively sampling (left button down)
-            if callerInteractor.GetLeftButtonDown():
+            if self._left_button_down:
                 self._current_sampler._view_widget = viewWidget
                 self._current_sampler.process_event(callerInteractor, "MouseMoveEvent")
                 return True
