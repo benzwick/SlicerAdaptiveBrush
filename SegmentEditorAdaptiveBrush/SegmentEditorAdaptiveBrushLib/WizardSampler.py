@@ -308,6 +308,8 @@ class WizardSampler:
         """Add a point to the current boundary curve."""
         if self._current_curve:
             n = self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
+            # Update curve line representation
+            self._current_curve.UpdateCurvePolyFromControlPoints()
             if n < 3:  # Log first few points for debugging
                 logger.debug(
                     f"Added curve point {n}: RAS=({ras[0]:.1f}, {ras[1]:.1f}, {ras[2]:.1f})"
