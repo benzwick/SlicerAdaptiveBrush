@@ -23,10 +23,12 @@
       },
       "benchmarks": {
         "MRBrainTumor1_tumor": {
-          "dice": 0.9991,
-          "edge_sensitivity": 70,
-          "threshold_zone": 60,
-          "brush_radius_mm": 25.0
+          "dice": 0.9988,
+          "edge_sensitivity": 63,
+          "threshold_zone": 45,
+          "brush_radius_mm": 25.0,
+          "watershed_gradient_scale": 1.32,
+          "watershed_smoothing": 0.27
         }
       }
     },
@@ -37,7 +39,14 @@
       "description": "Fastest algorithm. Segments connected voxels within intensity range.",
       "recommended_for": ["quick_rough", "homogeneous_fluid", "air"],
       "parameters": {},
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.9430,
+          "edge_sensitivity": 59,
+          "threshold_zone": 52,
+          "brush_radius_mm": 15.0
+        }
+      }
     },
     "region_growing": {
       "speed": "fast",
@@ -46,7 +55,14 @@
       "description": "Confidence-connected growing based on intensity statistics.",
       "recommended_for": ["homogeneous_regions", "moderate_precision"],
       "parameters": {},
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.9244,
+          "edge_sensitivity": 31,
+          "threshold_zone": 59,
+          "brush_radius_mm": 35.0
+        }
+      }
     },
     "threshold_brush": {
       "speed": "very_fast",
@@ -57,7 +73,14 @@
       "parameters": {
         "auto_methods": ["Otsu", "Huang", "Triangle", "MaximumEntropy", "IsoData", "Li"]
       },
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.9419,
+          "edge_sensitivity": 60,
+          "threshold_zone": 37,
+          "brush_radius_mm": 15.0
+        }
+      }
     },
     "geodesic_distance": {
       "speed": "medium",
@@ -66,22 +89,36 @@
       "description": "Fast marching with edge-weighted speed function.",
       "recommended_for": ["clear_edges", "vessels", "tubular_structures"],
       "parameters": {
-        "edge_weight": {"range": [0, 1], "optimal": 0.5},
-        "smoothing": {"range": [0.1, 1.0], "optimal": 0.5}
+        "edge_weight": {"range": [1, 15], "optimal": 4.5},
+        "smoothing": {"range": [0.1, 1.0], "optimal": 0.56}
       },
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.9332,
+          "edge_sensitivity": 80,
+          "threshold_zone": 44,
+          "brush_radius_mm": 25.0,
+          "geodesic_edge_weight": 4.49,
+          "geodesic_smoothing": 0.56
+        }
+      }
     },
     "level_set": {
       "speed": "slow",
       "precision": "very_high",
       "boundary_adherence": "excellent",
-      "description": "Geodesic active contours with smooth evolution.",
+      "description": "Geodesic active contours with smooth evolution. NOTE: Currently has issues - needs debugging.",
       "recommended_for": ["high_precision", "smooth_boundaries"],
       "parameters": {
         "iterations": {"range": [30, 150], "optimal": 100},
         "propagation": {"range": [0.5, 2.0], "optimal": 1.0}
       },
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.0,
+          "notes": "Failed in batch optimization - needs investigation"
+        }
+      }
     },
     "random_walker": {
       "speed": "slow",
@@ -90,9 +127,17 @@
       "description": "Probabilistic diffusion from seed points.",
       "recommended_for": ["complex_boundaries", "multiple_regions"],
       "parameters": {
-        "beta": {"range": [10, 200], "optimal": 100}
+        "beta": {"range": [20, 200], "optimal": 198}
       },
-      "benchmarks": {}
+      "benchmarks": {
+        "MRBrainTumor1_tumor": {
+          "dice": 0.7970,
+          "edge_sensitivity": 80,
+          "threshold_zone": 45,
+          "brush_radius_mm": 30.0,
+          "random_walker_beta": 198
+        }
+      }
     }
   },
 
