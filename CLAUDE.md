@@ -410,6 +410,28 @@ All features MUST include documented manual testing steps. Include:
 - Standard Slicer navigation (right-click zoom, middle-drag pan, shift+drag pan) still works
 - Middle button pan works when not also left-clicking
 
+## Local Resources
+
+Paths configured in `.env` (see `.env.example` for setup):
+
+- **SLICER_PATH**: Path to Slicer executable for running scripts
+- **SLICER_SOURCE**: Path to Slicer source code for reference
+
+### Slicer Source Code
+
+When you need to understand Slicer internals, check the source at `$SLICER_SOURCE`:
+
+| Path | Contents |
+|------|----------|
+| `Base/Python/slicer/` | Python API (`slicer` module implementation) |
+| `Modules/Scripted/` | Built-in scripted modules (good examples) |
+| `Modules/Scripted/SegmentEditor/` | Segment Editor module |
+| `Modules/Loadable/Segmentations/` | Segmentation infrastructure |
+| `Libs/MRML/Core/` | MRML node classes (C++) |
+| `Libs/vtkSegmentationCore/` | Segmentation core (C++) |
+
+**To verify claims about Slicer behavior**, read the source code rather than guessing.
+
 ## References
 
 - [3D Slicer Developer Guide](https://slicer.readthedocs.io/en/latest/developer_guide/)
@@ -417,3 +439,4 @@ All features MUST include documented manual testing steps. Include:
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects) - Example effects
 - [ITK-SNAP Adaptive Brush](https://github.com/pyushkevich/itksnap) - Reference implementation
 - [SimpleITK Documentation](https://simpleitk.readthedocs.io/)
+- [Slicer Source Code](https://github.com/Slicer/Slicer) - Local clone at `$SLICER_SOURCE`
