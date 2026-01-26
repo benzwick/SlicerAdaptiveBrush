@@ -1,5 +1,6 @@
 {
   "created": "2026-01-24T21:47:44.236996",
+  "sample_data": "MRBrainTumor1",
   "volume": {
     "name": "MRBrainTumor1",
     "spacing": [
