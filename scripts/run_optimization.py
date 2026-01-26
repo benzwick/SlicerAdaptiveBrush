@@ -403,14 +403,30 @@ def run_optimization(
     # Get brush radius from gold standard metadata (default if not optimizing it)
     gold_brush_radius = gold_metadata.get("parameters", {}).get("brush_radius_mm", 25.0)
 
+    # Import screenshot capture
+    from SegmentEditorAdaptiveBrushTesterLib import ScreenshotCapture
+
+    # Create directories for trial outputs
+    screenshots_dir = optimizer.output_dir / "screenshots"
+    segmentations_dir = optimizer.output_dir / "segmentations"
+    screenshots_dir.mkdir(exist_ok=True)
+    segmentations_dir.mkdir(exist_ok=True)
+
     # Define objective function
     def objective(trial: optuna.Trial, params: dict[str, Any]) -> float:
         """Objective function for optimization."""
         nonlocal segment_id
 
         trial_start = time.time()
+        trial_num = trial.number
 
-        logger.info(f"Trial {trial.number}: {params}")
+        logger.info(f"Trial {trial_num}: {params}")
+
+        # Set up screenshot capture for this trial
+        trial_ss_dir = screenshots_dir / f"trial_{trial_num:03d}"
+        trial_ss_dir.mkdir(exist_ok=True)
+        screenshot_capture = ScreenshotCapture(base_folder=trial_ss_dir, flat_mode=True)
+        screenshot_capture.set_group(f"trial_{trial_num:03d}")
 
         # Clear segment for fresh start
         segment_id = clear_segment(segmentation_node, segment_id)
@@ -418,11 +434,17 @@ def run_optimization(
         slicer.app.processEvents()
 
         # Apply brush radius from gold standard if not in params
-        if "brush_radius_mm" not in params:
-            effect.brushRadiusMm = gold_brush_radius
+        brush_radius = params.get("brush_radius_mm", gold_brush_radius)
+        effect.brushRadiusMm = brush_radius
 
         # Apply parameters
         apply_params_to_effect(effect, params)
+
+        # Capture initial state
+        screenshot_capture.screenshot("Before painting")
+
+        # Track click locations with params for this trial
+        trial_clicks: list[dict[str, Any]] = []
 
         # Run clicks one by one and report intermediate values
         for i, click in enumerate(click_locations):
@@ -430,10 +452,25 @@ def run_optimization(
             effect.paintAt(ras[0], ras[1], ras[2])
             slicer.app.processEvents()
 
+            # Record click with current params
+            trial_clicks.append(
+                {
+                    "ras": ras,
+                    "params": {
+                        "algorithm": params.get("algorithm", ""),
+                        "brush_radius_mm": brush_radius,
+                        "edge_sensitivity": params.get("edge_sensitivity", 50),
+                    },
+                }
+            )
+
             # Compute intermediate Dice
             current_dice = compute_dice(
                 segmentation_node, segment_id, gold_seg_node, gold_segment_id, volume_node
             )
+
+            # Capture screenshot after click
+            screenshot_capture.screenshot(f"After click {i + 1}, Dice={current_dice:.4f}")
 
             # Report intermediate value for pruning
             trial.report(current_dice, i)
@@ -443,6 +480,8 @@ def run_optimization(
             # Check for pruning
             if trial.should_prune():
                 logger.info(f"  Trial pruned at click {i + 1}")
+                # Save manifest before pruning
+                screenshot_capture.save_manifest()
                 raise optuna.TrialPruned()
 
         # Final Dice
@@ -453,9 +492,18 @@ def run_optimization(
         elapsed = time.time() - trial_start
         logger.info(f"  Final Dice: {final_dice:.4f} ({elapsed * 1000:.0f}ms)")
 
-        # Store additional info
+        # Save trial segmentation
+        seg_path = segmentations_dir / f"trial_{trial_num:03d}.seg.nrrd"
+        slicer.util.saveNode(segmentation_node, str(seg_path))
+
+        # Save screenshot manifest
+        screenshot_capture.save_manifest()
+
+        # Store additional info in trial
         trial.set_user_attr("duration_ms", elapsed * 1000)
         trial.set_user_attr("n_clicks", len(click_locations))
+        trial.set_user_attr("click_locations", trial_clicks)
+        trial.set_user_attr("segmentation_path", str(seg_path))
 
         return final_dice
 
