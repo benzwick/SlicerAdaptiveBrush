@@ -122,11 +122,10 @@ class TestWizardLaunch(TestCase):
 
         scripted_effect = self.effect.self()
 
-        # Verify wizard-related methods exist
+        # Verify wizard-related methods exist (onWizardClicked is the click handler)
         ctx.assert_true(
-            hasattr(scripted_effect, "_startParameterWizard")
-            or hasattr(scripted_effect, "onWizardButtonClicked"),
-            "Effect should have wizard start method",
+            hasattr(scripted_effect, "onWizardClicked"),
+            "Effect should have wizard click handler (onWizardClicked)",
         )
 
         ctx.screenshot("[verify] Wizard launch capability verified")
