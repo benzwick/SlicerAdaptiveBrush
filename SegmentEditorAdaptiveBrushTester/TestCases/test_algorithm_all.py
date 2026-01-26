@@ -59,6 +59,7 @@ def _count_segment_voxels(segmentation_node: Any, segment_id: str) -> int:
     """Count the number of voxels in a segment."""
     # Get labelmap representation
     import slicer as slicer_module
+    import vtk.util.numpy_support as vtk_np
 
     labelmap = slicer_module.vtkOrientedImageData()
     segmentation_node.GetBinaryLabelmapRepresentation(segment_id, labelmap)
@@ -66,11 +67,13 @@ def _count_segment_voxels(segmentation_node: Any, segment_id: str) -> int:
     if labelmap is None:
         return 0
 
-    # Get numpy array from labelmap
-    array = slicer_module.util.arrayFromVolume(labelmap)
-    if array is None:
+    # Get numpy array from vtkOrientedImageData using VTK's numpy support
+    # (slicer.util.arrayFromVolume expects a volume node, not raw image data)
+    scalars = labelmap.GetPointData().GetScalars()
+    if scalars is None:
         return 0
 
+    array = vtk_np.vtk_to_numpy(scalars)
     return int(np.sum(array > 0))
 
 
