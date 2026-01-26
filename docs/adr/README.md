@@ -20,12 +20,6 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Proposed |
 | [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Proposed |
 | [ADR-010](ADR-010-testing-framework.md) | Slicer Testing Framework Architecture | Accepted |
-| [ADR-011](ADR-011-optimization-framework.md) | Smart Optimization Framework | Implemented |
-| [ADR-012](ADR-012-results-review-module.md) | Results Review Module | Implemented |
-| [ADR-013](ADR-013-segmentation-recipes.md) | Segmentation Recipes | Implemented |
-| [ADR-014](ADR-014-enhanced-testing-recipe-replay.md) | Enhanced Testing and Recipe Replay | Accepted |
-| [ADR-015](ADR-015-parameter-wizard.md) | Parameter Wizard | Accepted |
-| [ADR-016](ADR-016-public-gold-standard-datasets.md) | Public Gold Standard Datasets | Proposed |
 
 ## Template
 
