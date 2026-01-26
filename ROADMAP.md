@@ -137,7 +137,7 @@
   - [x] Example recipes (brain_tumor_1.py, template.py)
   - [x] Gold standard: MRBrainTumor1_tumor (Dice: 0.858, HD95: 3.28mm)
 
-- [ ] Optuna Integration (ADR-011)
+- [x] Optuna Integration (ADR-011)
   - [x] OptunaOptimizer class with TPE sampler
   - [x] HyperbandPruner for early stopping (~4x speedup)
   - [x] Hierarchical parameter suggestion (algorithm-specific)
@@ -145,22 +145,29 @@
   - [x] SQLite persistence for study resumption
   - [x] OptimizationConfig for YAML configuration
   - [x] Example configs (default.yaml, tumor_optimization.yaml, quick_test.yaml)
-  - [ ] run_optimization.py script (wire up OptunaOptimizer)
-  - [ ] run-optimization skill working end-to-end
+  - [x] run_optimization.py script (Dice-based optimization working)
+  - [x] Lab notebook generation with parameter importance
+
+- [ ] Optimization-Review-Gold Workflow Integration
+  - [ ] Record click locations during optimization trials
+  - [ ] Save screenshots per trial (before/after each click)
+  - [ ] Save trial segmentations for review
+  - [ ] Fix Reviewer save_as_gold() function signature
+  - [ ] Integrated skill for optimize → review → save workflow
 
 - [ ] Algorithm Characterization
   - [x] AlgorithmProfile class with performance metrics
   - [x] AlgorithmCharacterizer class for profile generation
   - [x] AlgorithmReportGenerator class for markdown reports
-  - [ ] Generate algorithm profiles from test data
+  - [ ] Generate algorithm profiles from optimization data
   - [ ] Update default parameters based on optimization findings
   - [ ] Algorithm recommendation documentation
 
-- [x] Results Review Module (ADR-012)
+- [ ] Results Review Module (ADR-012)
   - [x] SegmentEditorAdaptiveBrushReviewer Slicer module
   - [x] Dual segmentation display (gold vs test)
   - [x] Screenshot thumbnail viewer
-  - [x] Save-as-gold-standard functionality
+  - [ ] Save-as-gold-standard functionality (BROKEN: wrong function signature)
   - [x] Visual comparison modes (outline, transparent, fill)
   - [x] Export markdown report
   - [x] Algorithm comparison dialog
@@ -172,11 +179,13 @@
   - [x] ADR-013: Segmentation Recipes
   - [ ] User guide for recipe creation
   - [ ] Optimization tutorial
+  - [ ] Full testing/optimization workflow guide
 
 - [ ] Integration Testing
   - [x] 5/5 test cases passing (algorithm, optimization, regression, UI, workflow)
   - [x] 83 screenshots captured per test run
   - [ ] Multi-dataset regression suite (currently only MRBrainTumor1)
+  - [ ] End-to-end optimization → review → gold standard test
 
 ## Version 0.14.0 - Enhanced Testing and Recipe Replay ✓
 
