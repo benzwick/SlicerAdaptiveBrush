@@ -29,8 +29,7 @@ Implement **multiple algorithm backends** that users can select from the UI, wit
 | Geodesic Distance | CPU (SimpleITK) | Fast | High | General use (default) |
 | Watershed | CPU (SimpleITK) | Medium | High | Marker-based segmentation |
 | Random Walker | CPU (scikit-image) | Medium | High | Probabilistic diffusion |
-| Level Set (GPU) | GPU (planned) | Slow | Very High | High precision (planned) |
-| Level Set (CPU) | CPU (SimpleITK) | Slow | Very High | High precision fallback |
+| Level Set | CPU (SimpleITK) | Slow | Very High | Irregular boundaries |
 | Connected Threshold | CPU (SimpleITK) | Very Fast | Low | Quick rough segmentation |
 | Region Growing | CPU (SimpleITK) | Fast | Medium | Homogeneous regions |
 | Threshold Brush | CPU (SimpleITK) | Very Fast | Variable | Simple threshold painting |
@@ -42,19 +41,25 @@ Algorithm: [Dropdown]
 ├── Geodesic Distance (Recommended)
 ├── Watershed
 ├── Random Walker
-├── Level Set (GPU)
-├── Level Set (CPU)
+├── Level Set
 ├── Connected Threshold (Fast)
 ├── Region Growing
 └── Threshold Brush (Simple)
-
-Backend: [Auto / CPU / GPU*]
-* GPU backends planned for Phase 2
 ```
 
 ### Algorithm Implementations
 
-#### 1. Watershed (Default)
+#### 1. Geodesic Distance (Default)
+- **Implementation**: SimpleITK `FastMarchingUpwindGradientImageFilter` with gradient weighting
+- **Process**:
+  1. Get initial mask from connected threshold
+  2. Compute gradient magnitude for edge weighting
+  3. Create speed image (high speed in uniform regions, low at edges)
+  4. Run fast marching from seed outward
+  5. Threshold distance field at brush radius
+- Fast, edge-aware, good general-purpose choice
+
+#### 2. Watershed
 - **Implementation**: SimpleITK `MorphologicalWatershedFromMarkers`
 - **Process**:
   1. Get initial mask from connected threshold
@@ -62,9 +67,9 @@ Backend: [Auto / CPU / GPU*]
   3. Scale gradient by edge sensitivity parameter
   4. Create markers: eroded mask (foreground), dilated border (background)
   5. Run watershed from markers
-- Good balance of speed and accuracy
+- Good for marker-based segmentation with clear boundaries
 
-#### 2. Level Set
+#### 3. Level Set
 - **Implementation**: SimpleITK `GeodesicActiveContourLevelSetImageFilter`
 - **Process**:
   1. Get initial mask from connected threshold
@@ -74,19 +79,19 @@ Backend: [Auto / CPU / GPU*]
   5. Threshold at zero to get binary result
 - Best boundary accuracy, adapts to weak edges
 
-#### 3. Connected Threshold
+#### 4. Connected Threshold
 - **Implementation**: SimpleITK `ConnectedThreshold`
 - Fastest option, uses intensity range from GMM analysis
 - May leak across weak boundaries
 - Good baseline for simple regions
 
-#### 4. Region Growing
+#### 5. Region Growing
 - **Implementation**: SimpleITK `ConfidenceConnected`
 - Iterative region growing based on statistical similarity
 - Multiplier scales with edge sensitivity (3.5 at 0%, 1.0 at 100%)
 - Good for homogeneous tissues
 
-#### 5. Threshold Brush
+#### 6. Threshold Brush
 - **Implementation**: Simple NumPy thresholding with optional SimpleITK filters
 - **Auto-Threshold Methods**:
   - Otsu (`OtsuThresholdImageFilter`)
@@ -136,12 +141,10 @@ All algorithms share common stages:
    └── Modify labelmap via OR operation
 ```
 
-### Backend Selection
+### Backend
 
-The Backend dropdown shows Auto/CPU/GPU options. Currently:
-- **Auto**: Selects CPU (GPU planned for Phase 2)
-- **CPU**: All algorithms available
-- **GPU**: UI present, implementation planned for Phase 2
+All algorithms currently use CPU-based SimpleITK implementations. GPU acceleration
+may be added in future phases for performance-critical algorithms like Level Set.
 
 ## Consequences
 
@@ -160,7 +163,7 @@ The Backend dropdown shows Auto/CPU/GPU options. Currently:
 
 ### Mitigation
 
-- Default to "Watershed" for best general-purpose results
+- Default to "Geodesic Distance" for best general-purpose results
 - Algorithm section collapsed by default
 - Comprehensive tooltips explaining each option
 - Threshold Brush provides escape hatch for difficult cases
