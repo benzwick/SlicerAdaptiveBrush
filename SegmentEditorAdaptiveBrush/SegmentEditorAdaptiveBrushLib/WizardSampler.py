@@ -273,15 +273,43 @@ class WizardSampler:
                 f"WizardBoundary_{stroke_num}",
             )
 
+            # Ensure display nodes are created
+            curve.CreateDefaultDisplayNodes()
+
             # Use linear interpolation (not spline) so curve follows exactly what user draws
             curve.SetCurveTypeToLinear()
 
-            # Just set color to yellow, keep other defaults like Markups module
+            # Configure display for visibility in 2D slice views
             display_node = curve.GetDisplayNode()
+            if not display_node:
+                logger.warning("Failed to get display node for curve")
             if display_node:
+                # Color settings - yellow for visibility
                 display_node.SetSelectedColor(1.0, 1.0, 0.0)
                 display_node.SetColor(1.0, 1.0, 0.0)
-                display_node.SetTextScale(0)  # No labels
+
+                # Line visibility settings for 2D slice views
+                display_node.SetSliceProjection(True)
+                display_node.SetSliceProjectionUseFiducialColor(True)
+                display_node.SetSliceProjectionOpacity(1.0)
+
+                # Line color fading - controls visibility distance from slice
+                # Setting large values ensures line is visible near the slice
+                display_node.SetLineColorFadingStart(1.0)
+                display_node.SetLineColorFadingEnd(10.0)
+
+                # Line thickness - use diameter mode for absolute size
+                display_node.SetCurveLineSizeMode(display_node.UseLineDiameter)
+                display_node.SetLineDiameter(1.0)  # 1mm diameter
+
+                # General visibility
+                display_node.SetVisibility(True)
+                display_node.SetVisibility2D(True)
+                display_node.SetVisibility3D(True)
+
+                # Hide point labels
+                display_node.SetTextScale(0)
+                display_node.SetPointLabelsVisibility(False)
 
             self._current_curve = curve
             self._curve_nodes.append(curve)
@@ -305,11 +333,15 @@ class WizardSampler:
         self._current_curve = None
 
     def _add_curve_point(self, ras: tuple[float, float, float]) -> None:
-        """Add a point to the current boundary curve."""
+        """Add a point to the current boundary curve.
+
+        Uses AddControlPointWorld since RAS coordinates are in world space.
+        """
         if self._current_curve:
-            n = self._current_curve.AddControlPoint(ras[0], ras[1], ras[2])
-            # Update curve line representation
-            self._current_curve.UpdateCurvePolyFromControlPoints()
+            import vtk
+
+            # Use AddControlPointWorld since RAS is world coordinate system
+            n = self._current_curve.AddControlPointWorld(vtk.vtkVector3d(ras[0], ras[1], ras[2]))
             if n < 3:  # Log first few points for debugging
                 logger.debug(
                     f"Added curve point {n}: RAS=({ras[0]:.1f}, {ras[1]:.1f}, {ras[2]:.1f})"
