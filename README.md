@@ -10,7 +10,7 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 
 ## Features
 
-- **Multiple algorithm choices** - Watershed, Level Set, Connected Threshold, Region Growing, Threshold Brush
+- **Multiple algorithm choices** - Geodesic Distance, Watershed, Random Walker, Level Set, Connected Threshold, Region Growing, Threshold Brush
 - **Auto-threshold methods** - Otsu, Huang, Triangle, Maximum Entropy, IsoData, Li
 - **Automatic intensity analysis** - GMM-based threshold estimation adapts to image content
 - **Edge-aware boundaries** - Respects anatomical boundaries automatically
@@ -27,20 +27,43 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 
 ## Installation
 
-### From Extension Manager (Recommended)
+> **Note:** SlicerAdaptiveBrush is not yet available in the Extension Index.
+> Once published, installation will be via Extension Manager search.
+
+### From GitHub Release (Recommended)
+
+1. Download the package for your platform from [GitHub Releases](https://github.com/benzwick/SlicerAdaptiveBrush/releases)
+2. Open 3D Slicer
+3. Go to **View** > **Extension Manager**
+4. Click **Install from file...**
+5. Select the downloaded `.tar.gz` (Linux/macOS) or `.zip` (Windows) file
+6. Restart Slicer
+
+### From Source
+
+1. Clone this repository: `git clone https://github.com/benzwick/SlicerAdaptiveBrush.git`
+2. Open 3D Slicer
+3. Drag-and-drop the `SlicerAdaptiveBrush/SlicerAdaptiveBrush` folder onto the Slicer application window
+4. In the popup, select **Add Python scripted modules to the application**
+5. Select which modules to load and click **Yes**
+6. Check **Add selected modules to 'Additional module paths'** if you want them to load on future sessions
+
+**Alternative method:** Go to **Edit** > **Application Settings** > **Modules** and drag-and-drop individual module folders to the **Additional module paths** list, then restart Slicer.
+
+Included modules:
+- **Segment Editor Adaptive Brush** - Adaptive brush effect for Segment Editor
+- **Adaptive Brush Reviewer** - Review optimization results and manage gold standards
+- **Adaptive Brush Tester** - Testing framework with automated and manual testing
+
+<!--
+### From Extension Manager (After Publishing)
 
 1. Open 3D Slicer
 2. Go to **View** > **Extension Manager**
 3. Search for "AdaptiveBrush"
 4. Click **Install**
 5. Restart Slicer
-
-### From Source
-
-1. Clone this repository
-2. In Slicer, go to **Edit** > **Application Settings** > **Modules**
-3. Add the path to `SlicerAdaptiveBrush` to **Additional module paths**
-4. Restart Slicer
+-->
 
 ## Usage
 
@@ -60,21 +83,16 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 
 ## Algorithms
 
-| Algorithm | Speed | Precision | Best For |
-|-----------|-------|-----------|----------|
-| **Watershed** | Medium | High | General use (default) |
-| **Level Set** | Slow | Very High | High precision needs |
-| **Connected Threshold** | Very Fast | Low | Quick rough segmentation |
-| **Region Growing** | Fast | Medium | Homogeneous regions |
-| **Threshold Brush** | Very Fast | Variable | Simple threshold painting |
-
-### Algorithm Details
-
-- **Watershed**: Marker-based morphological watershed with gradient boundary detection
-- **Level Set**: Geodesic active contour for precise boundary following
-- **Connected Threshold**: Fast flood-fill within intensity range
-- **Region Growing**: Confidence-connected expansion from seed point
-- **Threshold Brush**: Direct threshold painting with auto-detection of foreground/background
+| Algorithm | Description |
+|-----------|-------------|
+| **Geodesic Distance** | Fast marching with edge weighting (default) |
+| **Watershed** | Marker-based morphological watershed |
+| **Random Walker** | Probabilistic diffusion from seeds |
+| **Level Set (GPU)** | Geodesic active contours (GPU accelerated) |
+| **Level Set (CPU)** | Geodesic active contours (CPU fallback) |
+| **Connected Threshold** | Flood-fill within intensity range |
+| **Region Growing** | Confidence-connected expansion |
+| **Threshold Brush** | Intensity thresholding with auto-detection |
 
 ### Shared Pipeline
 
