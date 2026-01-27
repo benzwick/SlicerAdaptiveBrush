@@ -39,16 +39,19 @@ parameter_space:
       range: [10.0, 40.0]
       step: 5.0
 
-  # Algorithm selection (separate from presets)
+  # Algorithm selection - all 7 algorithms
   algorithm_substitution:
     enabled: true
     candidates:
       - geodesic_distance
       - watershed
-      - level_set
       - random_walker
+      - level_set
+      - connected_threshold
+      - region_growing
+      - threshold_brush
 
-  # Algorithm-specific parameters (tuned per algorithm)
+  # Algorithm-specific parameters
   algorithms:
     geodesic_distance:
       geodesic_edge_weight:
@@ -66,23 +69,37 @@ parameter_space:
         type: float
         range: [0.2, 1.0]
 
+    random_walker:
+      random_walker_beta:
+        type: float
+        range: [50.0, 200.0]
+        step: 25.0
+
     level_set:
-      level_set_iterations:
-        type: int
-        range: [30, 150]
-        step: 20
       level_set_propagation:
         type: float
         range: [0.5, 2.0]
       level_set_curvature:
         type: float
         range: [0.5, 2.0]
+      level_set_iterations:
+        type: int
+        range: [30, 150]
+        step: 20
 
-    random_walker:
-      random_walker_beta:
+    region_growing:
+      region_growing_multiplier:
         type: float
-        range: [50.0, 200.0]
-        step: 25.0
+        range: [1.5, 4.0]
+      region_growing_iterations:
+        type: int
+        range: [2, 8]
+
+    connected_threshold:
+      pass: true
+
+    threshold_brush:
+      pass: true
 
 output:
   reports:
