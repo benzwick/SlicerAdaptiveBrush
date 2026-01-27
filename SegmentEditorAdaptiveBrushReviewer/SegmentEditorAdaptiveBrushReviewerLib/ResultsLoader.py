@@ -64,12 +64,12 @@ class ResultsLoader:
 
         Args:
             results_dir: Directory containing optimization results.
-                        Defaults to "test_runs" relative to extension root.
+                        Defaults to "optimization_results" relative to extension root.
         """
         if results_dir is None:
-            # Find test_runs relative to this module
+            # Find optimization_results relative to this module
             module_dir = Path(__file__).parent.parent.parent
-            results_dir = module_dir / "test_runs"
+            results_dir = module_dir / "optimization_results"
         self.results_dir = Path(results_dir)
 
     def list_runs(self) -> list[Path]:
@@ -135,6 +135,7 @@ class ResultsLoader:
         # 2. Test format: [{...}, {...}, ...] - array of test results
         trials = []
         best_trial = None
+        run_name = run_path.name  # Default name from directory
 
         if isinstance(results, list):
             # Test runner format - array of test results
@@ -147,6 +148,7 @@ class ResultsLoader:
                 best_trial = max(passed_trials, key=lambda t: t.value)
         else:
             # Optuna format
+            run_name = results.get("config_name", run_path.name)
             for trial_data in results.get("trials", []):
                 trial = self._parse_trial(trial_data, run_path)
                 trials.append(trial)
@@ -155,7 +157,7 @@ class ResultsLoader:
 
         run = OptimizationRun(
             path=run_path,
-            name=results.get("config_name", run_path.name),
+            name=run_name,
             config=config,
             trials=trials,
             best_trial=best_trial,
