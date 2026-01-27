@@ -97,6 +97,8 @@ Install event filter on main window for review-specific shortcuts:
 | 1-4 | Set rating (Accept/Minor/Major/Reject) |
 | S | Save rating |
 | Space | Toggle view mode |
+| Ctrl+B | Add bookmark |
+| Ctrl+R | Restore last bookmark |
 
 **Implementation**: Qt QObject event filter pattern.
 
@@ -158,10 +160,95 @@ SegmentEditorAdaptiveBrushReviewerLib/
 ├── ResultsLoader.py           # (existing)
 ├── VisualizationController.py # (existing)
 ├── ScreenshotViewer.py        # (existing)
-├── ContourRenderer.py         # NEW: smooth contour visualization
-├── ComparisonMetrics.py       # NEW: Dice, Hausdorff, etc.
-└── RatingManager.py           # NEW: rating persistence
+├── ContourRenderer.py         # smooth contour visualization
+├── ComparisonMetrics.py       # Dice, Hausdorff, etc.
+├── RatingManager.py           # rating persistence
+└── SequenceRecorder.py        # NEW: workflow recording, view groups, bookmarks
+    ├── SequenceRecorder      # Workflow recording using Slicer Sequences
+    ├── ViewGroupManager      # Native Slicer view linking
+    └── SceneViewBookmarks    # Scene View bookmark management
 ```
+
+### 6. Native View Linking (ViewGroupManager)
+
+Replaced manual slice iteration with Slicer's native View Groups:
+
+**Manual approach (removed):**
+```python
+# Old: Manual iteration over hardcoded views
+for name in ["Red", "Yellow", "Green"]:
+    slice_widget = layout_manager.sliceWidget(name)
+    slice_logic.SetSliceOffset(offset)
+```
+
+**Native approach (implemented):**
+```python
+class ViewGroupManager:
+    def enable_linking(self, view_group: int = 0):
+        for slice_node in slicer.util.getNodesByClass("vtkMRMLSliceNode"):
+            slice_node.SetViewGroup(view_group)
+        for composite_node in slicer.util.getNodesByClass("vtkMRMLSliceCompositeNode"):
+            composite_node.SetLinkedControl(True)
+            composite_node.SetHotLinkedControl(True)
+```
+
+**Benefits:**
+- Bidirectional sync (user drags in view → other views follow)
+- Zoom/pan sync included automatically
+- Layout-aware (works with any view configuration)
+- Less code, more robust
+
+### 7. Sequence Recording (SequenceRecorder)
+
+Full workflow recording using Slicer Sequences for audit trails:
+
+```python
+class SequenceRecorder:
+    def start_recording(self, segmentation_node, reference_volume):
+        # Create browser for synchronized playback
+        self._browser_node = slicer.mrmlScene.AddNewNodeByClass(
+            "vtkMRMLSequenceBrowserNode"
+        )
+
+        # Sequences for: segmentation, all slice views, camera, notes
+        self._sequences["segmentation"] = self._create_sequence(...)
+        for slice_node in slicer.util.getNodesByClass("vtkMRMLSliceNode"):
+            self._sequences[f"slice_{name}"] = self._create_sequence(...)
+
+    def record_step(self, action_description: str):
+        # Record all synchronized sequences at current index
+        for seq in self._sequences.values():
+            seq.SetDataNodeAtValue(proxy_node, index_value)
+```
+
+**What Sequences capture:**
+- Segmentation state at each brush stroke
+- All slice positions (Red/Yellow/Green)
+- 3D camera position
+- Text notes for reviewer annotations
+
+### 8. Scene View Bookmarks (SceneViewBookmarks)
+
+Quick bookmarks for interesting slices during review:
+
+```python
+class SceneViewBookmarks:
+    def add_bookmark(self, description: str, name: str | None = None) -> int:
+        scene_view = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSceneViewNode")
+        scene_view.SetSceneViewDescription(description)
+        scene_view.StoreScene()
+        return index
+
+    def restore_bookmark(self, index: int) -> bool:
+        self._bookmarks[index].RestoreScene()
+```
+
+**What Scene Views capture:**
+- All slice positions
+- Camera positions (3D)
+- Node visibility
+- Display properties
+- Window/level
 
 ## Consequences
 
@@ -170,14 +257,18 @@ SegmentEditorAdaptiveBrushReviewerLib/
 - **Faster Review**: Keyboard shortcuts enable rapid trial navigation
 - **Clearer Visualization**: Smooth contours show true boundaries
 - **Audit Trail**: Rating records provide documentation for validation
-- **Synchronized Navigation**: Linked views reduce cognitive load
+- **Synchronized Navigation**: Linked views reduce cognitive load (native bidirectional sync)
 - **Quantitative Context**: Real-time metrics inform rating decisions
+- **Workflow Recording**: Full segmentation workflow captured for playback
+- **Bookmarking**: Save and restore interesting view states
+- **Bidirectional Sync**: Slider updates when user navigates in slice views
 
 ### Negative
 
 - **Additional Dependencies**: Requires skimage for contour extraction
 - **Keyboard Conflicts**: Shortcuts may conflict with other modules (mitigated by focus-based activation)
-- **Memory Usage**: Caching contours uses additional RAM
+- **Memory Usage**: Caching contours and sequence recordings uses additional RAM
+- **Sequence Overhead**: Recording creates multiple MRML nodes
 
 ### Trade-offs
 
@@ -187,6 +278,9 @@ SegmentEditorAdaptiveBrushReviewerLib/
 | Navigation | Mouse only | Keyboard + Mouse | Speed for bulk review |
 | Ratings | External spreadsheet | Integrated | Same environment |
 | Metrics | Post-hoc | Real-time | Immediate feedback |
+| View Sync | Manual iteration | Native View Groups | Bidirectional, robust |
+| Workflow Recording | Manual screenshots | Sequences | Full state capture |
+| Bookmarks | External notes | Scene Views | In-slicer restore |
 
 ## Alternatives Considered
 

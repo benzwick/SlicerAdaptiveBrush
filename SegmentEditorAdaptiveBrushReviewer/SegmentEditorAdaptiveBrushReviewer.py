@@ -15,6 +15,9 @@ from SegmentEditorAdaptiveBrushReviewerLib import (
     Rating,
     RatingManager,
     ResultsLoader,
+    SceneViewBookmarks,
+    SequenceRecorder,
+    ViewGroupManager,
     VisualizationController,
     compute_metrics_from_nodes,
 )
@@ -77,6 +80,14 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         # Keyboard shortcut filter
         self._shortcut_filter = None
 
+        # View management (ADR-016 enhancement)
+        self.view_group_manager = None
+        self.sequence_recorder = None
+        self.bookmarks = None
+
+        # Slice observer for bidirectional sync
+        self._updating_from_observer = False
+
     def setup(self):
         """Set up the widget UI."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -88,14 +99,21 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.rating_manager = RatingManager()
         self.metrics_calculator = ComparisonMetrics()
 
+        # Initialize view management components (ADR-016)
+        self.view_group_manager = ViewGroupManager()
+        self.sequence_recorder = SequenceRecorder()
+        self.bookmarks = SceneViewBookmarks()
+
         # Create UI
         self._create_run_selection_section()
         self._create_slice_navigation_section()
+        self._create_bookmarks_section()
         self._create_visualization_section()
         self._create_metrics_section()
         self._create_rating_section()
         self._create_parameters_metrics_section()
         self._create_screenshots_section()
+        self._create_workflow_playback_section()
         self._create_recipe_replay_section()
         self._create_actions_section()
 
@@ -104,6 +122,9 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         # Set up keyboard shortcuts
         self._setup_keyboard_shortcuts()
+
+        # Set up view linking with native Slicer mechanism
+        self._setup_view_linking()
 
         # Initialize state
         self._refresh_run_list()
@@ -215,6 +236,345 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         layout.addLayout(link_row)
 
         self.layout.addWidget(collapsible)
+
+    def _create_bookmarks_section(self):
+        """Create the bookmarks section for saving interesting views."""
+        collapsible = qt.QGroupBox("View Bookmarks")
+        layout = qt.QVBoxLayout(collapsible)
+
+        # Bookmark controls
+        controls_row = qt.QHBoxLayout()
+
+        self.addBookmarkButton = qt.QPushButton("Bookmark Current View")
+        self.addBookmarkButton.setToolTip("Save current view state (Ctrl+B)")
+        self.addBookmarkButton.clicked.connect(self._on_add_bookmark)
+        controls_row.addWidget(self.addBookmarkButton)
+
+        self.bookmarkCombo = qt.QComboBox()
+        self.bookmarkCombo.setMinimumWidth(150)
+        self.bookmarkCombo.setToolTip("Select bookmark to restore")
+        controls_row.addWidget(self.bookmarkCombo)
+
+        self.restoreBookmarkButton = qt.QPushButton("Restore")
+        self.restoreBookmarkButton.setToolTip("Restore selected bookmark")
+        self.restoreBookmarkButton.clicked.connect(self._on_restore_bookmark)
+        controls_row.addWidget(self.restoreBookmarkButton)
+
+        self.deleteBookmarkButton = qt.QPushButton("Delete")
+        self.deleteBookmarkButton.setToolTip("Delete selected bookmark")
+        self.deleteBookmarkButton.clicked.connect(self._on_delete_bookmark)
+        controls_row.addWidget(self.deleteBookmarkButton)
+
+        controls_row.addStretch()
+        layout.addLayout(controls_row)
+
+        # Bookmark description
+        desc_row = qt.QHBoxLayout()
+        desc_row.addWidget(qt.QLabel("Description:"))
+        self.bookmarkDescEdit = qt.QLineEdit()
+        self.bookmarkDescEdit.setPlaceholderText("Optional description for bookmark...")
+        desc_row.addWidget(self.bookmarkDescEdit)
+        layout.addLayout(desc_row)
+
+        self.layout.addWidget(collapsible)
+
+    def _setup_view_linking(self):
+        """Set up Slicer's native view linking via View Groups."""
+        # Enable linked control for synchronized navigation
+        if self.linkViewsCheck.isChecked():
+            self.view_group_manager.enable_linking()
+
+        # Set up observer for bidirectional sync (slider updates when user drags in view)
+        self.view_group_manager.setup_slice_observer(self._on_slice_modified_observer)
+
+    def _on_slice_modified_observer(self, caller, event):
+        """Handle slice node modification for bidirectional sync.
+
+        Updates the slider when user navigates by other means (dragging in slice view).
+        """
+        if self._updating_from_observer:
+            return
+
+        try:
+            self._updating_from_observer = True
+
+            # Get current offset from the view group manager
+            offset = self.view_group_manager.get_slice_offset("Red")
+            if offset is None:
+                return
+
+            # Get the range to compute slider position
+            slice_range = self.view_group_manager.get_slice_range("Red")
+            if slice_range is None or slice_range[1] <= slice_range[0]:
+                return
+
+            min_offset, max_offset = slice_range
+
+            # Map offset to slider value
+            if self.total_slices > 1:
+                ratio = (offset - min_offset) / (max_offset - min_offset)
+                slice_index = int(round(ratio * (self.total_slices - 1)))
+                slice_index = max(0, min(self.total_slices - 1, slice_index))
+
+                # Update slider without triggering navigation (already synced)
+                self.sliceSlider.blockSignals(True)
+                self.sliceSlider.setValue(slice_index)
+                self.sliceSlider.blockSignals(False)
+
+                self.current_slice_index = slice_index
+                self._update_slice_display()
+
+        finally:
+            self._updating_from_observer = False
+
+    def _on_add_bookmark(self):
+        """Add a bookmark at the current view position."""
+        description = self.bookmarkDescEdit.text
+        if not description:
+            description = f"Slice {self.current_slice_index + 1}"
+            if self.current_trial:
+                description = f"Trial #{self.current_trial.trial_number} - {description}"
+
+        name = f"Review_{len(self.bookmarks._bookmarks) + 1}"
+        if self.current_run:
+            name = f"{self.current_run.name}_{name}"
+
+        idx = self.bookmarks.add_bookmark(description=description, name=name)
+        if idx >= 0:
+            self._update_bookmark_combo()
+            self.bookmarkDescEdit.clear()
+            slicer.util.infoDisplay(f"Bookmark added: {name}")
+
+    def _on_restore_bookmark(self):
+        """Restore the selected bookmark."""
+        idx = self.bookmarkCombo.currentIndex
+        if idx >= 0:
+            if self.bookmarks.restore_bookmark(idx):
+                slicer.util.infoDisplay(f"Restored: {self.bookmarkCombo.currentText}")
+            else:
+                slicer.util.warningDisplay("Failed to restore bookmark")
+
+    def _on_delete_bookmark(self):
+        """Delete the selected bookmark."""
+        idx = self.bookmarkCombo.currentIndex
+        if idx >= 0:
+            name = self.bookmarkCombo.currentText
+            if self.bookmarks.remove_bookmark(idx):
+                self._update_bookmark_combo()
+                slicer.util.infoDisplay(f"Deleted: {name}")
+
+    def _update_bookmark_combo(self):
+        """Update the bookmark dropdown from the bookmarks manager."""
+        self.bookmarkCombo.clear()
+        for name, desc in self.bookmarks.list_bookmarks():
+            label = f"{name}: {desc[:30]}..." if len(desc) > 30 else f"{name}: {desc}"
+            self.bookmarkCombo.addItem(label)
+
+    def _create_workflow_playback_section(self):
+        """Create the workflow playback section for sequence review."""
+        collapsible = qt.QGroupBox("Workflow Playback")
+        main_layout = qt.QVBoxLayout(collapsible)
+
+        # Recording controls
+        record_row = qt.QHBoxLayout()
+
+        self.startRecordingButton = qt.QPushButton("Start Recording")
+        self.startRecordingButton.setToolTip("Start recording segmentation workflow")
+        self.startRecordingButton.clicked.connect(self._on_start_recording)
+        record_row.addWidget(self.startRecordingButton)
+
+        self.stopRecordingButton = qt.QPushButton("Stop Recording")
+        self.stopRecordingButton.setEnabled(False)
+        self.stopRecordingButton.clicked.connect(self._on_stop_recording)
+        record_row.addWidget(self.stopRecordingButton)
+
+        self.recordStepButton = qt.QPushButton("Record Step")
+        self.recordStepButton.setEnabled(False)
+        self.recordStepButton.setToolTip("Manually record current state as a step")
+        self.recordStepButton.clicked.connect(self._on_record_step)
+        record_row.addWidget(self.recordStepButton)
+
+        record_row.addStretch()
+        main_layout.addLayout(record_row)
+
+        # Playback controls
+        playback_row = qt.QHBoxLayout()
+
+        self.workflowFirstButton = qt.QPushButton("|<")
+        self.workflowFirstButton.setMaximumWidth(30)
+        self.workflowFirstButton.setToolTip("Go to first step")
+        self.workflowFirstButton.clicked.connect(self._on_workflow_first)
+        playback_row.addWidget(self.workflowFirstButton)
+
+        self.workflowPrevButton = qt.QPushButton("<")
+        self.workflowPrevButton.setMaximumWidth(30)
+        self.workflowPrevButton.setToolTip("Previous step")
+        self.workflowPrevButton.clicked.connect(self._on_workflow_prev)
+        playback_row.addWidget(self.workflowPrevButton)
+
+        self.workflowStepLabel = qt.QLabel("0/0")
+        self.workflowStepLabel.setMinimumWidth(60)
+        self.workflowStepLabel.setAlignment(qt.Qt.AlignCenter)
+        playback_row.addWidget(self.workflowStepLabel)
+
+        self.workflowNextButton = qt.QPushButton(">")
+        self.workflowNextButton.setMaximumWidth(30)
+        self.workflowNextButton.setToolTip("Next step")
+        self.workflowNextButton.clicked.connect(self._on_workflow_next)
+        playback_row.addWidget(self.workflowNextButton)
+
+        self.workflowLastButton = qt.QPushButton(">|")
+        self.workflowLastButton.setMaximumWidth(30)
+        self.workflowLastButton.setToolTip("Go to last step")
+        self.workflowLastButton.clicked.connect(self._on_workflow_last)
+        playback_row.addWidget(self.workflowLastButton)
+
+        playback_row.addStretch()
+        main_layout.addLayout(playback_row)
+
+        # Workflow slider
+        self.workflowSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.workflowSlider.setMinimum(0)
+        self.workflowSlider.setMaximum(0)
+        self.workflowSlider.valueChanged.connect(self._on_workflow_slider_changed)
+        main_layout.addWidget(self.workflowSlider)
+
+        # Step notes display
+        notes_group = qt.QGroupBox("Step Notes")
+        notes_layout = qt.QVBoxLayout(notes_group)
+
+        self.workflowNotesLabel = qt.QLabel("No recording loaded")
+        self.workflowNotesLabel.setWordWrap(True)
+        notes_layout.addWidget(self.workflowNotesLabel)
+
+        # Add note input
+        add_note_row = qt.QHBoxLayout()
+        self.workflowNoteEdit = qt.QLineEdit()
+        self.workflowNoteEdit.setPlaceholderText("Add a note for current step...")
+        add_note_row.addWidget(self.workflowNoteEdit)
+
+        self.addNoteButton = qt.QPushButton("Add Note")
+        self.addNoteButton.clicked.connect(self._on_add_workflow_note)
+        add_note_row.addWidget(self.addNoteButton)
+
+        notes_layout.addLayout(add_note_row)
+        main_layout.addWidget(notes_group)
+
+        self.layout.addWidget(collapsible)
+
+    def _on_start_recording(self):
+        """Start workflow recording."""
+        # Find segmentation node
+        seg_node = self.viz_controller.get_test_node()
+        if not seg_node:
+            seg_node = self.viz_controller.get_gold_node()
+
+        if not seg_node:
+            slicer.util.warningDisplay("Load a segmentation first before starting recording")
+            return
+
+        # Find reference volume
+        volume_node = None
+        volume_nodes = slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")
+        if volume_nodes:
+            volume_node = volume_nodes[0]
+
+        if self.sequence_recorder.start_recording(seg_node, volume_node):
+            self.startRecordingButton.setEnabled(False)
+            self.stopRecordingButton.setEnabled(True)
+            self.recordStepButton.setEnabled(True)
+            self._update_workflow_ui()
+            slicer.util.infoDisplay("Workflow recording started")
+
+    def _on_stop_recording(self):
+        """Stop workflow recording."""
+        self.sequence_recorder.stop_recording()
+        self.startRecordingButton.setEnabled(True)
+        self.stopRecordingButton.setEnabled(False)
+        self.recordStepButton.setEnabled(False)
+        self._update_workflow_ui()
+        slicer.util.infoDisplay(
+            f"Recording stopped. {self.sequence_recorder.step_count} steps recorded."
+        )
+
+    def _on_record_step(self):
+        """Manually record current state as a step."""
+        description = f"Manual step at slice {self.current_slice_index + 1}"
+        step = self.sequence_recorder.record_step(description)
+        if step >= 0:
+            self._update_workflow_ui()
+
+    def _on_workflow_first(self):
+        """Go to first workflow step."""
+        if self.sequence_recorder.step_count > 0:
+            self.sequence_recorder.goto_step(0)
+            self._update_workflow_ui()
+
+    def _on_workflow_prev(self):
+        """Go to previous workflow step."""
+        current = self.workflowSlider.value
+        if current > 0:
+            self.sequence_recorder.goto_step(current - 1)
+            self._update_workflow_ui()
+
+    def _on_workflow_next(self):
+        """Go to next workflow step."""
+        current = self.workflowSlider.value
+        if current < self.sequence_recorder.step_count - 1:
+            self.sequence_recorder.goto_step(current + 1)
+            self._update_workflow_ui()
+
+    def _on_workflow_last(self):
+        """Go to last workflow step."""
+        if self.sequence_recorder.step_count > 0:
+            self.sequence_recorder.goto_step(self.sequence_recorder.step_count - 1)
+            self._update_workflow_ui()
+
+    def _on_workflow_slider_changed(self, value):
+        """Handle workflow slider change."""
+        if self.sequence_recorder.step_count > 0:
+            self.sequence_recorder.goto_step(value)
+            self._update_workflow_ui()
+
+    def _on_add_workflow_note(self):
+        """Add a note to the current workflow step."""
+        note = self.workflowNoteEdit.text
+        if note:
+            self.sequence_recorder.add_note(note)
+            self.workflowNoteEdit.clear()
+            self._update_workflow_ui()
+
+    def _update_workflow_ui(self):
+        """Update the workflow playback UI."""
+        step_count = self.sequence_recorder.step_count
+
+        # Update slider
+        self.workflowSlider.setMaximum(max(0, step_count - 1))
+
+        # Get current step from browser node
+        current_step = 0
+        browser = self.sequence_recorder.get_browser_node()
+        if browser:
+            current_step = browser.GetSelectedItemNumber()
+
+        self.workflowSlider.blockSignals(True)
+        self.workflowSlider.setValue(current_step)
+        self.workflowSlider.blockSignals(False)
+
+        # Update label
+        if step_count > 0:
+            self.workflowStepLabel.setText(f"{current_step + 1}/{step_count}")
+        else:
+            self.workflowStepLabel.setText("0/0")
+
+        # Update notes display
+        note = self.sequence_recorder.get_note_at_step(current_step)
+        if note:
+            self.workflowNotesLabel.setText(f"Step {current_step + 1}: {note}")
+        elif step_count > 0:
+            self.workflowNotesLabel.setText(f"Step {current_step + 1}: (no notes)")
+        else:
+            self.workflowNotesLabel.setText("No recording loaded")
 
     def _create_metrics_section(self):
         """Create the metrics display section."""
@@ -366,40 +726,47 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.sliceLabel.setText(f"{self.current_slice_index + 1}/{self.total_slices}")
 
     def _navigate_to_slice(self, slice_index: int):
-        """Navigate all linked views to the specified slice."""
+        """Navigate to the specified slice using native view linking.
+
+        Uses ViewGroupManager for native Slicer view synchronization.
+        When view linking is enabled, setting the offset on one view
+        automatically syncs all linked views.
+
+        Args:
+            slice_index: The slice index to navigate to.
+        """
         if not self.linkViewsCheck.isChecked():
             return
 
-        # Get the layout manager
-        layout_manager = slicer.app.layoutManager()
-        if not layout_manager:
+        if self.total_slices <= 0:
             return
 
-        # Navigate each slice view
-        for name in ["Red", "Yellow", "Green"]:
-            slice_widget = layout_manager.sliceWidget(name)
-            if slice_widget:
-                slice_logic = slice_widget.sliceLogic()
-                slice_node = slice_logic.GetSliceNode()
+        # Get the slice range from the view group manager
+        slice_range = self.view_group_manager.get_slice_range("Red")
+        if slice_range is None:
+            return
 
-                # Get slice dimensions from the slice node
-                dims = slice_node.GetDimensions()
-                if dims[2] > 0:  # Has slices
-                    # Navigate using slice offset
-                    bounds = [0, 0, 0, 0, 0, 0]
-                    slice_logic.GetLowestVolumeSliceBounds(bounds)
+        min_offset, max_offset = slice_range
 
-                    # Calculate offset based on slice index
-                    if self.total_slices > 0:
-                        ratio = slice_index / max(1, self.total_slices - 1)
-                        # Interpolate between bounds
-                        offset = bounds[4] + ratio * (bounds[5] - bounds[4])
-                        slice_logic.SetSliceOffset(offset)
+        # Calculate offset based on slice index
+        ratio = slice_index / max(1, self.total_slices - 1)
+        offset = min_offset + ratio * (max_offset - min_offset)
+
+        # Set the offset - native view linking will sync all views
+        self.view_group_manager.set_slice_offset(offset, "Red")
 
     def _on_link_views_changed(self, state):
-        """Handle link views checkbox change."""
+        """Handle link views checkbox change.
+
+        Uses native Slicer view linking via ViewGroupManager.
+        """
+        linked = state == qt.Qt.Checked
+
+        # Use ViewGroupManager for native linking
+        self.view_group_manager.set_linked(linked)
+
         # When enabled, sync all views to current slice
-        if state == qt.Qt.Checked:
+        if linked:
             self._navigate_to_slice(self.current_slice_index)
 
     def _on_compute_metrics(self):
@@ -1604,6 +1971,17 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self.stepping_runner = None
         self.current_action_recipe = None
 
+        # Clean up view management components (ADR-016)
+        if self.view_group_manager:
+            self.view_group_manager.cleanup()
+            self.view_group_manager = None
+        if self.sequence_recorder:
+            self.sequence_recorder.cleanup()
+            self.sequence_recorder = None
+        if self.bookmarks:
+            self.bookmarks.cleanup()
+            self.bookmarks = None
+
         # Clean up keyboard shortcut filter
         if self._shortcut_filter:
             slicer.util.mainWindow().removeEventFilter(self._shortcut_filter)
@@ -1621,6 +1999,8 @@ class ReviewShortcutFilter(qt.QObject):
     - 1-4: Set rating (Accept/Minor/Major/Reject)
     - S: Save rating
     - Space: Toggle view mode
+    - Ctrl+B: Add bookmark
+    - Ctrl+R: Restore last bookmark
     """
 
     def __init__(self, widget):
@@ -1691,13 +2071,24 @@ class ReviewShortcutFilter(qt.QObject):
             return True
 
         # Save rating
-        elif key == qt.Qt.Key_S:
+        elif key == qt.Qt.Key_S and not ctrl:
             self.widget._on_save_rating()
             return True
 
         # Toggle view mode
         elif key == qt.Qt.Key_Space:
             self._toggle_view_mode()
+            return True
+
+        # Bookmark shortcuts (ADR-016)
+        elif key == qt.Qt.Key_B and ctrl:
+            self.widget._on_add_bookmark()
+            return True
+
+        elif key == qt.Qt.Key_R and ctrl:
+            # Restore the most recent bookmark
+            if self.widget.bookmarks and self.widget.bookmarks.count > 0:
+                self.widget.bookmarks.restore_bookmark(self.widget.bookmarks.count - 1)
             return True
 
         return False
