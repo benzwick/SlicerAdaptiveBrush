@@ -252,5 +252,24 @@ class ResultsLoader:
         """
         recipes = run.config.get("recipes", [])
         if recipes and "gold_standard" in recipes[0]:
-            return Path(recipes[0]["gold_standard"])
+            gold_path = Path(recipes[0]["gold_standard"])
+
+            # If path is absolute and exists, use it directly
+            if gold_path.is_absolute() and gold_path.exists():
+                return gold_path
+
+            # Try to resolve relative path from extension root (Tester module)
+            # Gold standards are stored in SegmentEditorAdaptiveBrushTester/GoldStandards/
+            tester_dir = Path(__file__).parent.parent.parent / "SegmentEditorAdaptiveBrushTester"
+            resolved_path = tester_dir / gold_path
+            if resolved_path.exists():
+                return resolved_path
+
+            # Also try relative to run directory
+            run_resolved = run.path / gold_path
+            if run_resolved.exists():
+                return run_resolved
+
+            # Return original path (will fail with helpful error message)
+            return gold_path
         return None

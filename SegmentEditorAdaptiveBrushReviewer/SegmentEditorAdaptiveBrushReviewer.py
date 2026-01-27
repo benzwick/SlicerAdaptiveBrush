@@ -5,6 +5,8 @@ A Slicer module for reviewing optimization results and managing gold standards.
 See ADR-012 for architecture decisions.
 """
 
+from __future__ import annotations
+
 import logging
 from pathlib import Path
 
@@ -1535,14 +1537,116 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             # Start a rating session for this run
             self.rating_manager.start_session(self.current_run.name)
 
-            # Update slice count estimate (will be refined when data is loaded)
-            self.total_slices = 100  # Default, updated when volume loads
-            self.sliceSlider.setMaximum(self.total_slices - 1)
-            self._update_slice_display()
+            # Auto-load volume and gold standard for this run
+            self._auto_load_run_data()
+
+            # Update slice count from loaded volume
+            self._update_slice_count_from_volume()
 
         except Exception as e:
             logging.error(f"Failed to load run: {e}")
             _error(f"Failed to load run: {e}")
+
+    def _auto_load_run_data(self):
+        """Auto-load sample data and gold standard for current run."""
+        import slicer
+
+        if not self.current_run:
+            return
+
+        # Get sample data name from recipe
+        sample_name = self._get_sample_data_from_recipe()
+        if sample_name:
+            try:
+                import SampleData
+
+                # Check if already loaded
+                existing = slicer.util.getNode(sample_name + "*") if sample_name else None
+                if not existing:
+                    logging.info(f"Auto-loading sample data: {sample_name}")
+                    volume_node = SampleData.downloadSample(sample_name)
+                    if volume_node:
+                        _info(f"Loaded: {sample_name}")
+                        # Set as background in all slice views
+                        for name in ["Red", "Yellow", "Green"]:
+                            slicer.app.layoutManager().sliceWidget(
+                                name
+                            ).sliceLogic().GetSliceCompositeNode().SetBackgroundVolumeID(
+                                volume_node.GetID()
+                            )
+                else:
+                    logging.info(f"Sample data already loaded: {sample_name}")
+            except Exception as e:
+                logging.warning(f"Could not auto-load sample data: {e}")
+
+        # Auto-load gold standard
+        gold_path = self.results_loader.get_gold_standard_path(self.current_run)
+        if gold_path and gold_path.exists():
+            try:
+                if self.viz_controller.load_gold_segmentation(gold_path):
+                    logging.info(f"Auto-loaded gold standard: {gold_path.name}")
+            except Exception as e:
+                logging.warning(f"Could not auto-load gold standard: {e}")
+
+    def _get_sample_data_from_recipe(self) -> str | None:
+        """Get sample data name from run's recipe."""
+        if not self.current_run:
+            return None
+
+        recipes = self.current_run.config.get("recipes", [])
+        if not recipes:
+            return None
+
+        recipe_path_str = recipes[0].get("path", "")
+        if not recipe_path_str:
+            return None
+
+        # Find and parse the recipe file
+        tester_dir = Path(__file__).parent.parent / "SegmentEditorAdaptiveBrushTester"
+        recipe_path = tester_dir / recipe_path_str
+
+        if not recipe_path.exists():
+            logging.warning(f"Recipe not found: {recipe_path}")
+            return None
+
+        # Parse sample_data from recipe file
+        try:
+            with open(recipe_path) as f:
+                content = f.read()
+            # Look for sample_data = "..." or sample_data = '...'
+            import re
+
+            match = re.search(r'sample_data\s*=\s*["\']([^"\']+)["\']', content)
+            if match:
+                return match.group(1)
+        except Exception as e:
+            logging.warning(f"Could not parse recipe: {e}")
+
+        return None
+
+    def _update_slice_count_from_volume(self):
+        """Update slice count from the loaded background volume."""
+        import slicer
+
+        try:
+            red_logic = slicer.app.layoutManager().sliceWidget("Red").sliceLogic()
+            composite = red_logic.GetSliceCompositeNode()
+            vol_id = composite.GetBackgroundVolumeID()
+            if vol_id:
+                vol_node = slicer.mrmlScene.GetNodeByID(vol_id)
+                if vol_node and vol_node.GetImageData():
+                    dims = vol_node.GetImageData().GetDimensions()
+                    self.total_slices = dims[2]  # Axial slices
+                    self.sliceSlider.setMaximum(self.total_slices - 1)
+                    self._update_slice_display()
+                    return
+
+            # Fallback
+            self.total_slices = 100
+            self.sliceSlider.setMaximum(self.total_slices - 1)
+            self._update_slice_display()
+        except Exception as e:
+            logging.warning(f"Could not get slice count: {e}")
 
     def _reset_metrics_display(self):
         """Reset metrics display to default state."""
@@ -1588,6 +1692,22 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self._display_trial(trial)
             self._load_existing_rating()
             self._reset_metrics_display()
+
+            # Auto-load test segmentation
+            self._auto_load_trial_segmentation(trial)
+
+    def _auto_load_trial_segmentation(self, trial):
+        """Auto-load segmentation for the selected trial."""
+        if not trial:
+            return
+
+        seg_path = trial.segmentation_path
+        if seg_path and seg_path.exists():
+            try:
+                if self.viz_controller.load_test_segmentation(seg_path):
+                    logging.info(f"Auto-loaded trial segmentation: {seg_path.name}")
+            except Exception as e:
+                logging.warning(f"Could not auto-load trial segmentation: {e}")
 
     def _display_trial(self, trial):
         """Display trial parameters and metrics."""
