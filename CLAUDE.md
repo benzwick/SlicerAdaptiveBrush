@@ -295,6 +295,12 @@ When catching:
 - **/fix-bad-practices** - Systematically fix bad patterns
 - **/autonomous-code-review** - Full automated review cycle
 
+## Git Workflow
+
+- **Never push** - Only the user pushes to remote. Claude creates commits but never pushes.
+- **Never run ad-hoc code** - Create proper scripts instead of inline Python/bash. Add utilities to `scripts/` or update existing tools.
+- **Commit when asked** - Don't commit automatically; wait for user to request it.
+
 ## Commit Message Format
 
 ```
