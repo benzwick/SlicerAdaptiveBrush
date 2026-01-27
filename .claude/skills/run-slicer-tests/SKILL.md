@@ -15,6 +15,10 @@ Where:
   - `algorithm` - Run algorithm tests only
   - `ui` - Run UI tests only
   - `workflow` - Run workflow tests only
+  - `reviewer` - Run all Reviewer module tests
+  - `reviewer_unit` - Run Reviewer unit tests (SequenceRecorder, ViewGroupManager, Bookmarks)
+  - `reviewer_ui` - Run Reviewer UI tests (navigation, bookmarks, playback, visualization, rating, keyboard)
+  - `reviewer_integration` - Run Reviewer integration test (full workflow)
 
 ## What This Skill Does
 

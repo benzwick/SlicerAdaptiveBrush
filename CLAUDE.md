@@ -415,6 +415,9 @@ cp .env.example .env
 /run-slicer-tests                    # Run all tests
 /run-slicer-tests algorithms         # Run algorithm tests only
 /run-slicer-tests ui                 # Run UI tests only
+/run-slicer-tests reviewer           # Run Reviewer module tests
+/run-slicer-tests reviewer_unit      # Run Reviewer unit tests only
+/run-slicer-tests reviewer_ui        # Run Reviewer UI tests only
 ```
 
 ### Test Output
@@ -463,8 +466,15 @@ reviews/
 
 **Testing Skills:**
 - **/run-slicer-tests**: Launch Slicer, run test suite, leave open for manual testing
+- **/run-reviewer-tests**: Run Reviewer module UI tests specifically
 - **/review-test-results**: Analyze test output with specialized agent
 - **/add-test-case**: Create new test case from template
+
+**Reviewer Testing Skills:**
+- **/run-reviewer-tests**: Run all Reviewer module tests
+- **/run-reviewer-tests reviewer_unit**: Unit tests (SequenceRecorder, ViewGroupManager, Bookmarks)
+- **/run-reviewer-tests reviewer_ui**: UI tests (navigation, bookmarks, playback, visualization, rating, keyboard)
+- **/run-reviewer-tests reviewer_integration**: Full workflow integration test
 
 **Review Skills:**
 - **/review-code-quality**: Analyze exception handling (fail-fast), logging, type hints, dead code
@@ -484,6 +494,10 @@ reviews/
 - **bug-fixer**: Analyzes failures, proposes fixes
 - **algorithm-improver**: Reviews metrics, suggests optimizations
 - **ui-improver**: Reviews screenshots, suggests UI improvements
+
+**Reviewer Module Agents:**
+- **reviewer-bug-fixer**: Fixes bugs in Reviewer module (specializes in common patterns)
+- **reviewer-test-analyst**: Analyzes Reviewer test screenshots and results
 
 **Review Agents:**
 - **code-quality-reviewer**: Deep code analysis for quality issues
@@ -523,6 +537,108 @@ class TestAlgorithmWatershed(TestCase):
 
 See `docs/adr/ADR-010-testing-framework.md` for architecture details.
 See `SegmentEditorAdaptiveBrushTester/README.md` for manual testing workflow.
+
+## Reviewer Module Testing
+
+The **SegmentEditorAdaptiveBrushReviewer** module has comprehensive Playwright-style UI tests.
+
+### Reviewer Test Structure
+
+```
+SegmentEditorAdaptiveBrushTester/TestCases/
+├── fixtures/
+│   ├── mock_optimization_run.py    # Create fake optimization runs
+│   └── mock_segmentations.py       # Create test segmentation nodes
+├── test_reviewer_unit_sequence.py      # SequenceRecorder class
+├── test_reviewer_unit_viewgroup.py     # ViewGroupManager class
+├── test_reviewer_unit_bookmarks.py     # SceneViewBookmarks class
+├── test_reviewer_ui_slice_navigation.py # Slice slider, buttons, linking
+├── test_reviewer_ui_bookmarks.py       # Bookmark add/restore/delete
+├── test_reviewer_ui_workflow_playback.py # Recording start/stop/step
+├── test_reviewer_ui_visualization.py   # Layout, view modes, toggles
+├── test_reviewer_ui_rating.py          # Rating buttons, save, export
+├── test_reviewer_ui_keyboard.py        # All keyboard shortcuts
+└── test_reviewer_integration.py        # Full workflow test
+```
+
+### Running Reviewer Tests
+
+```bash
+# Run all reviewer tests
+"$SLICER_PATH" --python-script scripts/run_tests.py reviewer
+
+# Run unit tests only (fastest)
+"$SLICER_PATH" --python-script scripts/run_tests.py --exit reviewer_unit
+
+# Run UI tests only
+"$SLICER_PATH" --python-script scripts/run_tests.py --exit reviewer_ui
+
+# Run integration test only
+"$SLICER_PATH" --python-script scripts/run_tests.py --exit reviewer_integration
+```
+
+### Reviewer Test Categories
+
+| Category | Tests | Description |
+|----------|-------|-------------|
+| `reviewer_unit` | 3 | Core class unit tests |
+| `reviewer_ui` | 6 | UI widget interaction tests |
+| `reviewer_integration` | 1 | Full 9-phase workflow test |
+
+### Test Fixtures
+
+**MockOptimizationRunFactory**: Creates fake optimization run directories
+```python
+factory = MockOptimizationRunFactory()
+run_path = factory.create_run("test_run", num_trials=5)
+# Creates: results.json, config.yaml, parameter_importance.json
+factory.cleanup()
+```
+
+**MockSegmentationFactory**: Creates test segmentation nodes
+```python
+factory = MockSegmentationFactory()
+seg_node = factory.create_sphere_segmentation(center=(128,128,64), radius=20, volume_node=vol)
+gold_node, test_node = factory.create_gold_test_pair(volume_node, overlap_ratio=0.8)
+factory.cleanup()
+```
+
+### Expected Bugs to Find
+
+The tests are designed to catch these common issues:
+
+1. **`'list' object has no attribute 'get'`** in `_on_run_selected`
+   - Cause: ResultsLoader returns list for test format runs
+
+2. **Bidirectional sync race conditions**
+   - Cause: Slider updates triggering callbacks during programmatic changes
+
+3. **Bookmark restoration with changed scene**
+   - Cause: SceneView references deleted nodes
+
+4. **Metrics with empty segments**
+   - Cause: Division by zero or empty labelmap
+
+5. **Recording without loaded segmentation**
+   - Cause: Start recording clicked before loading data
+
+6. **Keyboard shortcuts when dialogs open**
+   - Cause: Shortcuts fire even during modal dialogs
+
+### Reviewer Bug Fix Workflow
+
+1. Run tests:
+   ```bash
+   /run-reviewer-tests --exit reviewer_unit
+   ```
+
+2. Review failures in `test_runs/<timestamp>/results.json`
+
+3. Check screenshots for visual context
+
+4. Use `reviewer-bug-fixer` agent to fix identified issues
+
+5. Re-run tests to verify fix
 
 ## Dependencies
 
