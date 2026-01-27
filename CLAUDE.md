@@ -346,6 +346,53 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-014**: Enhanced testing with recipe replay
 - **ADR-015**: Parameter wizard - *implemented*
 
+## Parameter Optimization (Optuna)
+
+The project includes an Optuna-based parameter optimization framework for tuning algorithm parameters against gold standard segmentations.
+
+### Running Optimization
+
+```bash
+# Run optimization with a config file
+Slicer --python-script scripts/run_optimization.py configs/tumor_optimization.yaml
+
+# Check progress
+python scripts/check_optimization_progress.py
+```
+
+### Gold Standard Limitations (IMPORTANT)
+
+**The optimizer can only be as good as the gold standard.** Key limitations:
+
+1. **Dice score is bounded by gold standard quality** - If the gold standard has errors, the optimizer will learn those errors. A Dice of 0.99 against a flawed gold standard does NOT mean good segmentation.
+
+2. **Segmentations require expert review** - Never trust metrics alone. The output segmentations should be reviewed by:
+   - Domain experts (radiologists, pathologists) for medical imaging
+   - An AI model specifically trained for segmentation quality assessment
+   - At minimum, visual inspection by someone familiar with the anatomy
+
+3. **Gold standards should be expert-created** - Before optimization, ensure gold standards are created or validated by domain experts.
+
+4. **High-scoring trials may exceed gold standard** - The gold_candidates/ directory captures trials with Dice > 0.999, which could indicate the optimizer found parameters producing segmentations that are actually *better* than the gold standard. These warrant careful expert review.
+
+5. **Metrics can mislead** - A segmentation could have high Dice but miss clinically important regions, or include spurious regions that happen to overlap the gold standard.
+
+### Output Files
+
+```
+optimization_results/<timestamp>_<name>/
+├── config.yaml              # Copy of optimization config
+├── lab_notebook.md          # Human-readable results summary
+├── results.json             # Full results in JSON
+├── parameter_importance.json # Parameter importance scores
+├── optuna_study.db          # SQLite database for Optuna
+├── screenshots/             # Screenshots per trial
+├── segmentations/           # Segmentation outputs per trial
+├── gold_candidates/         # Trials exceeding Dice threshold
+└── logs/
+    └── slicer_session.log   # Slicer log copy
+```
+
 ## Slicer Testing Framework
 
 The **SegmentEditorAdaptiveBrushTester** module provides comprehensive testing inside Slicer.

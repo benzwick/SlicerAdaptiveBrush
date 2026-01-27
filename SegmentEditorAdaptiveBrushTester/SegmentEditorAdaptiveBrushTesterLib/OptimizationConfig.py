@@ -257,8 +257,16 @@ class OptimizationConfig:
         # Algorithm-specific parameters
         algo_params = param_space.get("algorithms", {})
         for algo_name, params in algo_params.items():
+            logger.debug(f"Parsing algorithm params for {algo_name}: {params}")
             config.algorithm_params[algo_name] = {}
+            if not isinstance(params, dict):
+                logger.debug(f"Skipping non-dict params for {algo_name}")
+                continue
             for param_name, spec in params.items():
+                # Skip 'pass: true' entries (marker for no algorithm-specific params)
+                if param_name == "pass" or not isinstance(spec, dict):
+                    logger.debug(f"Skipping non-dict spec: {param_name}={spec}")
+                    continue
                 config.algorithm_params[algo_name][param_name] = ParameterSpec.from_dict(
                     param_name, spec
                 )

@@ -26,12 +26,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     pass
 
-# Set up logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    datefmt="%H:%M:%S",
+# Set up logging - must use StreamHandler with sys.stdout for Slicer
+# (Slicer doesn't capture stderr or default logging output)
+_handler = logging.StreamHandler(sys.stdout)
+_handler.setLevel(logging.DEBUG)
+_handler.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s", "%H:%M:%S")
 )
+logging.root.addHandler(_handler)
+logging.root.setLevel(logging.DEBUG)
 logger = logging.getLogger("optimization")
 
 
@@ -260,14 +263,21 @@ def load_gold_standard(gold_name: str):
     seg_file = gold_path / "gold.seg.nrrd"
     gold_seg_node = slicer.util.loadSegmentation(str(seg_file))
 
+    # Show gold standard as outline only in a distinct color (cyan)
+    display_node = gold_seg_node.GetDisplayNode()
+    display_node.SetVisibility(True)
+    display_node.SetVisibility2DFill(False)  # No fill
+    display_node.SetVisibility2DOutline(True)  # Outline only
+    display_node.SetSliceIntersectionThickness(2)  # Thicker outline
+    # Get segment ID and set color to gold for "gold standard"
+    gold_segmentation = gold_seg_node.GetSegmentation()
+    gold_segment_id = gold_segmentation.GetNthSegmentID(0)
+    gold_segmentation.GetSegment(gold_segment_id).SetColor(1.0, 0.84, 0.0)  # Gold (#FFD700)
+
     # Load metadata
     metadata_file = gold_path / "metadata.json"
     with open(metadata_file) as f:
         metadata = json.load(f)
-
-    # Get segment ID (first segment in the gold standard)
-    gold_segmentation = gold_seg_node.GetSegmentation()
-    gold_segment_id = gold_segmentation.GetNthSegmentID(0)
 
     click_locations = metadata.get("clicks", [])
 
@@ -436,8 +446,14 @@ def run_optimization(
     # Create directories for trial outputs
     screenshots_dir = optimizer.output_dir / "screenshots"
     segmentations_dir = optimizer.output_dir / "segmentations"
+    gold_candidates_dir = optimizer.output_dir / "gold_candidates"
     screenshots_dir.mkdir(exist_ok=True)
     segmentations_dir.mkdir(exist_ok=True)
+    gold_candidates_dir.mkdir(exist_ok=True)
+
+    # Threshold for potential gold standard improvement
+    # If Dice exceeds this, segmentation may be better than current gold standard
+    GOLD_CANDIDATE_THRESHOLD = 0.999
 
     # Define objective function
     def objective(trial: optuna.Trial, params: dict[str, Any]) -> float:
@@ -523,6 +539,17 @@ def run_optimization(
         seg_path = segmentations_dir / f"trial_{trial_num:03d}.seg.nrrd"
         slicer.util.saveNode(segmentation_node, str(seg_path))
 
+        # Check if this could be a better gold standard
+        if final_dice >= GOLD_CANDIDATE_THRESHOLD:
+            candidate_path = (
+                gold_candidates_dir / f"trial_{trial_num:03d}_dice_{final_dice:.4f}.seg.nrrd"
+            )
+            slicer.util.saveNode(segmentation_node, str(candidate_path))
+            logger.info(
+                f"  GOLD CANDIDATE: Dice {final_dice:.4f} exceeds threshold {GOLD_CANDIDATE_THRESHOLD}"
+            )
+            logger.info(f"  Saved to: {candidate_path}")
+
         # Save screenshot manifest
         screenshot_capture.save_manifest()
 
@@ -587,6 +614,15 @@ def generate_lab_notebook(output_dir: Path, results, config, gold_metadata: dict
         f.write(f"- **Pruned Trials:** {sum(1 for t in results.trials if t.pruned)}\n")
         f.write(f"- **Duration:** {results.duration_seconds:.1f}s\n\n")
 
+        f.write(
+            "> **⚠️ Important:** Dice scores are only meaningful relative to the gold standard.\n"
+        )
+        f.write("> If the gold standard has errors, high Dice scores may indicate the optimizer\n")
+        f.write(
+            "> learned those errors. Segmentation outputs require expert review (human or AI)\n"
+        )
+        f.write("> to verify clinical quality.\n\n")
+
         f.write("## Best Parameters\n\n")
         f.write("```json\n")
         f.write(json.dumps(results.best_trial.params, indent=2))
@@ -630,6 +666,7 @@ def main():
     logger.info(f"PROJECT_ROOT: {PROJECT_ROOT}")
 
     args = parse_args()
+    logger.debug(f"Args: {args}")
 
     # Resolve config path relative to PROJECT_ROOT if not absolute
     config_path = args.config
