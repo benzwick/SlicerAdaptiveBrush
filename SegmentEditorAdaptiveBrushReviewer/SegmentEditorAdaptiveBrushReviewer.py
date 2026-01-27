@@ -11,8 +11,12 @@ from pathlib import Path
 import qt
 import slicer
 from SegmentEditorAdaptiveBrushReviewerLib import (
+    ComparisonMetrics,
+    Rating,
+    RatingManager,
     ResultsLoader,
     VisualizationController,
+    compute_metrics_from_nodes,
 )
 from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModule,
@@ -63,6 +67,16 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.current_action_recipe = None
         self.autoplay_timer = None
 
+        # Review state
+        self.rating_manager = None
+        self.metrics_calculator = None
+        self.current_metrics = None
+        self.current_slice_index = 0
+        self.total_slices = 0
+
+        # Keyboard shortcut filter
+        self._shortcut_filter = None
+
     def setup(self):
         """Set up the widget UI."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -71,10 +85,15 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.logic = SegmentEditorAdaptiveBrushReviewerLogic()
         self.results_loader = ResultsLoader()
         self.viz_controller = VisualizationController()
+        self.rating_manager = RatingManager()
+        self.metrics_calculator = ComparisonMetrics()
 
         # Create UI
         self._create_run_selection_section()
+        self._create_slice_navigation_section()
         self._create_visualization_section()
+        self._create_metrics_section()
+        self._create_rating_section()
         self._create_parameters_metrics_section()
         self._create_screenshots_section()
         self._create_recipe_replay_section()
@@ -82,6 +101,9 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         # Add vertical spacer
         self.layout.addStretch(1)
+
+        # Set up keyboard shortcuts
+        self._setup_keyboard_shortcuts()
 
         # Initialize state
         self._refresh_run_list()
@@ -118,6 +140,396 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         layout.addRow("", self.bestTrialLabel)
 
         self.layout.addWidget(collapsible)
+
+    def _create_slice_navigation_section(self):
+        """Create the slice navigation section with linked views."""
+        collapsible = qt.QGroupBox("Slice Navigation")
+        layout = qt.QVBoxLayout(collapsible)
+
+        # Slice slider
+        slider_row = qt.QHBoxLayout()
+        slider_row.addWidget(qt.QLabel("Slice:"))
+
+        self.sliceSlider = qt.QSlider(qt.Qt.Horizontal)
+        self.sliceSlider.setMinimum(0)
+        self.sliceSlider.setMaximum(100)
+        self.sliceSlider.valueChanged.connect(self._on_slice_changed)
+        slider_row.addWidget(self.sliceSlider)
+
+        self.sliceLabel = qt.QLabel("0/0")
+        self.sliceLabel.setMinimumWidth(50)
+        slider_row.addWidget(self.sliceLabel)
+
+        layout.addLayout(slider_row)
+
+        # Navigation buttons
+        nav_row = qt.QHBoxLayout()
+
+        self.firstSliceButton = qt.QPushButton("|<")
+        self.firstSliceButton.setMaximumWidth(30)
+        self.firstSliceButton.setToolTip("First slice (Home)")
+        self.firstSliceButton.clicked.connect(self._on_first_slice)
+        nav_row.addWidget(self.firstSliceButton)
+
+        self.prevSliceButton = qt.QPushButton("<")
+        self.prevSliceButton.setMaximumWidth(30)
+        self.prevSliceButton.setToolTip("Previous slice (←)")
+        self.prevSliceButton.clicked.connect(self._on_prev_slice)
+        nav_row.addWidget(self.prevSliceButton)
+
+        self.prevFastButton = qt.QPushButton("<<")
+        self.prevFastButton.setMaximumWidth(30)
+        self.prevFastButton.setToolTip("Jump 10 slices back (Ctrl+←)")
+        self.prevFastButton.clicked.connect(lambda: self._jump_slices(-10))
+        nav_row.addWidget(self.prevFastButton)
+
+        self.nextFastButton = qt.QPushButton(">>")
+        self.nextFastButton.setMaximumWidth(30)
+        self.nextFastButton.setToolTip("Jump 10 slices forward (Ctrl+→)")
+        self.nextFastButton.clicked.connect(lambda: self._jump_slices(10))
+        nav_row.addWidget(self.nextFastButton)
+
+        self.nextSliceButton = qt.QPushButton(">")
+        self.nextSliceButton.setMaximumWidth(30)
+        self.nextSliceButton.setToolTip("Next slice (→)")
+        self.nextSliceButton.clicked.connect(self._on_next_slice)
+        nav_row.addWidget(self.nextSliceButton)
+
+        self.lastSliceButton = qt.QPushButton(">|")
+        self.lastSliceButton.setMaximumWidth(30)
+        self.lastSliceButton.setToolTip("Last slice (End)")
+        self.lastSliceButton.clicked.connect(self._on_last_slice)
+        nav_row.addWidget(self.lastSliceButton)
+
+        nav_row.addStretch()
+        layout.addLayout(nav_row)
+
+        # Link views checkbox
+        link_row = qt.QHBoxLayout()
+        self.linkViewsCheck = qt.QCheckBox("Link all views")
+        self.linkViewsCheck.setChecked(True)
+        self.linkViewsCheck.setToolTip("Navigate all slice views together")
+        self.linkViewsCheck.stateChanged.connect(self._on_link_views_changed)
+        link_row.addWidget(self.linkViewsCheck)
+        link_row.addStretch()
+        layout.addLayout(link_row)
+
+        self.layout.addWidget(collapsible)
+
+    def _create_metrics_section(self):
+        """Create the metrics display section."""
+        collapsible = qt.QGroupBox("Comparison Metrics")
+        layout = qt.QHBoxLayout(collapsible)
+
+        # Left column: Primary metrics
+        primary = qt.QVBoxLayout()
+        self.diceLabel = qt.QLabel("Dice: -")
+        self.diceLabel.setStyleSheet("font-weight: bold; font-size: 14px;")
+        primary.addWidget(self.diceLabel)
+
+        self.hausdorffLabel = qt.QLabel("Hausdorff: -")
+        primary.addWidget(self.hausdorffLabel)
+
+        self.volumeLabel = qt.QLabel("Volume diff: -")
+        primary.addWidget(self.volumeLabel)
+
+        layout.addLayout(primary)
+
+        # Separator
+        line = qt.QFrame()
+        line.setFrameShape(qt.QFrame.VLine)
+        line.setFrameShadow(qt.QFrame.Sunken)
+        layout.addWidget(line)
+
+        # Right column: Confusion matrix stats
+        secondary = qt.QVBoxLayout()
+        self.sensitivityLabel = qt.QLabel("Sensitivity: -")
+        secondary.addWidget(self.sensitivityLabel)
+
+        self.specificityLabel = qt.QLabel("Precision: -")
+        secondary.addWidget(self.specificityLabel)
+
+        self.tpfpfnLabel = qt.QLabel("TP/FP/FN: -")
+        secondary.addWidget(self.tpfpfnLabel)
+
+        layout.addLayout(secondary)
+
+        # Compute button
+        self.computeMetricsButton = qt.QPushButton("Compute")
+        self.computeMetricsButton.clicked.connect(self._on_compute_metrics)
+        layout.addWidget(self.computeMetricsButton)
+
+        self.layout.addWidget(collapsible)
+
+    def _create_rating_section(self):
+        """Create the rating section for review decisions."""
+        collapsible = qt.QGroupBox("Review Rating")
+        layout = qt.QVBoxLayout(collapsible)
+
+        # Rating buttons (1-4 keyboard shortcuts)
+        rating_row = qt.QHBoxLayout()
+        rating_row.addWidget(qt.QLabel("Rating:"))
+
+        self.ratingGroup = qt.QButtonGroup()
+
+        rating_buttons = [
+            ("Accept (1)", Rating.ACCEPT, "green"),
+            ("Minor (2)", Rating.MINOR, "yellow"),
+            ("Major (3)", Rating.MAJOR, "orange"),
+            ("Reject (4)", Rating.REJECT, "red"),
+        ]
+
+        for text, rating, color in rating_buttons:
+            radio = qt.QRadioButton(text)
+            radio.setStyleSheet(f"QRadioButton::indicator:checked {{ background-color: {color}; }}")
+            self.ratingGroup.addButton(radio, rating.value)
+            rating_row.addWidget(radio)
+
+        rating_row.addStretch()
+        layout.addLayout(rating_row)
+
+        # Notes field
+        notes_row = qt.QHBoxLayout()
+        notes_row.addWidget(qt.QLabel("Notes:"))
+        self.notesEdit = qt.QLineEdit()
+        self.notesEdit.setPlaceholderText("Optional reviewer notes...")
+        notes_row.addWidget(self.notesEdit)
+        layout.addLayout(notes_row)
+
+        # Save button
+        save_row = qt.QHBoxLayout()
+        self.saveRatingButton = qt.QPushButton("Save Rating (S)")
+        self.saveRatingButton.clicked.connect(self._on_save_rating)
+        save_row.addWidget(self.saveRatingButton)
+
+        self.currentRatingLabel = qt.QLabel("Status: Not rated")
+        save_row.addWidget(self.currentRatingLabel)
+        save_row.addStretch()
+
+        layout.addLayout(save_row)
+
+        # Trial navigation
+        trial_nav = qt.QHBoxLayout()
+        self.prevTrialButton = qt.QPushButton("◄ Prev Trial (P)")
+        self.prevTrialButton.clicked.connect(self._on_prev_trial)
+        trial_nav.addWidget(self.prevTrialButton)
+
+        self.nextTrialButton = qt.QPushButton("Next Trial (N) ►")
+        self.nextTrialButton.clicked.connect(self._on_next_trial)
+        trial_nav.addWidget(self.nextTrialButton)
+
+        trial_nav.addStretch()
+
+        self.exportRatingsButton = qt.QPushButton("Export Ratings...")
+        self.exportRatingsButton.clicked.connect(self._on_export_ratings)
+        trial_nav.addWidget(self.exportRatingsButton)
+
+        layout.addLayout(trial_nav)
+
+        self.layout.addWidget(collapsible)
+
+    def _setup_keyboard_shortcuts(self):
+        """Set up keyboard shortcuts for review navigation."""
+        # Install event filter to capture key presses
+        self._shortcut_filter = ReviewShortcutFilter(self)
+        slicer.util.mainWindow().installEventFilter(self._shortcut_filter)
+
+    def _on_slice_changed(self, value):
+        """Handle slice slider change."""
+        self.current_slice_index = value
+        self._update_slice_display()
+        self._navigate_to_slice(value)
+
+    def _on_first_slice(self):
+        """Go to first slice."""
+        self.sliceSlider.setValue(0)
+
+    def _on_prev_slice(self):
+        """Go to previous slice."""
+        self.sliceSlider.setValue(max(0, self.sliceSlider.value - 1))
+
+    def _on_next_slice(self):
+        """Go to next slice."""
+        self.sliceSlider.setValue(min(self.total_slices - 1, self.sliceSlider.value + 1))
+
+    def _on_last_slice(self):
+        """Go to last slice."""
+        self.sliceSlider.setValue(self.total_slices - 1)
+
+    def _jump_slices(self, delta: int):
+        """Jump by delta slices."""
+        new_val = max(0, min(self.total_slices - 1, self.sliceSlider.value + delta))
+        self.sliceSlider.setValue(new_val)
+
+    def _update_slice_display(self):
+        """Update slice label."""
+        self.sliceLabel.setText(f"{self.current_slice_index + 1}/{self.total_slices}")
+
+    def _navigate_to_slice(self, slice_index: int):
+        """Navigate all linked views to the specified slice."""
+        if not self.linkViewsCheck.isChecked():
+            return
+
+        # Get the layout manager
+        layout_manager = slicer.app.layoutManager()
+        if not layout_manager:
+            return
+
+        # Navigate each slice view
+        for name in ["Red", "Yellow", "Green"]:
+            slice_widget = layout_manager.sliceWidget(name)
+            if slice_widget:
+                slice_logic = slice_widget.sliceLogic()
+                slice_node = slice_logic.GetSliceNode()
+
+                # Get slice dimensions from the slice node
+                dims = slice_node.GetDimensions()
+                if dims[2] > 0:  # Has slices
+                    # Navigate using slice offset
+                    bounds = [0, 0, 0, 0, 0, 0]
+                    slice_logic.GetLowestVolumeSliceBounds(bounds)
+
+                    # Calculate offset based on slice index
+                    if self.total_slices > 0:
+                        ratio = slice_index / max(1, self.total_slices - 1)
+                        # Interpolate between bounds
+                        offset = bounds[4] + ratio * (bounds[5] - bounds[4])
+                        slice_logic.SetSliceOffset(offset)
+
+    def _on_link_views_changed(self, state):
+        """Handle link views checkbox change."""
+        # When enabled, sync all views to current slice
+        if state == qt.Qt.Checked:
+            self._navigate_to_slice(self.current_slice_index)
+
+    def _on_compute_metrics(self):
+        """Compute comparison metrics between loaded segmentations."""
+        gold_node = self.viz_controller.get_gold_node()
+        test_node = self.viz_controller.get_test_node()
+
+        if not gold_node:
+            slicer.util.warningDisplay("Load gold standard first")
+            return
+
+        if not test_node:
+            slicer.util.warningDisplay("Load test segmentation first")
+            return
+
+        try:
+            metrics = compute_metrics_from_nodes(test_node, gold_node)
+
+            if metrics:
+                self.current_metrics = metrics
+                self._update_metrics_display(metrics)
+            else:
+                slicer.util.warningDisplay("Could not compute metrics")
+
+        except Exception as e:
+            logging.exception(f"Metrics computation failed: {e}")
+            slicer.util.errorDisplay(f"Metrics computation failed: {e}")
+
+    def _update_metrics_display(self, metrics):
+        """Update the metrics display labels."""
+        self.diceLabel.setText(f"Dice: {metrics.dice:.4f}")
+
+        if metrics.hausdorff_mm is not None:
+            self.hausdorffLabel.setText(f"Hausdorff: {metrics.hausdorff_mm:.2f}mm")
+        else:
+            self.hausdorffLabel.setText("Hausdorff: N/A")
+
+        if metrics.volume_diff_percent is not None:
+            self.volumeLabel.setText(f"Volume diff: {metrics.volume_diff_percent:+.1f}%")
+        else:
+            self.volumeLabel.setText("Volume diff: N/A")
+
+        self.sensitivityLabel.setText(f"Sensitivity: {metrics.sensitivity:.4f}")
+        self.specificityLabel.setText(f"Precision: {metrics.precision:.4f}")
+        self.tpfpfnLabel.setText(
+            f"TP/FP/FN: {metrics.true_positive_count:,}/"
+            f"{metrics.false_positive_count:,}/"
+            f"{metrics.false_negative_count:,}"
+        )
+
+    def _on_save_rating(self):
+        """Save the current rating."""
+        if not self.current_trial or not self.current_run:
+            slicer.util.warningDisplay("No trial selected")
+            return
+
+        checked_button = self.ratingGroup.checkedButton()
+        if not checked_button:
+            slicer.util.warningDisplay("Select a rating first")
+            return
+
+        rating_value = self.ratingGroup.id(checked_button)
+        rating = Rating(rating_value)
+
+        # Collect metrics if available
+        metrics_dict = {}
+        if self.current_metrics:
+            metrics_dict = self.current_metrics.to_dict()
+
+        # Save rating
+        self.rating_manager.rate_trial(
+            trial_id=f"trial_{self.current_trial.trial_number:03d}",
+            run_name=self.current_run.name,
+            rating=rating,
+            notes=self.notesEdit.text,
+            metrics=metrics_dict,
+        )
+
+        self.currentRatingLabel.setText(f"Status: {rating.label} (saved)")
+        slicer.util.infoDisplay(f"Rating saved: {rating.label}")
+
+    def _load_existing_rating(self):
+        """Load existing rating for current trial if any."""
+        if not self.current_trial or not self.current_run:
+            return
+
+        record = self.rating_manager.get_rating(
+            trial_id=f"trial_{self.current_trial.trial_number:03d}",
+            run_name=self.current_run.name,
+        )
+
+        if record:
+            # Select the radio button
+            for button in self.ratingGroup.buttons():
+                if self.ratingGroup.id(button) == record.rating.value:
+                    button.setChecked(True)
+                    break
+
+            self.notesEdit.setText(record.notes)
+            self.currentRatingLabel.setText(f"Status: {record.rating.label}")
+        else:
+            # Clear selection
+            checked = self.ratingGroup.checkedButton()
+            if checked:
+                self.ratingGroup.setExclusive(False)
+                checked.setChecked(False)
+                self.ratingGroup.setExclusive(True)
+            self.notesEdit.clear()
+            self.currentRatingLabel.setText("Status: Not rated")
+
+    def _on_prev_trial(self):
+        """Go to previous trial."""
+        if self.trialComboBox.currentIndex > 0:
+            self.trialComboBox.setCurrentIndex(self.trialComboBox.currentIndex - 1)
+
+    def _on_next_trial(self):
+        """Go to next trial."""
+        if self.trialComboBox.currentIndex < self.trialComboBox.count - 1:
+            self.trialComboBox.setCurrentIndex(self.trialComboBox.currentIndex + 1)
+
+    def _on_export_ratings(self):
+        """Export ratings to CSV."""
+        if not self.current_run:
+            slicer.util.warningDisplay("No run loaded")
+            return
+
+        output_path = self.current_run.path / "review_ratings.csv"
+        self.rating_manager.export_csv(output_path)
+        slicer.util.infoDisplay(f"Ratings exported to:\n{output_path}")
+        qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(output_path.parent)))
 
     def _create_visualization_section(self):
         """Create the visualization controls section."""
@@ -717,9 +1129,28 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         try:
             self.current_run = self.results_loader.load(run_path)
             self._populate_trials()
+
+            # Start a rating session for this run
+            self.rating_manager.start_session(self.current_run.name)
+
+            # Update slice count estimate (will be refined when data is loaded)
+            self.total_slices = 100  # Default, updated when volume loads
+            self.sliceSlider.setMaximum(self.total_slices - 1)
+            self._update_slice_display()
+
         except Exception as e:
             logging.error(f"Failed to load run: {e}")
             slicer.util.errorDisplay(f"Failed to load run: {e}")
+
+    def _reset_metrics_display(self):
+        """Reset metrics display to default state."""
+        self.current_metrics = None
+        self.diceLabel.setText("Dice: -")
+        self.hausdorffLabel.setText("Hausdorff: -")
+        self.volumeLabel.setText("Volume diff: -")
+        self.sensitivityLabel.setText("Sensitivity: -")
+        self.specificityLabel.setText("Precision: -")
+        self.tpfpfnLabel.setText("TP/FP/FN: -")
 
     def _populate_trials(self):
         """Populate trial dropdown from current run."""
@@ -753,6 +1184,8 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         if trial:
             self.current_trial = trial
             self._display_trial(trial)
+            self._load_existing_rating()
+            self._reset_metrics_display()
 
     def _display_trial(self, trial):
         """Display trial parameters and metrics."""
@@ -1170,6 +1603,123 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self.stepping_runner.cleanup()
             self.stepping_runner = None
         self.current_action_recipe = None
+
+        # Clean up keyboard shortcut filter
+        if self._shortcut_filter:
+            slicer.util.mainWindow().removeEventFilter(self._shortcut_filter)
+            self._shortcut_filter = None
+
+
+class ReviewShortcutFilter(qt.QObject):
+    """Event filter for keyboard shortcuts in the review module.
+
+    Keyboard shortcuts:
+    - ← / →: Previous/Next slice
+    - Ctrl+← / Ctrl+→: Jump 10 slices
+    - Home / End: First/Last slice
+    - P / N: Previous/Next trial
+    - 1-4: Set rating (Accept/Minor/Major/Reject)
+    - S: Save rating
+    - Space: Toggle view mode
+    """
+
+    def __init__(self, widget):
+        """Initialize filter with reference to the reviewer widget.
+
+        Args:
+            widget: SegmentEditorAdaptiveBrushReviewerWidget instance.
+        """
+        super().__init__()
+        self.widget = widget
+
+    def eventFilter(self, obj, event):
+        """Handle key press events."""
+        if event.type() != qt.QEvent.KeyPress:
+            return False
+
+        key = event.key()
+        modifiers = event.modifiers()
+        ctrl = modifiers & qt.Qt.ControlModifier
+
+        # Slice navigation
+        if key == qt.Qt.Key_Left:
+            if ctrl:
+                self.widget._jump_slices(-10)
+            else:
+                self.widget._on_prev_slice()
+            return True
+
+        elif key == qt.Qt.Key_Right:
+            if ctrl:
+                self.widget._jump_slices(10)
+            else:
+                self.widget._on_next_slice()
+            return True
+
+        elif key == qt.Qt.Key_Home:
+            self.widget._on_first_slice()
+            return True
+
+        elif key == qt.Qt.Key_End:
+            self.widget._on_last_slice()
+            return True
+
+        # Trial navigation
+        elif key == qt.Qt.Key_P:
+            self.widget._on_prev_trial()
+            return True
+
+        elif key == qt.Qt.Key_N:
+            self.widget._on_next_trial()
+            return True
+
+        # Rating shortcuts (1-4)
+        elif key == qt.Qt.Key_1:
+            self._set_rating(Rating.ACCEPT)
+            return True
+
+        elif key == qt.Qt.Key_2:
+            self._set_rating(Rating.MINOR)
+            return True
+
+        elif key == qt.Qt.Key_3:
+            self._set_rating(Rating.MAJOR)
+            return True
+
+        elif key == qt.Qt.Key_4:
+            self._set_rating(Rating.REJECT)
+            return True
+
+        # Save rating
+        elif key == qt.Qt.Key_S:
+            self.widget._on_save_rating()
+            return True
+
+        # Toggle view mode
+        elif key == qt.Qt.Key_Space:
+            self._toggle_view_mode()
+            return True
+
+        return False
+
+    def _set_rating(self, rating: Rating):
+        """Set the rating button for the given rating."""
+        for button in self.widget.ratingGroup.buttons():
+            if self.widget.ratingGroup.id(button) == rating.value:
+                button.setChecked(True)
+                return
+
+    def _toggle_view_mode(self):
+        """Toggle between view modes."""
+        modes = ["outline", "transparent", "fill"]
+        current = self.widget.viewModeGroup.checkedId()
+        next_mode = (current + 1) % len(modes)
+
+        for button in self.widget.viewModeGroup.buttons():
+            if self.widget.viewModeGroup.id(button) == next_mode:
+                button.setChecked(True)
+                self.widget._on_view_mode_changed(button)
+                return
 
 
 class SegmentEditorAdaptiveBrushReviewerLogic(ScriptedLoadableModuleLogic):

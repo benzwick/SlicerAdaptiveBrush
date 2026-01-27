@@ -36,23 +36,170 @@ def normalize_to_uint8(array: np.ndarray) -> np.ndarray:
     return arr.astype(np.uint8)
 
 
-def get_outline(mask: np.ndarray) -> np.ndarray:
-    """Get outline of binary mask."""
+def get_morphological_outline(mask: np.ndarray, iterations: int = 1) -> np.ndarray:
+    """Get pixel-level outline using morphological operations.
+
+    Creates a jagged outline that shows the actual pixel boundaries
+    of the segmentation (dilation - erosion). This is useful for seeing
+    exactly what voxels were segmented.
+
+    Args:
+        mask: 2D binary mask.
+        iterations: Thickness of outline in pixels.
+
+    Returns:
+        Binary mask of outline pixels.
+    """
     from scipy import ndimage
 
-    dilated = ndimage.binary_dilation(mask, iterations=1)
-    eroded = ndimage.binary_erosion(mask, iterations=1)
+    binary = mask.astype(bool)
+    dilated = ndimage.binary_dilation(binary, iterations=iterations)
+    eroded = ndimage.binary_erosion(binary, iterations=iterations)
     return dilated & ~eroded
 
 
-def create_comparison_image(
+def find_smooth_contours(mask: np.ndarray) -> list[np.ndarray]:
+    """Find smooth sub-pixel contours using marching squares.
+
+    Creates smooth, interpolated contours that show the true boundary
+    shape rather than pixel staircasing. Better for seeing the overall
+    boundary shape.
+
+    Args:
+        mask: 2D binary mask (any dtype, will be converted to bool).
+
+    Returns:
+        List of contour arrays, each with shape (N, 2) in (row, col) format.
+    """
+    from skimage import measure
+
+    # Ensure binary mask
+    binary = mask.astype(bool).astype(np.float64)
+
+    # Find contours at 0.5 level (sub-pixel accuracy via marching squares)
+    contours = measure.find_contours(binary, level=0.5)
+
+    return list(contours)
+
+
+def draw_contour_polylines(
+    rgb: np.ndarray,
+    contours: list[np.ndarray],
+    color: tuple[int, int, int],
+    thickness: int = 1,
+) -> np.ndarray:
+    """Draw smooth contour polylines on RGB image.
+
+    Args:
+        rgb: RGB image (H, W, 3) as float64.
+        contours: List of contour arrays from find_smooth_contours.
+        color: RGB color tuple (0-255).
+        thickness: Line thickness in pixels.
+
+    Returns:
+        RGB image with contours drawn.
+    """
+    from skimage import draw
+
+    for contour in contours:
+        if len(contour) < 2:
+            continue
+
+        # Draw each segment of the polyline
+        for i in range(len(contour) - 1):
+            r0, c0 = contour[i]
+            r1, c1 = contour[i + 1]
+
+            # Get pixel coordinates for line
+            rr, cc = draw.line(int(round(r0)), int(round(c0)), int(round(r1)), int(round(c1)))
+
+            # Clip to image bounds
+            valid = (rr >= 0) & (rr < rgb.shape[0]) & (cc >= 0) & (cc < rgb.shape[1])
+            rr, cc = rr[valid], cc[valid]
+
+            # Draw with specified thickness
+            if thickness == 1:
+                for ch in range(3):
+                    rgb[rr, cc, ch] = color[ch]
+            else:
+                # For thickness > 1, also draw to neighbors
+                for dr in range(-thickness // 2, thickness // 2 + 1):
+                    for dc in range(-thickness // 2, thickness // 2 + 1):
+                        rr_t = np.clip(rr + dr, 0, rgb.shape[0] - 1)
+                        cc_t = np.clip(cc + dc, 0, rgb.shape[1] - 1)
+                        for ch in range(3):
+                            rgb[rr_t, cc_t, ch] = color[ch]
+
+        # Close the contour if it's nearly closed
+        if len(contour) > 2:
+            dist = np.sqrt(
+                (contour[0][0] - contour[-1][0]) ** 2 + (contour[0][1] - contour[-1][1]) ** 2
+            )
+            if dist < 3:  # Close enough to close
+                r0, c0 = contour[-1]
+                r1, c1 = contour[0]
+                rr, cc = draw.line(int(round(r0)), int(round(c0)), int(round(r1)), int(round(c1)))
+                valid = (rr >= 0) & (rr < rgb.shape[0]) & (cc >= 0) & (cc < rgb.shape[1])
+                rr, cc = rr[valid], cc[valid]
+                for ch in range(3):
+                    rgb[rr, cc, ch] = color[ch]
+
+    return rgb
+
+
+def create_comparison_image_smooth(
     image_slice: np.ndarray,
     trial_slice: np.ndarray | None = None,
     gold_slice: np.ndarray | None = None,
     trial_color: tuple[int, int, int] = (0, 255, 0),  # Green for trial
-    gold_color: tuple[int, int, int] = (255, 255, 0),  # Yellow for gold
+    gold_color: tuple[int, int, int] = (255, 0, 255),  # Magenta for gold
+    line_thickness: int = 1,
 ) -> np.ndarray:
-    """Create neutral comparison image with both segmentations as outlines.
+    """Create comparison image with smooth contours (marching squares).
+
+    Uses marching squares (skimage.measure.find_contours) for sub-pixel accurate,
+    smooth contour lines. Better for seeing the overall boundary shape.
+
+    No judgment about which is correct - just shows both for comparison.
+
+    Args:
+        image_slice: 2D grayscale image (uint8)
+        trial_slice: 2D binary trial segmentation mask
+        gold_slice: 2D binary gold standard mask
+        trial_color: RGB color for trial contour
+        gold_color: RGB color for gold contour
+        line_thickness: Contour line thickness in pixels
+
+    Returns:
+        RGB image as uint8 array (H, W, 3)
+    """
+    rgb = np.stack([image_slice, image_slice, image_slice], axis=-1).astype(np.float64)
+
+    # Draw gold contour first (so trial is on top where they overlap)
+    if gold_slice is not None and np.any(gold_slice > 0):
+        contours = find_smooth_contours(gold_slice > 0)
+        rgb = draw_contour_polylines(rgb, contours, gold_color, line_thickness)
+
+    # Draw trial contour on top
+    if trial_slice is not None and np.any(trial_slice > 0):
+        contours = find_smooth_contours(trial_slice > 0)
+        rgb = draw_contour_polylines(rgb, contours, trial_color, line_thickness)
+
+    return rgb.astype(np.uint8)
+
+
+def create_comparison_image_pixel(
+    image_slice: np.ndarray,
+    trial_slice: np.ndarray | None = None,
+    gold_slice: np.ndarray | None = None,
+    trial_color: tuple[int, int, int] = (0, 255, 0),  # Green for trial
+    gold_color: tuple[int, int, int] = (255, 0, 255),  # Magenta for gold
+) -> np.ndarray:
+    """Create comparison image with pixel-level outlines (morphological).
+
+    Uses morphological dilation-erosion for jagged outlines that show the
+    actual pixel boundaries of the segmentation. Better for seeing exactly
+    what voxels were segmented.
 
     No judgment about which is correct - just shows both for comparison.
 
@@ -70,13 +217,13 @@ def create_comparison_image(
 
     # Draw gold outline first (so trial is on top where they overlap)
     if gold_slice is not None and np.any(gold_slice > 0):
-        outline = get_outline(gold_slice > 0)
+        outline = get_morphological_outline(gold_slice > 0)
         for c in range(3):
             rgb[:, :, c] = np.where(outline, gold_color[c], rgb[:, :, c])
 
     # Draw trial outline on top
     if trial_slice is not None and np.any(trial_slice > 0):
-        outline = get_outline(trial_slice > 0)
+        outline = get_morphological_outline(trial_slice > 0)
         for c in range(3):
             rgb[:, :, c] = np.where(outline, trial_color[c], rgb[:, :, c])
 
@@ -299,10 +446,12 @@ def generate_review_images(
         f"Generating {len(slice_range)} {axis_names[axis]} slices ({min_slice}-{max_slice})"
     )
 
-    # Create subdirectories for both visualization modes
-    compare_dir = output_dir / "compare"
+    # Create subdirectories for all visualization modes
+    compare_smooth_dir = output_dir / "compare_smooth"
+    compare_pixel_dir = output_dir / "compare_pixel"
     error_dir = output_dir / "error"
-    compare_dir.mkdir(exist_ok=True)
+    compare_smooth_dir.mkdir(exist_ok=True)
+    compare_pixel_dir.mkdir(exist_ok=True)
     error_dir.mkdir(exist_ok=True)
 
     # Prepare manifest
@@ -319,10 +468,17 @@ def generate_review_images(
         "slice_range": [min_slice, max_slice],
         "total_slices": len(slice_range),
         "modes": {
-            "compare": {
-                "description": "Neutral comparison - both as outlines, no judgment",
-                "trial_color": "green outline",
-                "gold_color": "yellow outline",
+            "compare_smooth": {
+                "description": "Smooth contours via marching squares - shows interpolated boundary shape",
+                "trial_color": "green contour (1px)",
+                "gold_color": "magenta contour (1px)",
+                "best_for": "Comparing overall boundary curves",
+            },
+            "compare_pixel": {
+                "description": "Pixel-level outlines via morphology - shows actual voxel boundaries",
+                "trial_color": "green outline (1px)",
+                "gold_color": "magenta outline (1px)",
+                "best_for": "Seeing exactly what voxels were segmented",
             },
             "error": {
                 "description": "Error analysis - assumes gold standard is truth",
@@ -334,7 +490,7 @@ def generate_review_images(
         "images": images_list,
     }
 
-    # Generate images in both modes
+    # Generate images in all modes
     for i, slice_idx in enumerate(slice_range):
         # Extract slices
         if numpy_axis == 0:
@@ -352,11 +508,15 @@ def generate_review_images(
 
         filename = f"{slice_idx:04d}.png"
 
-        # Mode 1: Neutral comparison (both as outlines)
-        compare_img = create_comparison_image(img_slice, trial_slice, gold_slice)
-        Image.fromarray(compare_img).save(compare_dir / filename)
+        # Mode 1: Smooth contours (marching squares)
+        smooth_img = create_comparison_image_smooth(img_slice, trial_slice, gold_slice)
+        Image.fromarray(smooth_img).save(compare_smooth_dir / filename)
 
-        # Mode 2: Error analysis (TP/FP/FN coloring)
+        # Mode 2: Pixel outlines (morphological)
+        pixel_img = create_comparison_image_pixel(img_slice, trial_slice, gold_slice)
+        Image.fromarray(pixel_img).save(compare_pixel_dir / filename)
+
+        # Mode 3: Error analysis (TP/FP/FN coloring)
         error_img = create_error_image(img_slice, trial_slice, gold_slice)
         Image.fromarray(error_img).save(error_dir / filename)
 
@@ -369,7 +529,7 @@ def generate_review_images(
                 "slice_index": int(slice_idx),
                 "has_trial": has_trial,
                 "has_gold": has_gold,
-                "dimensions": list(compare_img.shape[:2]),
+                "dimensions": list(smooth_img.shape[:2]),
             }
         )
 
