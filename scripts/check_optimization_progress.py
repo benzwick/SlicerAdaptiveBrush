@@ -90,10 +90,94 @@ def check_progress(results_dir: Path) -> dict:
     }
 
 
+def get_algorithm_names(results_dir: Path) -> dict[int, str]:
+    """Load algorithm name mapping from config.yaml.
+
+    Args:
+        results_dir: Path to optimization results directory.
+
+    Returns:
+        Dict mapping algorithm index to name.
+    """
+    config_path = results_dir / "config.yaml"
+    if not config_path.exists():
+        return {}
+
+    try:
+        import yaml  # type: ignore[import-untyped]
+
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        candidates = (
+            config.get("parameter_space", {})
+            .get("algorithm_substitution", {})
+            .get("candidates", [])
+        )
+        return dict(enumerate(candidates))
+    except Exception:
+        return {}
+
+
+def get_algorithm_breakdown(results_dir: Path) -> list[dict]:
+    """Get performance breakdown by algorithm.
+
+    Args:
+        results_dir: Path to optimization results directory.
+
+    Returns:
+        List of dicts with per-algorithm stats.
+    """
+    db_path = results_dir / "optuna_study.db"
+    if not db_path.exists():
+        return []
+
+    # Load algorithm name mapping
+    algo_names = get_algorithm_names(results_dir)
+
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            tp.param_value as algorithm,
+            COUNT(*) as trials,
+            SUM(CASE WHEN t.state='COMPLETE' THEN 1 ELSE 0 END) as complete,
+            SUM(CASE WHEN t.state='PRUNED' THEN 1 ELSE 0 END) as pruned,
+            MAX(tv.value) as best_dice,
+            AVG(CASE WHEN t.state='COMPLETE' THEN tv.value END) as avg_dice
+        FROM trial_params tp
+        JOIN trials t ON tp.trial_id = t.trial_id
+        LEFT JOIN trial_values tv ON t.trial_id = tv.trial_id
+        WHERE tp.param_name = 'algorithm'
+        GROUP BY tp.param_value
+        ORDER BY best_dice DESC
+    """)
+
+    results = []
+    for row in cursor.fetchall():
+        algo_idx, trials, complete, pruned, best, avg = row
+        # Convert algorithm index to name
+        algo_name = algo_names.get(int(float(algo_idx)), str(algo_idx))
+        results.append(
+            {
+                "algorithm": algo_name,
+                "trials": trials,
+                "complete": complete,
+                "pruned": pruned,
+                "best_dice": best,
+                "avg_dice": avg,
+            }
+        )
+
+    conn.close()
+    return results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Check optimization progress")
     parser.add_argument("results_dir", nargs="?", type=Path, help="Results directory")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--by-algorithm", action="store_true", help="Show breakdown by algorithm")
     args = parser.parse_args()
 
     if args.results_dir:
@@ -137,6 +221,30 @@ def main():
             print("Best params:")
             for k, v in sorted(progress["best_params"].items()):
                 print(f"  {k}: {v}")
+
+    if args.by_algorithm:
+        print()
+        print("By Algorithm:")
+        print("-" * 80)
+        print(
+            f"{'Algorithm':<20} {'Trials':>8} {'Complete':>10} "
+            f"{'Pruned':>8} {'Best Dice':>12} {'Avg Dice':>12}"
+        )
+        print("-" * 80)
+
+        for algo_stats in get_algorithm_breakdown(results_dir):
+            algo = algo_stats["algorithm"]
+            trials = algo_stats["trials"]
+            complete = algo_stats["complete"]
+            pruned = algo_stats["pruned"]
+            best = algo_stats["best_dice"]
+            avg = algo_stats["avg_dice"]
+            avg_str = f"{avg:.4f}" if avg else "N/A"
+            best_str = f"{best:.4f}" if best else "N/A"
+            print(
+                f"{algo:<20} {trials:>8} {complete:>10} "
+                f"{pruned:>8} {best_str:>12} {avg_str:>12}"
+            )
 
 
 if __name__ == "__main__":
