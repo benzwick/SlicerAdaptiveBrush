@@ -144,6 +144,13 @@ class TestAllAlgorithmsSelection(TestCase):
         scripted_effect = self.effect.self()
         combo = scripted_effect.algorithmCombo
 
+        # Start from a known state - set to last algorithm first to ensure
+        # the first algorithm will trigger a change signal
+        last_idx = combo.findData(ALGORITHMS[-1][0])
+        if last_idx >= 0:
+            combo.setCurrentIndex(last_idx)
+            slicer.app.processEvents()
+
         for data_value, display_name in ALGORITHMS:
             ctx.log(f"Selecting algorithm: {display_name}")
 

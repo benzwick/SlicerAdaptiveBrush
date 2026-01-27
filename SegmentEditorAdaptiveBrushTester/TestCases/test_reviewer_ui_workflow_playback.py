@@ -66,6 +66,11 @@ class TestReviewerUIWorkflowPlayback(TestCase):
         # Set up viz controller to have a test node
         self.widget.viz_controller.test_seg_node = self.seg_node
 
+        # IMPORTANT: Reset sequence recorder state from any previous test runs
+        # The widget is module-global, so state persists between tests
+        self.widget.sequence_recorder.cleanup()
+        self.widget._update_workflow_ui()
+
         slicer.app.processEvents()
         ctx.screenshot("[setup] Reviewer module loaded with segmentation")
 

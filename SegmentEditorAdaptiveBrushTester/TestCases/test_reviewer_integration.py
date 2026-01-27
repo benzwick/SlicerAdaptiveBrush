@@ -1,62 +1,95 @@
 """Integration tests for Reviewer module.
 
 Tests the full workflow: load run, select trial, navigate, bookmark, rate, export.
+Uses REAL optimization runs from optimization_results/ for realistic testing.
 """
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import slicer
 from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_test
 
-from .fixtures import MockOptimizationRunFactory, MockSegmentationFactory
+from .fixtures import MockSegmentationFactory
 
 logger = logging.getLogger(__name__)
 
 
+def get_optimization_results_dir() -> Path:
+    """Get the optimization_results directory path."""
+    # Navigate from test file to SlicerAdaptiveBrush directory
+    # test file: TestCases/test_reviewer_integration.py
+    # TestCases -> SegmentEditorAdaptiveBrushTester -> SlicerAdaptiveBrush
+    test_dir = Path(__file__).parent  # TestCases
+    slicer_extension_dir = test_dir.parent.parent  # SlicerAdaptiveBrush (inner)
+    return slicer_extension_dir / "optimization_results"
+
+
 @register_test(category="reviewer_integration")
 class TestReviewerIntegration(TestCase):
-    """Full integration test for Reviewer module workflow."""
+    """Full integration test for Reviewer module workflow.
+
+    Uses real optimization runs from optimization_results/ directory.
+    This tests against actual data that varies between runs, providing
+    more realistic and comprehensive test coverage.
+    """
 
     name = "integration_reviewer_workflow"
-    description = "Test complete workflow: load, navigate, bookmark, rate, export"
+    description = "Test complete workflow with REAL optimization runs"
 
     def __init__(self) -> None:
         super().__init__()
         self.widget = None
         self.volume_node = None
-        self.mock_run_factory = None
         self.mock_seg_factory = None
-        self.run_path = None
+        self.results_dir = None
 
     def setup(self, ctx: TestContext) -> None:
-        """Set up complete test environment."""
-        logger.info("Setting up Reviewer integration test")
+        """Set up test environment using real optimization runs."""
+        logger.info("Setting up Reviewer integration test with real runs")
 
         # Enable quiet mode to suppress popups during testing
         import SegmentEditorAdaptiveBrushReviewer
 
         SegmentEditorAdaptiveBrushReviewer.set_quiet_mode(True)
 
+        # Check for real optimization runs
+        self.results_dir = get_optimization_results_dir()
+        if not self.results_dir.exists():
+            raise RuntimeError(
+                f"optimization_results directory not found: {self.results_dir}\n"
+                "Run an optimization first to generate test data."
+            )
+
+        # Find runs with results.json
+        runs = [
+            p for p in self.results_dir.iterdir() if p.is_dir() and (p / "results.json").exists()
+        ]
+        if not runs:
+            raise RuntimeError(
+                f"No optimization runs found in {self.results_dir}\n"
+                "Run an optimization first to generate test data."
+            )
+
+        # Sort by name (timestamp) descending to get latest
+        runs.sort(reverse=True)
+        latest_run = runs[0]
+        ctx.log(f"Using latest optimization run: {latest_run.name}")
+        ctx.log(f"Found {len(runs)} total runs in optimization_results/")
+
         # Clear scene
         slicer.mrmlScene.Clear(0)
 
-        # Load sample data
+        # Load sample data (for workflow recording phase)
         import SampleData
 
         self.volume_node = SampleData.downloadSample("MRHead")
         if self.volume_node is None:
             raise RuntimeError("Failed to load MRHead sample data")
 
-        # Create mock optimization run
-        self.mock_run_factory = MockOptimizationRunFactory()
-        self.run_path = self.mock_run_factory.create_run(
-            name="integration_test_run",
-            num_trials=10,
-        )
-
-        # Create mock segmentations for testing
+        # Create mock segmentations for workflow recording test (Phase 8)
         self.mock_seg_factory = MockSegmentationFactory()
 
         # Switch to Reviewer module
@@ -70,11 +103,11 @@ class TestReviewerIntegration(TestCase):
         if self.widget is None:
             raise RuntimeError("Failed to get Reviewer widget")
 
-        # Configure results loader to use our mock directory
-        self.widget.results_loader.results_dir = self.run_path.parent
+        # Configure results loader to use the real optimization_results directory
+        self.widget.results_loader.results_dir = self.results_dir
 
         slicer.app.processEvents()
-        ctx.screenshot("[setup] Integration test environment ready")
+        ctx.screenshot("[setup] Integration test with real optimization runs")
 
     def run(self, ctx: TestContext) -> None:
         """Run complete integration workflow."""
@@ -151,11 +184,19 @@ class TestReviewerIntegration(TestCase):
         # ================================================================
         ctx.log("Phase 3: Navigate slices")
 
-        # Initialize slice navigation
-        self.widget.total_slices = 50
-        self.widget.sliceSlider.setMaximum(49)
+        # Get actual slice count from volume (use axial dimension)
+        if self.volume_node:
+            dims = self.volume_node.GetImageData().GetDimensions()
+            total_slices = dims[2]  # Axial slices
+        else:
+            total_slices = 50  # Fallback
+
+        # Initialize slice navigation with actual dimensions
+        self.widget.total_slices = total_slices
+        self.widget.sliceSlider.setMaximum(total_slices - 1)
         self.widget.sliceSlider.setValue(0)
         slicer.app.processEvents()
+        ctx.log(f"Volume has {total_slices} axial slices")
 
         # Navigate using buttons
         self.widget.nextSliceButton.click()
@@ -167,17 +208,19 @@ class TestReviewerIntegration(TestCase):
         )
 
         # Jump to middle
-        self.widget.sliceSlider.setValue(25)
+        middle_slice = total_slices // 2
+        self.widget.sliceSlider.setValue(middle_slice)
         slicer.app.processEvents()
-        ctx.screenshot("[phase3_middle] Navigated to middle slice")
+        ctx.screenshot(f"[phase3_middle] Navigated to slice {middle_slice}")
 
-        # Use fast navigation
+        # Use fast navigation (jumps 10 slices)
+        expected_after_fast = min(middle_slice + 10, total_slices - 1)
         self.widget.nextFastButton.click()
         slicer.app.processEvents()
         ctx.assert_equal(
             self.widget.sliceSlider.value,
-            35,
-            "Should jump 10 slices forward",
+            expected_after_fast,
+            f"Should jump to slice {expected_after_fast}",
         )
 
         # Go to end
@@ -185,8 +228,8 @@ class TestReviewerIntegration(TestCase):
         slicer.app.processEvents()
         ctx.assert_equal(
             self.widget.sliceSlider.value,
-            49,
-            "Should be at last slice",
+            total_slices - 1,
+            f"Should be at last slice ({total_slices - 1})",
         )
         ctx.screenshot("[phase3_end] Navigated to last slice")
 
@@ -199,8 +242,9 @@ class TestReviewerIntegration(TestCase):
         self.widget.bookmarks.clear_all()
         self.widget._update_bookmark_combo()
 
-        # Navigate to first location and bookmark
-        self.widget.sliceSlider.setValue(10)
+        # Navigate to first location (20% through volume) and bookmark
+        bookmark1_slice = total_slices // 5
+        self.widget.sliceSlider.setValue(bookmark1_slice)
         slicer.app.processEvents()
 
         self.widget.bookmarkDescEdit.setText("Potential boundary issue")
@@ -212,10 +256,11 @@ class TestReviewerIntegration(TestCase):
             1,
             "Should have 1 bookmark",
         )
-        ctx.screenshot("[phase4_bookmark1] First bookmark added")
+        ctx.screenshot(f"[phase4_bookmark1] Bookmark at slice {bookmark1_slice}")
 
-        # Navigate to second location and bookmark
-        self.widget.sliceSlider.setValue(30)
+        # Navigate to second location (60% through volume) and bookmark
+        bookmark2_slice = (total_slices * 3) // 5
+        self.widget.sliceSlider.setValue(bookmark2_slice)
         slicer.app.processEvents()
 
         self.widget.bookmarkDescEdit.setText("Good segmentation area")
@@ -227,10 +272,11 @@ class TestReviewerIntegration(TestCase):
             2,
             "Should have 2 bookmarks",
         )
-        ctx.screenshot("[phase4_bookmark2] Second bookmark added")
+        ctx.screenshot(f"[phase4_bookmark2] Bookmark at slice {bookmark2_slice}")
 
-        # Test bookmark restoration
-        self.widget.sliceSlider.setValue(45)  # Move away
+        # Test bookmark restoration - move to 90% through volume first
+        away_slice = (total_slices * 9) // 10
+        self.widget.sliceSlider.setValue(away_slice)
         slicer.app.processEvents()
 
         self.widget.bookmarkCombo.setCurrentIndex(0)
@@ -437,11 +483,7 @@ class TestReviewerIntegration(TestCase):
         if self.widget and self.widget.bookmarks:
             self.widget.bookmarks.clear_all()
 
-        # Clean up mock factories
-        if self.mock_run_factory:
-            self.mock_run_factory.cleanup()
-            self.mock_run_factory = None
-
+        # Clean up mock segmentation factory (used for workflow recording test)
         if self.mock_seg_factory:
             self.mock_seg_factory.cleanup()
             self.mock_seg_factory = None
