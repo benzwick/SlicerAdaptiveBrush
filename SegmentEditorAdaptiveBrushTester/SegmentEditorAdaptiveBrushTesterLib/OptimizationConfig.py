@@ -155,6 +155,7 @@ class OptimizationConfig:
     # Algorithm substitution
     algorithm_substitution_enabled: bool = False
     algorithm_candidates: list[str] = field(default_factory=list)
+    fixed_algorithm: str | None = None  # Use this algorithm when substitution disabled
 
     # Output settings
     output_formats: list[str] = field(default_factory=lambda: ["json", "markdown"])
@@ -253,9 +254,16 @@ class OptimizationConfig:
         algo_sub = param_space.get("algorithm_substitution", {})
         config.algorithm_substitution_enabled = algo_sub.get("enabled", False)
         config.algorithm_candidates = algo_sub.get("candidates", [])
+        config.fixed_algorithm = algo_sub.get("fixed_algorithm")
 
         # Algorithm-specific parameters
         algo_params = param_space.get("algorithms", {})
+
+        # If substitution disabled and no fixed_algorithm, infer from algorithms section
+        if not config.algorithm_substitution_enabled and not config.fixed_algorithm:
+            if len(algo_params) == 1:
+                config.fixed_algorithm = list(algo_params.keys())[0]
+                logger.debug(f"Inferred fixed_algorithm: {config.fixed_algorithm}")
         for algo_name, params in algo_params.items():
             logger.debug(f"Parsing algorithm params for {algo_name}: {params}")
             config.algorithm_params[algo_name] = {}

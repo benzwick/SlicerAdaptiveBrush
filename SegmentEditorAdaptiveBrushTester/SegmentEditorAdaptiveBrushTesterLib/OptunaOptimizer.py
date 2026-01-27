@@ -219,9 +219,14 @@ class OptunaOptimizer:
         """
         params: dict[str, Any] = {}
 
-        # Algorithm selection (if substitution enabled)
+        # Algorithm selection
         if self.config.algorithm_substitution_enabled and self.config.algorithm_candidates:
+            # Multiple algorithms - let Optuna choose
             algo = trial.suggest_categorical("algorithm", self.config.algorithm_candidates)
+            params["algorithm"] = algo
+        elif self.config.fixed_algorithm:
+            # Single fixed algorithm
+            algo = self.config.fixed_algorithm
             params["algorithm"] = algo
         else:
             algo = None

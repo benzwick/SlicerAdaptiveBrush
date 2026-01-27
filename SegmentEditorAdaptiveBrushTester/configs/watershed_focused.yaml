@@ -1,0 +1,56 @@
+# Focused Watershed Optimization
+# ===============================
+# Narrow search around best params from initial optimization.
+# Best so far: Dice 0.9998 with watershed.
+
+version: "1.0"
+name: "Watershed Focused"
+description: "Fine-tune watershed parameters around optimal values"
+
+settings:
+  n_trials: 50
+  timeout_minutes: 30
+  pruning: true
+  pruner: "hyperband"
+  sampler: "tpe"
+  primary_metric: "dice"
+  save_segmentations: true
+  save_screenshots: false
+
+recipes:
+  - path: "recipes/brain_tumor_1.py"
+    gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
+
+parameter_space:
+  # Narrowed ranges around best values
+  global:
+    edge_sensitivity:
+      type: int
+      range: [25, 45]
+      step: 5
+    threshold_zone:
+      type: int
+      range: [40, 60]
+      step: 5
+    brush_radius_mm:
+      type: float
+      range: [20.0, 30.0]
+      step: 2.5
+
+  # Fixed algorithm - watershed only
+  algorithm_substitution:
+    enabled: false
+
+  algorithms:
+    watershed:
+      watershed_gradient_scale:
+        type: float
+        range: [1.5, 2.2]
+      watershed_smoothing:
+        type: float
+        range: [0.4, 0.9]
+
+output:
+  reports:
+    - json
+    - markdown

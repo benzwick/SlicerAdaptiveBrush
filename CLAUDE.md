@@ -300,6 +300,7 @@ When catching:
 - **Never push** - Only the user pushes to remote. Claude creates commits but never pushes.
 - **Never run ad-hoc code** - Create proper scripts instead of inline Python/bash. Add utilities to `scripts/` or update existing tools.
 - **Commit when asked** - Don't commit automatically; wait for user to request it.
+- **New scripts need permission approval** - After creating a new script, ask the user to approve adding it to `.claude/settings.local.json` permissions before running it.
 
 ## Commit Message Format
 
