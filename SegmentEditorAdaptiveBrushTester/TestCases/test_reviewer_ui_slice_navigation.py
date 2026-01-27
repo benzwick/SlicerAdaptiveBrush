@@ -29,6 +29,11 @@ class TestReviewerUISliceNavigation(TestCase):
         """Set up Reviewer module UI."""
         logger.info("Setting up Reviewer UI slice navigation test")
 
+        # Enable quiet mode to suppress popups during testing
+        import SegmentEditorAdaptiveBrushReviewer
+
+        SegmentEditorAdaptiveBrushReviewer.set_quiet_mode(True)
+
         # Clear scene
         slicer.mrmlScene.Clear(0)
 
@@ -53,6 +58,7 @@ class TestReviewerUISliceNavigation(TestCase):
         # Initialize slice count for navigation
         self.widget.total_slices = 100
         self.widget.sliceSlider.setMaximum(99)
+        self.widget.sliceSlider.setValue(0)
         self.widget.current_slice_index = 0
         self.widget._update_slice_display()
 

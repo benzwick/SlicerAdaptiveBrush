@@ -241,8 +241,13 @@ class MockSegmentationFactory:
         oriented_image.GetPointData().SetScalars(vtk_array)
         oriented_image.Modified()
 
-        # Update segment
-        seg_node.GetSegmentation().SetSegmentBinaryLabelmap(segment_id, oriented_image, False)
+        # Update segment using the Slicer segmentations logic
+        slicer.vtkSlicerSegmentationsModuleLogic.SetBinaryLabelmapToSegment(
+            oriented_image,
+            seg_node,
+            segment_id,
+            slicer.vtkSlicerSegmentationsModuleLogic.MODE_REPLACE,
+        )
 
     def cleanup(self) -> None:
         """Remove all created nodes from the scene."""

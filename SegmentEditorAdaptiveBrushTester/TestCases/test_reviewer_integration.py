@@ -34,6 +34,11 @@ class TestReviewerIntegration(TestCase):
         """Set up complete test environment."""
         logger.info("Setting up Reviewer integration test")
 
+        # Enable quiet mode to suppress popups during testing
+        import SegmentEditorAdaptiveBrushReviewer
+
+        SegmentEditorAdaptiveBrushReviewer.set_quiet_mode(True)
+
         # Clear scene
         slicer.mrmlScene.Clear(0)
 

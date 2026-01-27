@@ -32,6 +32,11 @@ class TestReviewerUIRating(TestCase):
         """Set up Reviewer module UI with mock run."""
         logger.info("Setting up Reviewer UI rating test")
 
+        # Enable quiet mode to suppress popups during testing
+        import SegmentEditorAdaptiveBrushReviewer
+
+        SegmentEditorAdaptiveBrushReviewer.set_quiet_mode(True)
+
         # Clear scene
         slicer.mrmlScene.Clear(0)
 

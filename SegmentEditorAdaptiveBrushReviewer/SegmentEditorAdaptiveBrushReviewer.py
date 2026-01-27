@@ -27,6 +27,43 @@ from slicer.ScriptedLoadableModule import (
     ScriptedLoadableModuleWidget,
 )
 
+logger = logging.getLogger(__name__)
+
+# Quiet mode flag - set to True during automated testing to suppress popups
+_QUIET_MODE = False
+
+
+def set_quiet_mode(enabled: bool) -> None:
+    """Enable/disable quiet mode (suppresses info/warning popups).
+
+    Args:
+        enabled: True to suppress popups, False for normal operation.
+    """
+    global _QUIET_MODE
+    _QUIET_MODE = enabled
+    logger.info(f"Quiet mode {'enabled' if enabled else 'disabled'}")
+
+
+def _info(message: str) -> None:
+    """Show info message - logs in quiet mode, shows popup otherwise."""
+    logger.info(message)
+    if not _QUIET_MODE:
+        slicer.util.infoDisplay(message)
+
+
+def _warning(message: str) -> None:
+    """Show warning message - logs in quiet mode, shows popup otherwise."""
+    logger.warning(message)
+    if not _QUIET_MODE:
+        slicer.util.warningDisplay(message)
+
+
+def _error(message: str) -> None:
+    """Show error message - always logs, popup only if not quiet."""
+    logger.error(message)
+    if not _QUIET_MODE:
+        slicer.util.errorDisplay(message)
+
 
 class SegmentEditorAdaptiveBrushReviewer(ScriptedLoadableModule):
     """Module definition for Adaptive Brush Results Reviewer."""
@@ -343,16 +380,16 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         if idx >= 0:
             self._update_bookmark_combo()
             self.bookmarkDescEdit.clear()
-            slicer.util.infoDisplay(f"Bookmark added: {name}")
+            _info(f"Bookmark added: {name}")
 
     def _on_restore_bookmark(self):
         """Restore the selected bookmark."""
         idx = self.bookmarkCombo.currentIndex
         if idx >= 0:
             if self.bookmarks.restore_bookmark(idx):
-                slicer.util.infoDisplay(f"Restored: {self.bookmarkCombo.currentText}")
+                _info(f"Restored: {self.bookmarkCombo.currentText}")
             else:
-                slicer.util.warningDisplay("Failed to restore bookmark")
+                _warning("Failed to restore bookmark")
 
     def _on_delete_bookmark(self):
         """Delete the selected bookmark."""
@@ -361,7 +398,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             name = self.bookmarkCombo.currentText
             if self.bookmarks.remove_bookmark(idx):
                 self._update_bookmark_combo()
-                slicer.util.infoDisplay(f"Deleted: {name}")
+                _info(f"Deleted: {name}")
 
     def _update_bookmark_combo(self):
         """Update the bookmark dropdown from the bookmarks manager."""
@@ -470,7 +507,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             seg_node = self.viz_controller.get_gold_node()
 
         if not seg_node:
-            slicer.util.warningDisplay("Load a segmentation first before starting recording")
+            _warning("Load a segmentation first before starting recording")
             return
 
         # Find reference volume
@@ -484,7 +521,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self.stopRecordingButton.setEnabled(True)
             self.recordStepButton.setEnabled(True)
             self._update_workflow_ui()
-            slicer.util.infoDisplay("Workflow recording started")
+            _info("Workflow recording started")
 
     def _on_stop_recording(self):
         """Stop workflow recording."""
@@ -493,9 +530,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.stopRecordingButton.setEnabled(False)
         self.recordStepButton.setEnabled(False)
         self._update_workflow_ui()
-        slicer.util.infoDisplay(
-            f"Recording stopped. {self.sequence_recorder.step_count} steps recorded."
-        )
+        _info(f"Recording stopped. {self.sequence_recorder.step_count} steps recorded.")
 
     def _on_record_step(self):
         """Manually record current state as a step."""
@@ -775,11 +810,11 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         test_node = self.viz_controller.get_test_node()
 
         if not gold_node:
-            slicer.util.warningDisplay("Load gold standard first")
+            _warning("Load gold standard first")
             return
 
         if not test_node:
-            slicer.util.warningDisplay("Load test segmentation first")
+            _warning("Load test segmentation first")
             return
 
         try:
@@ -789,11 +824,11 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 self.current_metrics = metrics
                 self._update_metrics_display(metrics)
             else:
-                slicer.util.warningDisplay("Could not compute metrics")
+                _warning("Could not compute metrics")
 
         except Exception as e:
             logging.exception(f"Metrics computation failed: {e}")
-            slicer.util.errorDisplay(f"Metrics computation failed: {e}")
+            _error(f"Metrics computation failed: {e}")
 
     def _update_metrics_display(self, metrics):
         """Update the metrics display labels."""
@@ -820,12 +855,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_save_rating(self):
         """Save the current rating."""
         if not self.current_trial or not self.current_run:
-            slicer.util.warningDisplay("No trial selected")
+            _warning("No trial selected")
             return
 
         checked_button = self.ratingGroup.checkedButton()
         if not checked_button:
-            slicer.util.warningDisplay("Select a rating first")
+            _warning("Select a rating first")
             return
 
         rating_value = self.ratingGroup.id(checked_button)
@@ -846,7 +881,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         )
 
         self.currentRatingLabel.setText(f"Status: {rating.label} (saved)")
-        slicer.util.infoDisplay(f"Rating saved: {rating.label}")
+        _info(f"Rating saved: {rating.label}")
 
     def _load_existing_rating(self):
         """Load existing rating for current trial if any."""
@@ -890,12 +925,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_export_ratings(self):
         """Export ratings to CSV."""
         if not self.current_run:
-            slicer.util.warningDisplay("No run loaded")
+            _warning("No run loaded")
             return
 
         output_path = self.current_run.path / "review_ratings.csv"
         self.rating_manager.export_csv(output_path)
-        slicer.util.infoDisplay(f"Ratings exported to:\n{output_path}")
+        _info(f"Ratings exported to:\n{output_path}")
         qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(output_path.parent)))
 
     def _create_visualization_section(self):
@@ -1197,12 +1232,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_load_recipe(self):
         """Load the selected recipe."""
         if self.recipeComboBox.count == 0:
-            slicer.util.warningDisplay("No recipes available")
+            _warning("No recipes available")
             return
 
         recipe_path = Path(self.recipeComboBox.currentData)
         if not recipe_path.exists():
-            slicer.util.errorDisplay(f"Recipe file not found: {recipe_path}")
+            _error(f"Recipe file not found: {recipe_path}")
             return
 
         try:
@@ -1212,7 +1247,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 self.current_action_recipe = ActionRecipe.load(recipe_path)
             else:
                 # Python recipe - needs conversion
-                slicer.util.warningDisplay(
+                _warning(
                     "Python recipes need to be converted first.\n"
                     "Click 'Convert from .py' to create a steppable version."
                 )
@@ -1226,24 +1261,24 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             # Update UI
             self._update_replay_ui()
 
-            slicer.util.infoDisplay(
+            _info(
                 f"Loaded recipe: {self.current_action_recipe.name}\n"
                 f"({len(self.current_action_recipe)} steps)"
             )
 
         except Exception as e:
             logging.exception(f"Failed to load recipe: {e}")
-            slicer.util.errorDisplay(f"Failed to load recipe: {e}")
+            _error(f"Failed to load recipe: {e}")
 
     def _on_convert_recipe(self):
         """Convert a Python recipe to JSON action format."""
         if self.recipeComboBox.count == 0:
-            slicer.util.warningDisplay("No recipes available")
+            _warning("No recipes available")
             return
 
         recipe_path = Path(self.recipeComboBox.currentData)
         if recipe_path.suffix != ".py":
-            slicer.util.warningDisplay("Select a .py recipe to convert")
+            _warning("Select a .py recipe to convert")
             return
 
         try:
@@ -1259,7 +1294,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             json_path = recipe_path.with_suffix(".json")
             action_recipe.save(json_path)
 
-            slicer.util.infoDisplay(
+            _info(
                 f"Converted recipe saved to:\n{json_path}\n({len(action_recipe)} actions recorded)"
             )
 
@@ -1268,7 +1303,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         except Exception as e:
             logging.exception(f"Failed to convert recipe: {e}")
-            slicer.util.errorDisplay(f"Failed to convert recipe: {e}")
+            _error(f"Failed to convert recipe: {e}")
 
     def _update_replay_ui(self):
         """Update the replay UI to reflect current state."""
@@ -1335,7 +1370,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         # Setup if not done yet
         if self.stepping_runner.current_step == -1 and not self.stepping_runner._volume_node:
             if not self.stepping_runner.setup():
-                slicer.util.errorDisplay("Failed to set up recipe execution")
+                _error("Failed to set up recipe execution")
                 return
 
         self.stepping_runner.step_forward()
@@ -1349,12 +1384,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         # Setup if not done yet
         if self.stepping_runner.current_step == -1 and not self.stepping_runner._volume_node:
             if not self.stepping_runner.setup():
-                slicer.util.errorDisplay("Failed to set up recipe execution")
+                _error("Failed to set up recipe execution")
                 return
 
         steps = self.stepping_runner.run_to_end()
         self._update_replay_ui()
-        slicer.util.infoDisplay(f"Executed {steps} steps")
+        _info(f"Executed {steps} steps")
 
     def _on_timeline_changed(self, value):
         """Handle timeline slider change."""
@@ -1419,12 +1454,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_start_branch(self):
         """Start recording a branch."""
         if not self.stepping_runner:
-            slicer.util.warningDisplay("Load a recipe first")
+            _warning("Load a recipe first")
             return
 
         self.stepping_runner.start_branch()
         self._update_replay_ui()
-        slicer.util.infoDisplay(
+        _info(
             f"Branch recording started from step {self.stepping_runner.current_step + 1}.\n"
             "Perform manual actions, then click 'Save Branch As...' to save."
         )
@@ -1467,14 +1502,14 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             save_path = recipes_dir / f"{name}.json"
 
             branched_recipe.save(save_path)
-            slicer.util.infoDisplay(f"Branch saved to:\n{save_path}")
+            _info(f"Branch saved to:\n{save_path}")
 
             # Refresh recipe list
             self._refresh_recipe_list()
 
         except Exception as e:
             logging.exception(f"Failed to save branch: {e}")
-            slicer.util.errorDisplay(f"Failed to save branch: {e}")
+            _error(f"Failed to save branch: {e}")
 
     def _refresh_run_list(self):
         """Refresh the list of optimization runs."""
@@ -1507,7 +1542,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         except Exception as e:
             logging.error(f"Failed to load run: {e}")
-            slicer.util.errorDisplay(f"Failed to load run: {e}")
+            _error(f"Failed to load run: {e}")
 
     def _reset_metrics_display(self):
         """Reset metrics display to default state."""
@@ -1621,7 +1656,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_load_gold(self):
         """Load gold standard segmentation."""
         if not self.current_run:
-            slicer.util.warningDisplay("No run loaded")
+            _warning("No run loaded")
             return
 
         # Try to get gold standard path from run config
@@ -1629,9 +1664,9 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         if gold_path and gold_path.exists():
             if self.viz_controller.load_gold_segmentation(gold_path):
-                slicer.util.infoDisplay(f"Loaded gold standard: {gold_path.name}")
+                _info(f"Loaded gold standard: {gold_path.name}")
             else:
-                slicer.util.errorDisplay(f"Failed to load: {gold_path}")
+                _error(f"Failed to load: {gold_path}")
         else:
             # Try using GoldStandardManager if path not in config
             try:
@@ -1655,30 +1690,28 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                             gold_node, self.viz_controller.view_mode
                         )
                         gold_node.SetName("Gold Standard")
-                        slicer.util.infoDisplay(f"Loaded gold standard: {gold_name}")
+                        _info(f"Loaded gold standard: {gold_name}")
                         return
 
-                slicer.util.warningDisplay("No gold standard found in run configuration")
+                _warning("No gold standard found in run configuration")
             except Exception as e:
                 logging.exception(f"Failed to load gold standard: {e}")
-                slicer.util.errorDisplay(f"Failed to load gold standard: {e}")
+                _error(f"Failed to load gold standard: {e}")
 
     def _on_load_test(self):
         """Load test segmentation."""
         if not self.current_trial:
-            slicer.util.warningDisplay("No trial selected")
+            _warning("No trial selected")
             return
 
         seg_path = self.current_trial.segmentation_path
         if seg_path and seg_path.exists():
             if self.viz_controller.load_test_segmentation(seg_path):
-                slicer.util.infoDisplay(f"Loaded test segmentation: {seg_path.name}")
+                _info(f"Loaded test segmentation: {seg_path.name}")
             else:
-                slicer.util.errorDisplay(f"Failed to load: {seg_path}")
+                _error(f"Failed to load: {seg_path}")
         else:
-            slicer.util.warningDisplay(
-                f"No segmentation file found for trial #{self.current_trial.trial_number}"
-            )
+            _warning(f"No segmentation file found for trial #{self.current_trial.trial_number}")
 
     def _on_toggle_gold(self, state):
         """Toggle gold standard visibility."""
@@ -1706,17 +1739,17 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_copy_path(self):
         """Copy selected screenshot path to clipboard."""
         if not self.selected_screenshot_path:
-            slicer.util.warningDisplay("No screenshot selected")
+            _warning("No screenshot selected")
             return
 
         clipboard = qt.QApplication.clipboard()
         clipboard.setText(self.selected_screenshot_path)
-        slicer.util.infoDisplay(f"Copied: {self.selected_screenshot_path}")
+        _info(f"Copied: {self.selected_screenshot_path}")
 
     def _on_view_full(self):
         """Open selected screenshot in system viewer."""
         if not self.selected_screenshot_path:
-            slicer.util.warningDisplay("No screenshot selected")
+            _warning("No screenshot selected")
             return
 
         qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(self.selected_screenshot_path))
@@ -1724,13 +1757,13 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
     def _on_save_as_gold(self):
         """Save current trial as gold standard."""
         if not self.current_trial:
-            slicer.util.warningDisplay("No trial selected")
+            _warning("No trial selected")
             return
 
         # Check if test segmentation is loaded
         test_node = self.viz_controller.get_test_node()
         if not test_node:
-            slicer.util.warningDisplay("Load a test segmentation first")
+            _warning("Load a test segmentation first")
             return
 
         # Ask for gold standard name
@@ -1761,7 +1794,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             )
 
             if not segment_id:
-                slicer.util.errorDisplay("No segments found in test segmentation")
+                _error("No segments found in test segmentation")
                 return
 
             # Find source volume if possible
@@ -1798,16 +1831,16 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 parameters=self.current_trial.params,
             )
 
-            slicer.util.infoDisplay(f"Saved gold standard: {name}")
+            _info(f"Saved gold standard: {name}")
 
         except Exception as e:
             logging.exception(f"Failed to save gold standard: {e}")
-            slicer.util.errorDisplay(f"Failed to save gold standard: {e}")
+            _error(f"Failed to save gold standard: {e}")
 
     def _on_export_report(self):
         """Export comparison report."""
         if not self.current_run:
-            slicer.util.warningDisplay("No run loaded")
+            _warning("No run loaded")
             return
 
         report_path = self.current_run.path / "review_report.md"
@@ -1880,13 +1913,13 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         with open(report_path, "w") as f:
             f.write("\n".join(lines))
 
-        slicer.util.infoDisplay(f"Report saved: {report_path}")
+        _info(f"Report saved: {report_path}")
         qt.QDesktopServices.openUrl(qt.QUrl.fromLocalFile(str(report_path)))
 
     def _on_compare_algorithms(self):
         """Show algorithm comparison view."""
         if not self.current_run:
-            slicer.util.warningDisplay("No run loaded")
+            _warning("No run loaded")
             return
 
         # Group trials by algorithm
@@ -1898,7 +1931,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             algo_trials[algo].append(trial)
 
         if not algo_trials:
-            slicer.util.warningDisplay("No algorithm data found in trials")
+            _warning("No algorithm data found in trials")
             return
 
         # Build comparison text

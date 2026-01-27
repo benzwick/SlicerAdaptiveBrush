@@ -30,6 +30,11 @@ class TestReviewerUIWorkflowPlayback(TestCase):
         """Set up Reviewer module UI with segmentation."""
         logger.info("Setting up Reviewer UI workflow playback test")
 
+        # Enable quiet mode to suppress popups during testing
+        import SegmentEditorAdaptiveBrushReviewer
+
+        SegmentEditorAdaptiveBrushReviewer.set_quiet_mode(True)
+
         # Clear scene
         slicer.mrmlScene.Clear(0)
 
