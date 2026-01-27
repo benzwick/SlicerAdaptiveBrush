@@ -112,7 +112,9 @@ Examples:
 
     # Determine optimization directory and output path
     optimization_dir = seg_path.parent.parent
-    output_dir = optimization_dir / "review" / seg_path.stem
+    # trial_079.seg.nrrd -> trial_079
+    trial_name = seg_path.stem.replace(".seg", "")
+    output_dir = optimization_dir / "review" / trial_name
 
     # Find gold standard
     gold_path = None

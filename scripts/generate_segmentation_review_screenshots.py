@@ -45,43 +45,89 @@ def get_outline(mask: np.ndarray) -> np.ndarray:
     return dilated & ~eroded
 
 
-def create_overlay_image(
+def create_comparison_image(
     image_slice: np.ndarray,
-    seg_slice: np.ndarray | None = None,
+    trial_slice: np.ndarray | None = None,
     gold_slice: np.ndarray | None = None,
-    seg_color: tuple[int, int, int] = (0, 255, 0),  # Green for trial
-    gold_color: tuple[int, int, int] = (255, 255, 0),  # Yellow for gold outline
-    seg_alpha: float = 0.4,
+    trial_color: tuple[int, int, int] = (0, 255, 0),  # Green for trial
+    gold_color: tuple[int, int, int] = (255, 255, 0),  # Yellow for gold
 ) -> np.ndarray:
-    """Create RGB image with segmentation overlay and gold standard outline.
+    """Create neutral comparison image with both segmentations as outlines.
+
+    No judgment about which is correct - just shows both for comparison.
 
     Args:
         image_slice: 2D grayscale image (uint8)
-        seg_slice: 2D binary segmentation mask (trial result)
-        gold_slice: 2D binary gold standard mask (shown as outline)
-        seg_color: RGB color for trial segmentation
-        gold_color: RGB color for gold standard outline
-        seg_alpha: Opacity of trial segmentation fill
+        trial_slice: 2D binary trial segmentation mask
+        gold_slice: 2D binary gold standard mask
+        trial_color: RGB color for trial outline
+        gold_color: RGB color for gold outline
 
     Returns:
         RGB image as uint8 array (H, W, 3)
     """
-    # Convert grayscale to RGB
     rgb = np.stack([image_slice, image_slice, image_slice], axis=-1).astype(np.float64)
 
-    # Apply trial segmentation as semi-transparent fill
-    if seg_slice is not None and np.any(seg_slice > 0):
-        mask = seg_slice > 0
-        for c in range(3):
-            rgb[:, :, c] = np.where(
-                mask, (1 - seg_alpha) * rgb[:, :, c] + seg_alpha * seg_color[c], rgb[:, :, c]
-            )
-
-    # Apply gold standard as outline only
+    # Draw gold outline first (so trial is on top where they overlap)
     if gold_slice is not None and np.any(gold_slice > 0):
         outline = get_outline(gold_slice > 0)
         for c in range(3):
             rgb[:, :, c] = np.where(outline, gold_color[c], rgb[:, :, c])
+
+    # Draw trial outline on top
+    if trial_slice is not None and np.any(trial_slice > 0):
+        outline = get_outline(trial_slice > 0)
+        for c in range(3):
+            rgb[:, :, c] = np.where(outline, trial_color[c], rgb[:, :, c])
+
+    return rgb.astype(np.uint8)
+
+
+def create_error_image(
+    image_slice: np.ndarray,
+    trial_slice: np.ndarray | None = None,
+    gold_slice: np.ndarray | None = None,
+    tp_color: tuple[int, int, int] = (0, 200, 0),  # Green = agreement
+    fp_color: tuple[int, int, int] = (255, 50, 50),  # Red = over-segmentation
+    fn_color: tuple[int, int, int] = (50, 50, 255),  # Blue = under-segmentation
+    alpha: float = 0.5,
+) -> np.ndarray:
+    """Create error analysis image assuming gold standard is truth.
+
+    Color coding:
+    - Green: True Positive (both agree)
+    - Red: False Positive (trial only - over-segmentation)
+    - Blue: False Negative (gold only - under-segmentation)
+
+    Args:
+        image_slice: 2D grayscale image (uint8)
+        trial_slice: 2D binary trial segmentation mask
+        gold_slice: 2D binary gold standard mask
+        tp_color: RGB for true positives (agreement)
+        fp_color: RGB for false positives (over-segmentation)
+        fn_color: RGB for false negatives (under-segmentation)
+        alpha: Opacity of overlay
+
+    Returns:
+        RGB image as uint8 array (H, W, 3)
+    """
+    rgb = np.stack([image_slice, image_slice, image_slice], axis=-1).astype(np.float64)
+
+    trial_mask = (
+        trial_slice > 0 if trial_slice is not None else np.zeros_like(image_slice, dtype=bool)
+    )
+    gold_mask = gold_slice > 0 if gold_slice is not None else np.zeros_like(image_slice, dtype=bool)
+
+    # Calculate TP, FP, FN regions
+    tp = trial_mask & gold_mask  # Both agree
+    fp = trial_mask & ~gold_mask  # Trial only (over-segmentation)
+    fn = ~trial_mask & gold_mask  # Gold only (under-segmentation)
+
+    # Apply colors
+    for c in range(3):
+        rgb[:, :, c] = np.where(tp, (1 - alpha) * rgb[:, :, c] + alpha * tp_color[c], rgb[:, :, c])
+        rgb[:, :, c] = np.where(fp, (1 - alpha) * rgb[:, :, c] + alpha * fp_color[c], rgb[:, :, c])
+        rgb[:, :, c] = np.where(fn, (1 - alpha) * rgb[:, :, c] + alpha * fn_color[c], rgb[:, :, c])
 
     return rgb.astype(np.uint8)
 
@@ -131,23 +177,21 @@ def generate_review_images(
     axis: int = 2,
     sample_every_n: int = 1,
     margin_slices: int = 2,
-    seg_color: tuple[int, int, int] = (0, 255, 0),  # Green for trial
-    gold_color: tuple[int, int, int] = (255, 255, 0),  # Yellow for gold
-    seg_alpha: float = 0.4,
 ):
     """Generate slice images at native resolution for VLM review.
+
+    Creates two visualization modes:
+    1. compare/ - Neutral comparison with both as outlines (no judgment)
+    2. error/ - Error analysis assuming gold is truth (TP=green, FP=red, FN=blue)
 
     Args:
         segmentation_path: Path to segmentation file (trial result)
         output_dir: Directory for output images
-        gold_standard_path: Path to gold standard segmentation (shown as outline)
+        gold_standard_path: Path to gold standard segmentation
         volume_path: Path to volume (optional, uses sample data if needed)
         axis: Slice axis (0=sagittal, 1=coronal, 2=axial)
         sample_every_n: Sample every Nth slice (1 = all slices)
         margin_slices: Extra slices to include before/after segmentation
-        seg_color: RGB color for trial segmentation (default green)
-        gold_color: RGB color for gold standard outline (default yellow)
-        seg_alpha: Opacity of trial segmentation (0-1)
 
     Returns:
         Path to manifest file
@@ -255,6 +299,12 @@ def generate_review_images(
         f"Generating {len(slice_range)} {axis_names[axis]} slices ({min_slice}-{max_slice})"
     )
 
+    # Create subdirectories for both visualization modes
+    compare_dir = output_dir / "compare"
+    error_dir = output_dir / "error"
+    compare_dir.mkdir(exist_ok=True)
+    error_dir.mkdir(exist_ok=True)
+
     # Prepare manifest
     images_list: list[dict] = []
     manifest: dict = {
@@ -268,14 +318,23 @@ def generate_review_images(
         "slices_with_gold": slices_with_gold,
         "slice_range": [min_slice, max_slice],
         "total_slices": len(slice_range),
-        "legend": {
-            "trial_segmentation": f"RGB{seg_color} semi-transparent fill",
-            "gold_standard": f"RGB{gold_color} outline" if gold_standard_path else None,
+        "modes": {
+            "compare": {
+                "description": "Neutral comparison - both as outlines, no judgment",
+                "trial_color": "green outline",
+                "gold_color": "yellow outline",
+            },
+            "error": {
+                "description": "Error analysis - assumes gold standard is truth",
+                "green": "Agreement (true positive)",
+                "red": "Over-segmentation (false positive - trial only)",
+                "blue": "Under-segmentation (false negative - gold only)",
+            },
         },
         "images": images_list,
     }
 
-    # Generate images
+    # Generate images in both modes
     for i, slice_idx in enumerate(slice_range):
         # Extract slices
         if numpy_axis == 0:
@@ -291,17 +350,15 @@ def generate_review_images(
             trial_slice = seg_array[:, :, slice_idx]
             gold_slice = gold_array[:, :, slice_idx] if gold_array is not None else None
 
-        # Create overlay
-        rgb = create_overlay_image(
-            img_slice, trial_slice, gold_slice, seg_color, gold_color, seg_alpha
-        )
-
-        # Save image
         filename = f"{slice_idx:04d}.png"
-        filepath = output_dir / filename
 
-        img = Image.fromarray(rgb)
-        img.save(filepath)
+        # Mode 1: Neutral comparison (both as outlines)
+        compare_img = create_comparison_image(img_slice, trial_slice, gold_slice)
+        Image.fromarray(compare_img).save(compare_dir / filename)
+
+        # Mode 2: Error analysis (TP/FP/FN coloring)
+        error_img = create_error_image(img_slice, trial_slice, gold_slice)
+        Image.fromarray(error_img).save(error_dir / filename)
 
         has_trial = slice_idx in slices_with_seg
         has_gold = slice_idx in slices_with_gold
@@ -312,7 +369,7 @@ def generate_review_images(
                 "slice_index": int(slice_idx),
                 "has_trial": has_trial,
                 "has_gold": has_gold,
-                "dimensions": list(rgb.shape[:2]),
+                "dimensions": list(compare_img.shape[:2]),
             }
         )
 
