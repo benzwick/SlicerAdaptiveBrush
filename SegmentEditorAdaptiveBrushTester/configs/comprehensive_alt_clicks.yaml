@@ -1,0 +1,103 @@
+# Comprehensive Optimization - Alternative Click Pattern
+# ======================================================
+# Same as comprehensive_all_algorithms but with different click positions.
+# Tests algorithm robustness to click placement variation.
+
+version: "1.0"
+name: "Comprehensive Alt Clicks"
+description: "Full optimization with alternative click pattern for robustness testing"
+
+settings:
+  n_trials: 100
+  timeout_minutes: 45
+  pruning: true
+  pruner: "hyperband"
+  sampler: "tpe"
+  primary_metric: "dice"
+  save_segmentations: true
+  save_screenshots: true
+
+recipes:
+  - path: "recipes/brain_tumor_1_alt.py"
+    gold_standard: "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
+
+parameter_space:
+  global:
+    edge_sensitivity:
+      type: int
+      range: [10, 90]
+      step: 5
+    threshold_zone:
+      type: int
+      range: [20, 80]
+      step: 5
+    brush_radius_mm:
+      type: float
+      range: [10.0, 40.0]
+      step: 2.5
+
+  algorithm_substitution:
+    enabled: true
+    candidates:
+      - geodesic_distance
+      - watershed
+      - random_walker
+      - level_set
+      - connected_threshold
+      - region_growing
+      - threshold_brush
+
+  algorithms:
+    geodesic_distance:
+      geodesic_edge_weight:
+        type: float
+        range: [2.0, 20.0]
+      geodesic_smoothing:
+        type: float
+        range: [0.1, 1.5]
+
+    watershed:
+      watershed_gradient_scale:
+        type: float
+        range: [0.3, 3.0]
+      watershed_smoothing:
+        type: float
+        range: [0.1, 1.5]
+
+    random_walker:
+      random_walker_beta:
+        type: float
+        range: [30.0, 300.0]
+
+    level_set:
+      level_set_propagation:
+        type: float
+        range: [0.3, 3.0]
+      level_set_curvature:
+        type: float
+        range: [0.3, 3.0]
+      level_set_iterations:
+        type: int
+        range: [20, 200]
+        step: 20
+
+    region_growing:
+      region_growing_multiplier:
+        type: float
+        range: [1.0, 5.0]
+      region_growing_iterations:
+        type: int
+        range: [1, 10]
+
+    connected_threshold:
+      pass: true
+
+    threshold_brush:
+      pass: true
+
+output:
+  reports:
+    - json
+    - markdown
+  algorithm_profiles: true
+  comparison_table: true
