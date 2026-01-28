@@ -1,5 +1,5 @@
 {
-  "created": "2026-01-24T21:47:44.236996",
+  "created": "2026-01-28T08:30:00",
   "sample_data": "MRBrainTumor1",
   "volume": {
     "name": "MRBrainTumor1",
@@ -15,11 +15,13 @@
     ]
   },
   "segment_id": "Tumor",
-  "description": "Tumor segmentation using watershed algorithm. Created through automated optimization comparing 5 algorithms (watershed, geodesic_distance, connected_threshold, region_growing, threshold_brush). Watershed performed best with clean boundary adherence. Edge sensitivity tested from 20-60 with identical results, confirming robustness.",
-  "algorithm": "watershed",
+  "description": "Manually refined tumor segmentation. Initial segmentation created using watershed algorithm with 5 clicks, then manually refined using Adaptive Brush with smaller brush sizes for detail work and eraser tool to remove over-segmented regions. This represents a higher-quality gold standard than pure algorithmic output.",
+  "algorithm": "manual_refinement",
+  "base_algorithm": "watershed",
   "parameters": {
     "brush_radius_mm": 25.0,
-    "edge_sensitivity": 40
+    "edge_sensitivity": 40,
+    "refinement_note": "Refined with smaller brush sizes (5-10mm) and manual erasing"
   },
   "clicks": [
     {
@@ -83,5 +85,5 @@
       }
     }
   ],
-  "voxel_count": 13377
+  "voxel_count": 0
 }
