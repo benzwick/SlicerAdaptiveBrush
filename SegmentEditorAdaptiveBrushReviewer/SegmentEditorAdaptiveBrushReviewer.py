@@ -1560,8 +1560,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             try:
                 import SampleData
 
-                # Check if already loaded
-                existing = slicer.util.getNode(sample_name + "*") if sample_name else None
+                # Check if already loaded (getNode raises exception if not found)
+                try:
+                    existing = slicer.util.getNode(sample_name + "*")
+                except slicer.util.MRMLNodeNotFoundException:
+                    existing = None
+
                 if not existing:
                     logging.info(f"Auto-loading sample data: {sample_name}")
                     volume_node = SampleData.downloadSample(sample_name)
