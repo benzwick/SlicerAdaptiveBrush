@@ -2,7 +2,7 @@
 
 ## Status
 
-Implemented
+**Implemented** - with planned DICOM migration
 
 The SegmentEditorAdaptiveBrushReviewer module is fully functional with:
 - Dual segmentation display (gold vs test)
@@ -12,6 +12,11 @@ The SegmentEditorAdaptiveBrushReviewer module is fully functional with:
 - Export markdown report
 - Algorithm comparison dialog
 - Support for both test runner and Optuna result formats
+
+**Planned Updates (ADR-017, ADR-018):**
+- DICOM SEG as primary data format (no .seg.nrrd)
+- Cross-comparison mode for multi-trial viewing
+- CrossSegmentationExplorer compatibility
 
 ## Context
 
@@ -353,9 +358,108 @@ def on_review_results_clicked(self):
     reviewer.load_run(self.last_run_path)
 ```
 
+## DICOM Data Format Update
+
+> **See [ADR-017](ADR-017-dicom-seg-data-format.md) for full details.**
+
+The module is being updated to use DICOM SEG as the primary data format:
+
+### Updated Data Structure
+
+```
+optimization_results/<run>/
+├── dicom/
+│   ├── volume/                    # Synthetic DICOM of source volume
+│   │   ├── 0001.dcm
+│   │   └── ...
+│   └── segmentations/
+│       ├── trial_000.dcm          # DICOM SEG files
+│       ├── trial_001.dcm
+│       └── ...
+├── results.json                   # Updated with DICOM UIDs
+├── config.yaml
+└── screenshots/
+    └── ...
+```
+
+### ResultsLoader DICOM Support
+
+```python
+class ResultsLoader:
+    """Load optimization run results from DICOM."""
+
+    def load(self, run_path: Path) -> OptimizationRun:
+        """Load optimization run with DICOM segmentations."""
+        results = self._load_results(run_path / "results.json")
+
+        # Load segmentations from DICOM database
+        for trial in results["trials"]:
+            if "dicom_series_uid" in trial:
+                trial["segmentation_node"] = self._load_dicom_seg(
+                    trial["dicom_series_uid"]
+                )
+
+        return OptimizationRun(...)
+
+    def _load_dicom_seg(self, series_uid: str) -> vtkMRMLSegmentationNode:
+        """Load DICOM SEG from Slicer DICOM database."""
+        from DICOMLib import DICOMUtils
+        return DICOMUtils.loadSeriesByUID([series_uid])
+```
+
+### New Dependencies
+
+- **QuantitativeReporting** extension (for DICOM SEG export)
+- **pydicom** (bundled with Slicer)
+- **DICOMLib** (Slicer DICOM utilities)
+
+## Cross-Comparison Mode
+
+> **See [ADR-018](ADR-018-cross-segmentation-explorer-integration.md) for full details.**
+
+A new cross-comparison mode enables viewing multiple trials side-by-side:
+
+### UI Addition
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ▼ Cross-Comparison Mode                                         │
+├─────────────────────────────────────────────────────────────────┤
+│ Grouping: [By Algorithm ▼]  [Top N: 1 ▼]                        │
+│                                                                 │
+│ Select Models:                                                  │
+│ ☑ watershed (best: 0.956)    ☑ geodesic (best: 0.948)          │
+│ ☑ gold_standard                                                 │
+│                                                                 │
+│ Layout: (•) 2D only  ( ) 3D only  ( ) Both                      │
+│ ☑ Link views                                                    │
+│                                                                 │
+│ [Apply Layout]                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### New Components
+
+| Component | Purpose |
+|-----------|---------|
+| `ModelGrouping.py` | Trial-to-model mapping strategies |
+| `DicomManager.py` | DICOM database operations |
+| Layout generator | Dynamic multi-pane XML layouts |
+| View linker | Synchronized navigation |
+
+### Two Review Modes
+
+| Mode | Purpose | Data Shown |
+|------|---------|------------|
+| Single Trial | Detailed analysis | Gold vs one trial, full metrics, ratings |
+| Cross-Comparison | Quick visual comparison | Multiple trials side-by-side |
+
 ## References
 
 - [ADR-010](ADR-010-testing-framework.md): Slicer Testing Framework
 - [ADR-011](ADR-011-optimization-framework.md): Smart Optimization Framework
+- [ADR-016](ADR-016-enhanced-review-visualization.md): Enhanced Review Visualization
+- [ADR-017](ADR-017-dicom-seg-data-format.md): DICOM SEG Data Format Standard
+- [ADR-018](ADR-018-cross-segmentation-explorer-integration.md): CrossSegmentationExplorer Integration
 - [Slicer Module Tutorial](https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html)
 - [Qt Designer for Slicer](https://slicer.readthedocs.io/en/latest/developer_guide/widgets.html)
