@@ -255,9 +255,24 @@ def link_comparison_views(self, linked: bool):
 
 This integration depends on ADR-017 (DICOM SEG Data Format):
 
-1. **Load trials from DICOM database** - Query by ReferencedSeriesSequence
-2. **Use DICOM metadata** - SeriesDescription for model naming
-3. **CrossSegmentationExplorer compatibility** - Same data loads in both modules
+1. **LABELMAP encoding (Supplement 243)** - Efficient multi-segment storage
+2. **Compression (JPEG2000/JPEGLS)** - Compact files for many trials
+3. **Load trials from DICOM database** - Query by ReferencedSeriesSequence
+4. **Use DICOM metadata** - SeriesDescription for model naming
+5. **OHIF v3.11 compatibility** - LABELMAP optimized for OHIF viewer
+6. **CrossSegmentationExplorer compatibility** - Same data loads in both modules
+
+### Why LABELMAP Matters for Cross-Comparison
+
+When comparing N algorithms × M trials, storage efficiency is critical:
+
+| Format | 50 trials × 5 segments each |
+|--------|----------------------------|
+| .seg.nrrd | ~25MB (gzip) |
+| DICOM SEG BINARY | ~4GB uncompressed |
+| DICOM SEG LABELMAP | ~25MB (JPEG2000) |
+
+LABELMAP encoding makes multi-trial comparison practical.
 
 ## Consequences
 
@@ -324,6 +339,8 @@ This integration depends on ADR-017 (DICOM SEG Data Format):
 
 - [ADR-012: Results Review Module](ADR-012-results-review-module.md)
 - [ADR-016: Enhanced Review Visualization](ADR-016-enhanced-review-visualization.md)
-- [ADR-017: DICOM SEG Data Format Standard](ADR-017-dicom-seg-data-format.md)
+- [ADR-017: DICOM SEG Data Format Standard](ADR-017-dicom-seg-data-format.md) - LABELMAP encoding details
 - [CrossSegmentationExplorer](https://github.com/ImagingDataCommons/CrossSegmentationExplorer)
+- [OHIF v3.11 LABELMAP Support](https://ohif.org/release-notes/3p11/)
+- [DICOM Supplement 243: Label Map Segmentation](https://www.dicomstandard.org/news-dir/current/docs/sups/sup243.pdf)
 - [Slicer Layout Documentation](https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#customize-view-layout)

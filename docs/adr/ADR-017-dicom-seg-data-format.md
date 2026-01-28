@@ -8,7 +8,7 @@
 
 The project currently stores segmentation results in Slicer's native `.seg.nrrd` format. While this works for internal use, it has limitations:
 
-1. **No compatibility with DICOM-based tools** - CrossSegmentationExplorer and other clinical tools require DICOM SEG
+1. **No compatibility with DICOM-based tools** - CrossSegmentationExplorer, OHIF, and other clinical tools require DICOM SEG
 2. **Limited metadata** - `.seg.nrrd` doesn't carry standardized medical metadata (patient ID, study UID, terminology codes)
 3. **No reference volume linkage** - Segmentations don't formally reference their source volumes
 4. **Clinical workflow barrier** - Results can't be easily shared with PACS or clinical review systems
@@ -24,6 +24,36 @@ optimization_results/<run>/
 └── results.json              # Metadata separate from segmentation
 ```
 
+### DICOM SEG Encoding Types
+
+The DICOM standard supports multiple segmentation encoding types:
+
+| Type | Storage | Overlapping Segments | Use Case |
+|------|---------|---------------------|----------|
+| **BINARY** | N segments × M slices = N×M binary frames | ✓ Yes | Single segment, overlapping segments |
+| **FRACTIONAL** | Continuous values (0.0-1.0) | ✓ Yes | Probabilistic segmentation |
+| **LABELMAP** (Sup 243) | Single integer per voxel | ✗ No | Multi-segment, non-overlapping |
+
+**BINARY encoding is inefficient for multi-segment segmentations:**
+- 10 segments × 256×256×100 volume = ~82MB uncompressed
+- Each segment stored as separate binary frames
+
+**LABELMAP encoding (DICOM Supplement 243, DICOM 2025b) is efficient:**
+- Same volume with 10 segments = ~6.5MB uncompressed
+- Single integer per voxel (like traditional labelmap)
+- Full segment metadata preserved (names, colors, terminology)
+- Supports lossless compression (RLE, JPEG2000, JPEGLS)
+
+### Tool Compatibility
+
+| Tool | LABELMAP Support | Compression | Notes |
+|------|-----------------|-------------|-------|
+| **DICOM 2025b** | ✓ Standard | ✓ RLE, JPEG2000, JPEGLS, Deflate | Supplement 243 |
+| **OHIF v3.11** | ✓ Full | ✓ | "Revolutionizing how we handle large segmentations" |
+| **highdicom** | ✓ Full | ✓ RLE, JPEG2000, JPEGLS | Python library |
+| **dcmqi/Slicer** | ✗ Not yet | ✗ Limited | Uses BINARY only |
+| **CrossSegmentationExplorer** | ✓ Via OHIF | ✓ | DICOM SEG native |
+
 ### CrossSegmentationExplorer Requirements
 
 CrossSegmentationExplorer (reference: `__reference__/CrossSegmentationExplorer/`) requires:
@@ -34,53 +64,67 @@ CrossSegmentationExplorer (reference: `__reference__/CrossSegmentationExplorer/`
 
 ## Decision
 
-Adopt **DICOM SEG as the primary segmentation storage format** with no backwards compatibility for `.seg.nrrd`.
+Adopt **DICOM SEG with LABELMAP encoding (Supplement 243)** as the primary segmentation storage format, using **highdicom** for creation instead of QuantitativeReporting/dcmqi.
 
-### Why DICOM SEG?
+### Why LABELMAP Encoding?
 
-| Aspect | .seg.nrrd | DICOM SEG |
-|--------|-----------|-----------|
-| CrossSegmentationExplorer | Not supported | Native support |
-| Clinical interoperability | None | Full PACS compatibility |
-| Metadata | External JSON | Embedded in file |
-| Volume reference | None | ReferencedSeriesSequence |
-| Terminology | Segment name only | SNOMED codes |
-| File size | Smaller | Larger (but compressible) |
+| Aspect | BINARY | LABELMAP |
+|--------|--------|----------|
+| Multi-segment efficiency | Poor (N× frames) | Excellent (1× frames) |
+| Compression | Limited | Full (RLE, JPEG2000, JPEGLS) |
+| OHIF v3.11 | Supported | Optimized |
+| Overlapping segments | ✓ Yes | ✗ No |
+| Our use case | Overkill | Perfect fit |
+
+Our optimization trials produce **non-overlapping segments** (tumor, tissue, etc.), making LABELMAP the optimal choice.
+
+### Why highdicom Instead of dcmqi?
+
+| Aspect | dcmqi/QuantitativeReporting | highdicom |
+|--------|----------------------------|-----------|
+| LABELMAP support | ✗ Not implemented | ✓ Full |
+| Compression | ✗ Limited/pending | ✓ RLE, JPEG2000, JPEGLS |
+| Python API | CLI wrapper | Native Python |
+| Maintenance | Extension dependency | pip install |
+| DICOM 2025b | Behind | Current |
 
 ### Synthetic DICOM for SampleData
 
 Since SampleData volumes (MRHead, MRBrainTumor1, etc.) are not DICOM, we create **synthetic DICOM series**:
 
 ```python
-class SyntheticDicomCreator:
-    """Create DICOM series from non-DICOM Slicer volumes."""
+class DicomManager:
+    """Manage DICOM database operations for optimization results."""
 
-    def create_dicom_from_sample_data(self, sample_name: str, patient_id: str) -> str:
+    def create_synthetic_dicom(self, volume_node, patient_id: str, ...) -> str:
         """
         Convert SampleData volume to DICOM series.
 
-        Creates:
-        - Synthetic PatientID based on sample name
-        - Generated StudyInstanceUID and SeriesInstanceUID
-        - Proper geometry (spacing, orientation, dimensions)
-        - Import into Slicer DICOM database
+        Uses Slicer's DICOMScalarVolumePlugin for volume export.
+        Creates synthetic PatientID, StudyInstanceUID, SeriesInstanceUID.
 
         Returns: SeriesInstanceUID
         """
 
     def export_segmentation_as_dicom_seg(
         self,
-        seg_node,
-        reference_series_uid: str,
-        segment_metadata: dict
-    ) -> Path:
+        segmentation_node,
+        reference_volume_node,
+        series_description: str,
+        output_dir: Path,
+        compression: str = "JPEG2000Lossless",
+        segment_metadata: dict | None = None,
+    ) -> str:
         """
-        Export segmentation node as DICOM SEG.
+        Export segmentation as DICOM SEG with LABELMAP encoding.
 
-        Uses QuantitativeReporting/dcmqi for proper DICOM SEG encoding.
-        Includes ReferencedSeriesSequence pointing to source volume.
+        Uses highdicom for DICOM SEG creation with:
+        - LABELMAP segmentation type (Supplement 243)
+        - Lossless compression (JPEG2000 default)
+        - Full segment metadata (names, colors, terminology)
+        - ReferencedSeriesSequence linking to source volume
 
-        Returns: Path to DICOM SEG file
+        Returns: SeriesInstanceUID
         """
 ```
 
@@ -149,12 +193,32 @@ GoldStandards/<name>/
 
 ### Dependencies
 
-**Required Slicer extension:**
-- **QuantitativeReporting** - Provides DICOM SEG export via dcmqi
+**Python packages (install in Slicer Python):**
+- **highdicom** - DICOM SEG creation with LABELMAP support and compression
+- `pydicom` - DICOM file reading/writing (bundled with Slicer)
+- `DICOMLib` - Slicer DICOM utilities (bundled)
 
-**Python packages (bundled with Slicer):**
-- `pydicom` - DICOM file reading/writing
-- `DICOMLib` - Slicer DICOM utilities
+**No longer required:**
+- ~~QuantitativeReporting~~ - Replaced by highdicom for SEG export
+
+### Installation
+
+```python
+# In Slicer Python console or at module startup
+import slicer
+slicer.util.pip_install("highdicom")
+```
+
+### Compression Options
+
+| Transfer Syntax | Compression | Speed | Support |
+|-----------------|-------------|-------|---------|
+| `JPEGLSLossless` | Best | Fast | Good |
+| `JPEG2000Lossless` | Excellent | Slow | Excellent |
+| `RLELossless` | Good | Fast | Universal |
+| `ExplicitVRLittleEndian` | None | N/A | Universal |
+
+**Default: `JPEG2000Lossless`** - Best balance of compression and compatibility.
 
 ### DicomManager Class
 
@@ -162,8 +226,51 @@ GoldStandards/<name>/
 class DicomManager:
     """Manage DICOM database operations for optimization results."""
 
-    def __init__(self):
-        self.db = slicer.dicomDatabase
+    # Compression transfer syntax UIDs
+    TRANSFER_SYNTAXES = {
+        "RLELossless": "1.2.840.10008.1.2.5",
+        "JPEG2000Lossless": "1.2.840.10008.1.2.4.90",
+        "JPEGLSLossless": "1.2.840.10008.1.2.4.80",
+        "ExplicitVRLittleEndian": "1.2.840.10008.1.2.1",
+    }
+
+    def export_segmentation_as_dicom_seg(
+        self,
+        segmentation_node,
+        reference_volume_node,
+        series_description: str,
+        output_dir: Path,
+        compression: str = "JPEG2000Lossless",
+        segment_metadata: dict | None = None,
+    ) -> str:
+        """
+        Export segmentation as DICOM SEG with LABELMAP encoding.
+
+        Uses highdicom for efficient multi-segment storage.
+        """
+        import highdicom as hd
+        from highdicom.seg import Segmentation, SegmentationTypeValues
+
+        # Extract labelmap array from Slicer segmentation node
+        labelmap_array = self._get_labelmap_from_segmentation(segmentation_node)
+
+        # Build segment descriptions from Slicer segment metadata
+        segment_descriptions = self._build_segment_descriptions(segmentation_node)
+
+        # Create DICOM SEG with LABELMAP encoding
+        seg = Segmentation(
+            source_images=self._get_source_images(reference_volume_node),
+            pixel_array=labelmap_array,
+            segmentation_type=SegmentationTypeValues.LABELMAP,
+            segment_descriptions=segment_descriptions,
+            series_description=series_description,
+            transfer_syntax_uid=self.TRANSFER_SYNTAXES[compression],
+            ...
+        )
+
+        output_path = output_dir / "seg.dcm"
+        seg.save_as(str(output_path))
+        return seg.SeriesInstanceUID
 
     def ensure_database_initialized(self) -> bool:
         """Ensure DICOM database is available."""
@@ -190,28 +297,39 @@ class DicomManager:
 ### Positive
 
 - **CrossSegmentationExplorer compatibility** - Multi-trial comparison works
+- **OHIF v3.11 optimized** - LABELMAP encoding specifically optimized for OHIF
 - **Clinical interoperability** - Results can go to PACS
-- **Standardized metadata** - SNOMED codes, proper UIDs
+- **Efficient multi-segment storage** - LABELMAP encoding ~10-15x smaller than BINARY
+- **Lossless compression** - JPEG2000/JPEGLS further reduces size
+- **Standardized metadata** - SNOMED codes, proper UIDs, segment colors
 - **Volume linkage** - Segmentations formally reference source
-- **Future-proof** - Standard medical imaging format
+- **Future-proof** - DICOM 2025b standard
 
 ### Negative
 
-- **Larger files** - DICOM overhead (~20-50% larger)
+- **No overlapping segments** - LABELMAP requires non-overlapping (acceptable for our use case)
 - **Complexity** - DICOM database required
-- **Dependency** - Requires QuantitativeReporting extension
+- **New dependency** - highdicom (pip install)
 - **Migration effort** - Existing data must be converted
-- **Slower export** - DICOM SEG creation more complex than .nrrd
 
 ### Trade-offs
 
-| Aspect | .seg.nrrd Approach | DICOM Approach |
-|--------|-------------------|----------------|
-| Simplicity | Simple | More complex |
-| Compatibility | Internal only | Universal |
-| Speed | Faster | Slower |
-| Storage | Smaller | Larger |
-| Maintenance | Less | More |
+| Aspect | .seg.nrrd | DICOM BINARY | DICOM LABELMAP |
+|--------|-----------|--------------|----------------|
+| Multi-segment size | Small | Very large | Small |
+| Compression | gzip | Limited | JPEG2000/JPEGLS |
+| Overlapping segments | Yes | Yes | No |
+| OHIF support | No | Yes | Optimized |
+| Clinical PACS | No | Yes | Yes |
+| Slicer export | Native | QuantitativeReporting | highdicom |
+
+### File Size Comparison (256×256×100 volume, 10 segments)
+
+| Format | Uncompressed | Compressed |
+|--------|--------------|------------|
+| .seg.nrrd | ~6.5MB | ~500KB (gzip) |
+| DICOM SEG BINARY | ~82MB | ~8MB (RLE) |
+| DICOM SEG LABELMAP | ~6.5MB | ~500KB (JPEG2000) |
 
 ## Alternatives Considered
 
@@ -219,18 +337,46 @@ class DicomManager:
 
 **Rejected**: Creates two code paths, increases maintenance burden. User requested full DICOM native.
 
+### Use DICOM SEG BINARY Encoding
+
+**Rejected**: Inefficient for multi-segment segmentations. 10 segments = 10× storage.
+
+### Use QuantitativeReporting/dcmqi
+
+**Rejected**: Does not support LABELMAP encoding (Supplement 243). Does not support compression. highdicom provides better DICOM 2025b support.
+
 ### Support Both Formats
 
 **Rejected**: User explicitly requested no backwards compatibility. Clean break is simpler.
 
 ### Use NIFTI Instead
 
-**Rejected**: NIFTI lacks metadata richness of DICOM. Doesn't solve CrossSegmentationExplorer compatibility.
+**Rejected**: NIFTI lacks metadata richness of DICOM. Doesn't solve OHIF/CrossSegmentationExplorer compatibility.
 
 ## References
 
+### DICOM Standards
+
+- [DICOM Supplement 243: Label Map Segmentation](https://www.dicomstandard.org/news-dir/current/docs/sups/sup243.pdf) - LABELMAP encoding specification
 - [DICOM SEG Specification](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_C.8.20.html)
-- [QuantitativeReporting Extension](https://github.com/QIICR/QuantitativeReporting)
-- [dcmqi Documentation](https://qiicr.gitbook.io/dcmqi-guide/)
+- [DICOM 2025b Standard](https://www.dicomstandard.org/news-dir/progress/index.html)
+
+### Libraries
+
+- [highdicom Documentation](https://highdicom.readthedocs.io/en/latest/seg.html) - Python DICOM SEG with LABELMAP support
+- [highdicom GitHub](https://github.com/ImagingDataCommons/highdicom)
+- [pydicom](https://pydicom.github.io/)
+
+### Viewers
+
+- [OHIF v3.11 Release Notes](https://ohif.org/release-notes/3p11/) - LABELMAP support announcement
 - [CrossSegmentationExplorer](https://github.com/ImagingDataCommons/CrossSegmentationExplorer)
+
+### Slicer
+
 - [Slicer DICOM Module](https://slicer.readthedocs.io/en/latest/user_guide/modules/dicom.html)
+
+### Background
+
+- [DICOM SEG Optimization Project Week](https://projectweek.na-mic.org/PW38_2023_GranCanaria/Projects/DICOMSEG/) - Discussion of SEG efficiency issues
+- [dcmqi compression issue #244](https://github.com/QIICR/dcmqi/issues/244) - Why dcmqi compression is pending

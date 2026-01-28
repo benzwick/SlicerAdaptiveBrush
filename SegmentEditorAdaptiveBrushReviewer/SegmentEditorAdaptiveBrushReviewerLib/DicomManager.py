@@ -2,11 +2,16 @@
 
 Provides functionality to:
 - Create synthetic DICOM series from non-DICOM volumes (SampleData)
-- Export segmentations as DICOM SEG
+- Export segmentations as DICOM SEG with LABELMAP encoding (Supplement 243)
 - Query DICOM database for segmentation relationships
 - Load segmentations from DICOM database
 
-Requires QuantitativeReporting extension for DICOM SEG export.
+Uses highdicom for DICOM SEG creation with:
+- LABELMAP encoding for efficient multi-segment storage
+- Lossless compression (JPEG2000, JPEGLS, RLE)
+- Full segment metadata (names, colors, terminology)
+
+See ADR-017 for design rationale.
 """
 
 from __future__ import annotations
@@ -16,6 +21,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import numpy as np
 
 if TYPE_CHECKING:
     pass
@@ -35,8 +42,8 @@ class DicomDatabaseNotAvailable(DicomManagerError):
     pass
 
 
-class QuantitativeReportingNotAvailable(DicomManagerError):
-    """Raised when QuantitativeReporting extension is not installed."""
+class HighdicomNotAvailable(DicomManagerError):
+    """Raised when highdicom is not installed."""
 
     pass
 
@@ -46,8 +53,11 @@ class DicomManager:
 
     This class provides a high-level interface for:
     - Converting SampleData volumes to synthetic DICOM
-    - Exporting segmentations as DICOM SEG
+    - Exporting segmentations as DICOM SEG with LABELMAP encoding
     - Loading segmentations from DICOM database
+
+    Uses highdicom for DICOM SEG creation (not QuantitativeReporting/dcmqi)
+    to support LABELMAP encoding (DICOM Supplement 243) and compression.
 
     Usage:
         manager = DicomManager()
@@ -60,12 +70,13 @@ class DicomManager:
             output_dir=Path("output/dicom/volume")
         )
 
-        # Export segmentation as DICOM SEG
+        # Export segmentation as DICOM SEG with LABELMAP encoding
         seg_series_uid = manager.export_segmentation_as_dicom_seg(
             segmentation_node=seg_node,
             reference_volume_node=volume_node,
             series_description="trial_001_watershed",
-            output_dir=Path("output/dicom/segmentations")
+            output_dir=Path("output/dicom/segmentations"),
+            compression="JPEG2000Lossless"  # or "JPEGLSLossless", "RLELossless"
         )
 
         # Load segmentation from DICOM database
@@ -75,6 +86,26 @@ class DicomManager:
     # DICOM UID prefix for generated UIDs
     # Using a fictional root (2.25) + UUID-based generation
     UID_PREFIX = "2.25"
+
+    # Compression transfer syntax UIDs
+    TRANSFER_SYNTAXES = {
+        "RLELossless": "1.2.840.10008.1.2.5",
+        "JPEG2000Lossless": "1.2.840.10008.1.2.4.90",
+        "JPEGLSLossless": "1.2.840.10008.1.2.4.80",
+        "ExplicitVRLittleEndian": "1.2.840.10008.1.2.1",  # No compression
+    }
+
+    # Default segment colors (RGB 0-255)
+    DEFAULT_COLORS = [
+        (255, 0, 0),  # Red
+        (0, 255, 0),  # Green
+        (0, 0, 255),  # Blue
+        (255, 255, 0),  # Yellow
+        (255, 0, 255),  # Magenta
+        (0, 255, 255),  # Cyan
+        (255, 128, 0),  # Orange
+        (128, 0, 255),  # Purple
+    ]
 
     def __init__(self) -> None:
         """Initialize DICOM manager."""
@@ -89,6 +120,19 @@ class DicomManager:
             self._db = slicer.dicomDatabase
         except ImportError as err:
             raise DicomManagerError("Not running inside Slicer") from err
+
+    def _ensure_highdicom(self) -> None:
+        """Ensure highdicom is installed, install if not."""
+        try:
+            import highdicom  # noqa: F401
+        except ImportError:
+            logger.info("Installing highdicom...")
+            import slicer
+
+            slicer.util.pip_install("highdicom")
+            import highdicom  # noqa: F401
+
+            logger.info("highdicom installed successfully")
 
     @property
     def database(self):
@@ -167,6 +211,8 @@ class DicomManager:
 
         Converts a volume node (e.g., from SampleData) to DICOM format,
         saves to disk, and imports into the DICOM database.
+
+        Uses Slicer's DICOMScalarVolumePlugin for volume export.
 
         Args:
             volume_node: vtkMRMLScalarVolumeNode to convert.
@@ -257,39 +303,43 @@ class DicomManager:
         reference_volume_node,
         series_description: str,
         output_dir: Path,
+        compression: str = "JPEG2000Lossless",
         segment_metadata: dict | None = None,
     ) -> str:
-        """Export segmentation as DICOM SEG.
+        """Export segmentation as DICOM SEG with LABELMAP encoding.
 
-        Requires QuantitativeReporting extension for proper DICOM SEG encoding.
+        Uses highdicom for efficient multi-segment storage with:
+        - LABELMAP encoding (DICOM Supplement 243)
+        - Lossless compression
+        - Full segment metadata
 
         Args:
             segmentation_node: vtkMRMLSegmentationNode to export.
             reference_volume_node: Reference volume (must have DICOM attributes).
             series_description: DICOM SeriesDescription for the SEG.
             output_dir: Directory to save DICOM SEG file.
+            compression: Compression type - "JPEG2000Lossless" (default),
+                "JPEGLSLossless", "RLELossless", or "ExplicitVRLittleEndian" (none).
             segment_metadata: Optional metadata to include (algorithm params, etc.).
 
         Returns:
             SeriesInstanceUID of the created DICOM SEG.
 
         Raises:
-            QuantitativeReportingNotAvailable: If extension not installed.
+            HighdicomNotAvailable: If highdicom cannot be installed.
             DicomManagerError: If export fails.
         """
-        import slicer
+
+        self._ensure_highdicom()
+
+        import highdicom as hd
+        from highdicom.seg import (
+            SegmentationTypeValues,
+        )
+        from pydicom.uid import UID
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Check for QuantitativeReporting
-        try:
-            from DICOMSegmentationPlugin import DICOMSegmentationPluginClass
-        except ImportError as err:
-            raise QuantitativeReportingNotAvailable(
-                "QuantitativeReporting extension is required for DICOM SEG export. "
-                "Install it from the Extension Manager."
-            ) from err
 
         # Get reference volume DICOM UIDs
         study_uid = reference_volume_node.GetAttribute("DICOM.StudyInstanceUID")
@@ -301,51 +351,57 @@ class DicomManager:
                 "Create synthetic DICOM first using create_synthetic_dicom()."
             )
 
-        # Generate new series UID for segmentation
-        seg_series_uid = self.generate_uid()
-
         logger.info(f"Exporting segmentation as DICOM SEG: {segmentation_node.GetName()}")
         logger.debug(f"  Reference SeriesUID: {ref_series_uid}")
-        logger.debug(f"  SEG SeriesUID: {seg_series_uid}")
+        logger.debug(f"  Compression: {compression}")
 
         try:
-            # Get subject hierarchy
-            subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
-                slicer.mrmlScene
+            # Get source DICOM images
+            source_images = self._load_source_dicom_images(ref_series_uid)
+            if not source_images:
+                raise DicomManagerError(f"No DICOM images found for series: {ref_series_uid}")
+
+            # Extract labelmap from segmentation
+            labelmap_array, segment_ids = self._get_labelmap_from_segmentation(
+                segmentation_node, reference_volume_node
             )
-            seg_item = subject_hierarchy.GetItemByDataNode(segmentation_node)
 
-            if not seg_item:
-                raise DicomManagerError("Segmentation not in subject hierarchy")
+            # Build segment descriptions
+            segment_descriptions = self._build_segment_descriptions(
+                segmentation_node, segment_ids, segment_metadata
+            )
 
-            # Use DICOMSegmentationPlugin for export
-            plugin = DICOMSegmentationPluginClass()
+            # Get transfer syntax UID
+            if compression not in self.TRANSFER_SYNTAXES:
+                logger.warning(f"Unknown compression '{compression}', using JPEG2000Lossless")
+                compression = "JPEG2000Lossless"
+            transfer_syntax_uid = UID(self.TRANSFER_SYNTAXES[compression])
 
-            # Create exportable
-            exportables = plugin.examineForExport(seg_item)
-            if not exportables:
-                raise DicomManagerError("Segmentation cannot be exported as DICOM SEG")
+            # Create DICOM SEG with LABELMAP encoding
+            seg = hd.seg.Segmentation(
+                source_images=source_images,
+                pixel_array=labelmap_array,
+                segmentation_type=SegmentationTypeValues.LABELMAP,
+                segment_descriptions=segment_descriptions,
+                series_description=series_description,
+                series_number=1,
+                sop_instance_uid=hd.UID(),
+                series_instance_uid=hd.UID(),
+                instance_number=1,
+                manufacturer="SlicerAdaptiveBrush",
+                manufacturer_model_name="AdaptiveBrush Optimizer",
+                software_versions="1.0",
+                device_serial_number="0",
+                transfer_syntax_uid=transfer_syntax_uid,
+            )
 
-            exportable = exportables[0]
-            exportable.directory = str(output_dir)
-            exportable.setTag("SeriesDescription", series_description)
-            exportable.setTag("StudyInstanceUID", study_uid)
-            exportable.setTag("SeriesInstanceUID", seg_series_uid)
+            # Save to file
+            output_path = output_dir / "seg.dcm"
+            seg.save_as(str(output_path))
 
-            # Add custom metadata as series description suffix if provided
-            if segment_metadata:
-                import json
-
-                # Truncate to fit in DICOM field
-                meta_str = json.dumps(segment_metadata)
-                if len(meta_str) > 64:
-                    meta_str = meta_str[:61] + "..."
-                exportable.setTag("SeriesDescription", f"{series_description} | {meta_str}")
-
-            # Export
-            plugin.export(exportable)
-
-            logger.info(f"Exported DICOM SEG to: {output_dir}")
+            seg_series_uid = str(seg.SeriesInstanceUID)
+            logger.info(f"Exported DICOM SEG to: {output_path}")
+            logger.debug(f"  SEG SeriesUID: {seg_series_uid}")
 
             # Import into database
             self._import_dicom_folder(output_dir)
@@ -355,11 +411,163 @@ class DicomManager:
 
             return seg_series_uid
 
-        except QuantitativeReportingNotAvailable:
+        except HighdicomNotAvailable:
             raise
         except Exception as e:
             logger.exception(f"Failed to export DICOM SEG: {e}")
             raise DicomManagerError(f"Failed to export DICOM SEG: {e}") from e
+
+    def _load_source_dicom_images(self, series_uid: str) -> list:
+        """Load source DICOM images for a series.
+
+        Args:
+            series_uid: SeriesInstanceUID to load.
+
+        Returns:
+            List of pydicom Dataset objects.
+        """
+        import pydicom
+
+        db = self.database
+        files = db.filesForSeries(series_uid)
+
+        if not files:
+            return []
+
+        # Load and sort by instance number
+        datasets = []
+        for f in files:
+            try:
+                ds = pydicom.dcmread(f)
+                datasets.append(ds)
+            except Exception as e:
+                logger.warning(f"Failed to read DICOM file {f}: {e}")
+
+        # Sort by InstanceNumber
+        datasets.sort(key=lambda x: int(getattr(x, "InstanceNumber", 0)))
+
+        return datasets
+
+    def _get_labelmap_from_segmentation(
+        self, segmentation_node, reference_volume_node
+    ) -> tuple[np.ndarray, list[str]]:
+        """Extract labelmap array from Slicer segmentation node.
+
+        Args:
+            segmentation_node: vtkMRMLSegmentationNode.
+            reference_volume_node: Reference volume for geometry.
+
+        Returns:
+            Tuple of (labelmap_array, segment_ids) where:
+            - labelmap_array: numpy array with integer segment labels
+            - segment_ids: list of segment IDs in label order
+        """
+        import sitkUtils
+        import slicer
+
+        # Create temporary labelmap volume
+        labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
+
+        try:
+            # Export segmentation to labelmap
+            slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
+                segmentation_node,
+                labelmap_node,
+                slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY,
+                reference_volume_node,
+            )
+
+            # Get segment IDs in order
+            segmentation = segmentation_node.GetSegmentation()
+            segment_ids = []
+            for i in range(segmentation.GetNumberOfSegments()):
+                segment_ids.append(segmentation.GetNthSegmentID(i))
+
+            # Convert to numpy array
+            labelmap_sitk = sitkUtils.PullVolumeFromSlicer(labelmap_node)
+            import SimpleITK as sitk
+
+            labelmap_array = sitk.GetArrayFromImage(labelmap_sitk)
+
+            # highdicom expects (frames, rows, cols) with frames = Z slices
+            # sitk array is already (Z, Y, X) which matches
+            return labelmap_array.astype(np.uint8), segment_ids
+
+        finally:
+            slicer.mrmlScene.RemoveNode(labelmap_node)
+
+    def _build_segment_descriptions(
+        self,
+        segmentation_node,
+        segment_ids: list[str],
+        segment_metadata: dict | None = None,
+    ) -> list:
+        """Build highdicom SegmentDescription objects from Slicer segments.
+
+        Args:
+            segmentation_node: vtkMRMLSegmentationNode.
+            segment_ids: List of segment IDs in label order.
+            segment_metadata: Optional metadata to include.
+
+        Returns:
+            List of highdicom SegmentDescription objects.
+        """
+        from highdicom.seg import (
+            SegmentAlgorithmTypeValues,
+            SegmentDescription,
+        )
+        from highdicom.sr.coding import CodedConcept
+
+        segmentation = segmentation_node.GetSegmentation()
+        descriptions = []
+
+        for i, seg_id in enumerate(segment_ids):
+            segment = segmentation.GetSegment(seg_id)
+            if segment is None:
+                continue
+
+            # Get segment properties
+            name = segment.GetName() or f"Segment_{i + 1}"
+
+            # Get color (convert from 0-1 to 0-255)
+            color_float = segment.GetColor()
+            color = tuple(int(c * 255) for c in color_float[:3])
+
+            # Create a generic tissue category and type
+            # In production, would use proper SNOMED codes
+            category = CodedConcept(
+                value="85756007",
+                meaning="Tissue",
+                scheme_designator="SCT",
+            )
+
+            segmented_property = CodedConcept(
+                value="85756007",
+                meaning=name,
+                scheme_designator="SCT",
+            )
+
+            # Build algorithm identification
+            algo_name = "AdaptiveBrush"
+            if segment_metadata and "algorithm" in segment_metadata:
+                algo_name = segment_metadata["algorithm"]
+
+            desc = SegmentDescription(
+                segment_number=i + 1,
+                segment_label=name,
+                segmented_property_category=category,
+                segmented_property_type=segmented_property,
+                algorithm_type=SegmentAlgorithmTypeValues.AUTOMATIC,
+                algorithm_identification=CodedConcept(
+                    value="AdaptiveBrush",
+                    meaning=algo_name,
+                    scheme_designator="99LOCAL",
+                ),
+                recommended_display_rgb_value=color,
+            )
+            descriptions.append(desc)
+
+        return descriptions
 
     def _import_dicom_folder(self, folder: Path) -> list[str]:
         """Import DICOM files from folder into database.

@@ -415,6 +415,28 @@ def run_optimization(
     logger.info(f"Loading sample data: {recipe.sample_data}")
     volume_node, segmentation_node, segment_id = setup_slicer_scene(recipe.sample_data)
 
+    # Initialize DICOM manager and create synthetic DICOM from volume
+    dicom_manager = None
+    dicom_info = None
+    try:
+        # Add reviewer lib to path for DicomManager
+        reviewer_path = PROJECT_ROOT / "SegmentEditorAdaptiveBrushReviewer"
+        sys.path.insert(0, str(reviewer_path))
+        from SegmentEditorAdaptiveBrushReviewerLib import DicomManager, DicomManagerError
+
+        dicom_manager = DicomManager()
+        if dicom_manager.ensure_database_initialized():
+            logger.info("DICOM database initialized")
+        else:
+            logger.warning("DICOM database not available, falling back to .seg.nrrd")
+            dicom_manager = None
+    except ImportError as e:
+        logger.warning(f"DicomManager not available: {e}")
+        dicom_manager = None
+    except DicomManagerError as e:
+        logger.warning(f"DICOM initialization failed: {e}")
+        dicom_manager = None
+
     # Load gold standard AFTER scene setup (so it doesn't get cleared)
     logger.info(f"Loading gold standard: {gold_name}")
     gold_seg_node, gold_segment_id, click_locations, gold_metadata = load_gold_standard(gold_name)
@@ -445,11 +467,49 @@ def run_optimization(
 
     # Create directories for trial outputs
     screenshots_dir = optimizer.output_dir / "screenshots"
-    segmentations_dir = optimizer.output_dir / "segmentations"
     gold_candidates_dir = optimizer.output_dir / "gold_candidates"
     screenshots_dir.mkdir(exist_ok=True)
-    segmentations_dir.mkdir(exist_ok=True)
     gold_candidates_dir.mkdir(exist_ok=True)
+
+    # Create DICOM or legacy segmentation directories
+    if dicom_manager is not None:
+        dicom_volume_dir = optimizer.output_dir / "dicom" / "volume"
+        dicom_seg_dir = optimizer.output_dir / "dicom" / "segmentations"
+        dicom_volume_dir.mkdir(parents=True, exist_ok=True)
+        dicom_seg_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create synthetic DICOM from volume
+        try:
+            patient_id = f"AdaptiveBrush_{recipe.sample_data}"
+            study_desc = f"{config.name}_{datetime.now().strftime('%Y%m%d')}"
+
+            volume_series_uid = dicom_manager.create_synthetic_dicom(
+                volume_node=volume_node,
+                patient_id=patient_id,
+                study_description=study_desc,
+                output_dir=dicom_volume_dir,
+                series_description=recipe.sample_data,
+            )
+
+            dicom_info = {
+                "patient_id": patient_id,
+                "study_description": study_desc,
+                "volume_series_uid": volume_series_uid,
+                "volume_name": recipe.sample_data,
+            }
+            logger.info(f"Created synthetic DICOM: SeriesUID={volume_series_uid}")
+        except Exception as e:
+            logger.warning(f"Failed to create synthetic DICOM: {e}")
+            logger.warning("Falling back to .seg.nrrd format")
+            dicom_manager = None
+            dicom_info = None
+
+    # Legacy .seg.nrrd directory (used if DICOM not available)
+    if dicom_manager is None:
+        segmentations_dir = optimizer.output_dir / "segmentations"
+        segmentations_dir.mkdir(exist_ok=True)
+    else:
+        segmentations_dir = None  # Not used with DICOM
 
     # Threshold for potential gold standard improvement
     # If Dice exceeds this, segmentation may be better than current gold standard
@@ -535,20 +595,66 @@ def run_optimization(
         elapsed = time.time() - trial_start
         logger.info(f"  Final Dice: {final_dice:.4f} ({elapsed * 1000:.0f}ms)")
 
-        # Save trial segmentation
-        seg_path = segmentations_dir / f"trial_{trial_num:03d}.seg.nrrd"
-        slicer.util.saveNode(segmentation_node, str(seg_path))
+        # Save trial segmentation (DICOM SEG or .seg.nrrd)
+        algorithm = params.get("algorithm", "unknown")
+        series_desc = f"trial_{trial_num:03d}_{algorithm}"
+        seg_series_uid = None
+
+        if dicom_manager is not None and dicom_info is not None:
+            # Export as DICOM SEG
+            try:
+                seg_series_uid = dicom_manager.export_segmentation_as_dicom_seg(
+                    segmentation_node=segmentation_node,
+                    reference_volume_node=volume_node,
+                    series_description=series_desc,
+                    output_dir=dicom_seg_dir / f"trial_{trial_num:03d}",
+                    segment_metadata={"algorithm": algorithm, "dice": final_dice},
+                )
+                seg_path = dicom_seg_dir / f"trial_{trial_num:03d}"
+                logger.debug(f"  Exported DICOM SEG: {seg_series_uid}")
+            except Exception as e:
+                logger.warning(f"  DICOM SEG export failed: {e}, falling back to .seg.nrrd")
+                seg_path = (
+                    optimizer.output_dir / "segmentations" / f"trial_{trial_num:03d}.seg.nrrd"
+                )
+                seg_path.parent.mkdir(exist_ok=True)
+                slicer.util.saveNode(segmentation_node, str(seg_path))
+        else:
+            # Legacy .seg.nrrd format
+            seg_path = segmentations_dir / f"trial_{trial_num:03d}.seg.nrrd"
+            slicer.util.saveNode(segmentation_node, str(seg_path))
 
         # Check if this could be a better gold standard
         if final_dice >= GOLD_CANDIDATE_THRESHOLD:
-            candidate_path = (
-                gold_candidates_dir / f"trial_{trial_num:03d}_dice_{final_dice:.4f}.seg.nrrd"
-            )
-            slicer.util.saveNode(segmentation_node, str(candidate_path))
-            logger.info(
-                f"  GOLD CANDIDATE: Dice {final_dice:.4f} exceeds threshold {GOLD_CANDIDATE_THRESHOLD}"
-            )
-            logger.info(f"  Saved to: {candidate_path}")
+            if dicom_manager is not None and dicom_info is not None:
+                # Export gold candidate as DICOM SEG
+                try:
+                    candidate_dir = (
+                        gold_candidates_dir / f"trial_{trial_num:03d}_dice_{final_dice:.4f}"
+                    )
+                    candidate_dir.mkdir(exist_ok=True)
+                    dicom_manager.export_segmentation_as_dicom_seg(
+                        segmentation_node=segmentation_node,
+                        reference_volume_node=volume_node,
+                        series_description=f"gold_candidate_{trial_num:03d}",
+                        output_dir=candidate_dir,
+                        segment_metadata={"algorithm": algorithm, "dice": final_dice},
+                    )
+                    logger.info(
+                        f"  GOLD CANDIDATE: Dice {final_dice:.4f} exceeds threshold {GOLD_CANDIDATE_THRESHOLD}"
+                    )
+                    logger.info(f"  Saved to: {candidate_dir}")
+                except Exception as e:
+                    logger.warning(f"  Gold candidate DICOM export failed: {e}")
+            else:
+                candidate_path = (
+                    gold_candidates_dir / f"trial_{trial_num:03d}_dice_{final_dice:.4f}.seg.nrrd"
+                )
+                slicer.util.saveNode(segmentation_node, str(candidate_path))
+                logger.info(
+                    f"  GOLD CANDIDATE: Dice {final_dice:.4f} exceeds threshold {GOLD_CANDIDATE_THRESHOLD}"
+                )
+                logger.info(f"  Saved to: {candidate_path}")
 
         # Save screenshot manifest
         screenshot_capture.save_manifest()
@@ -557,6 +663,8 @@ def run_optimization(
         trial.set_user_attr("duration_ms", elapsed * 1000)
         trial.set_user_attr("n_clicks", len(click_locations))
         trial.set_user_attr("click_locations", trial_clicks)
+        if seg_series_uid:
+            trial.set_user_attr("dicom_series_uid", seg_series_uid)
         trial.set_user_attr("segmentation_path", str(seg_path))
 
         return final_dice
@@ -581,6 +689,13 @@ def run_optimization(
         logger.info("\nParameter Importance:")
         for name, importance in sorted(results.parameter_importance.items(), key=lambda x: -x[1]):
             logger.info(f"  {name}: {importance:.3f}")
+
+    # Save DICOM info if available
+    if dicom_info is not None:
+        dicom_info_path = optimizer.output_dir / "dicom_info.json"
+        with open(dicom_info_path, "w") as f:
+            json.dump(dicom_info, f, indent=2)
+        logger.info(f"DICOM info saved to: {dicom_info_path}")
 
     # Generate lab notebook
     generate_lab_notebook(optimizer.output_dir, results, config, gold_metadata)

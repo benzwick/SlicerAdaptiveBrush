@@ -14,7 +14,7 @@ from .DicomManager import (
     DicomDatabaseNotAvailable,
     DicomManager,
     DicomManagerError,
-    QuantitativeReportingNotAvailable,
+    HighdicomNotAvailable,
 )
 from .ModelGrouping import (
     ComparisonModel,
@@ -44,11 +44,11 @@ __all__ = [
     "SequenceRecorder",
     "ViewGroupManager",
     "SceneViewBookmarks",
-    # DICOM management (ADR-017)
+    # DICOM management (ADR-017) - uses highdicom for LABELMAP encoding
     "DicomManager",
     "DicomManagerError",
     "DicomDatabaseNotAvailable",
-    "QuantitativeReportingNotAvailable",
+    "HighdicomNotAvailable",
     # Model grouping for cross-comparison (ADR-018)
     "ComparisonModel",
     "TrialModelMapper",
