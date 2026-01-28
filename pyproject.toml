@@ -29,6 +29,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Medical Science Apps.",
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/benzwick/SlicerAdaptiveBrush"
@@ -48,6 +49,7 @@ dev = [
     "pre-commit>=4.0.0",
     "optuna>=4.0.0",
     "pyyaml>=6.0",
+    "pydicom>=2.4.4",
 ]
 
 [tool.pytest.ini_options]
