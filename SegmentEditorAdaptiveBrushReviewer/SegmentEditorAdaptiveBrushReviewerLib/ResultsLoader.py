@@ -279,34 +279,52 @@ class ResultsLoader:
         )
 
     def get_gold_standard_path(self, run: OptimizationRun) -> Path | None:
-        """Get gold standard path from run config.
+        """Get gold standard DICOM path from run config.
 
         Args:
             run: Optimization run.
 
         Returns:
-            Path to gold standard or None.
+            Path to gold standard DICOM directory, or None if not found.
         """
         recipes = run.config.get("recipes", [])
         if recipes and "gold_standard" in recipes[0]:
             gold_path = Path(recipes[0]["gold_standard"])
 
-            # If path is absolute and exists, use it directly
-            if gold_path.is_absolute() and gold_path.exists():
-                return gold_path
+            # Extract the gold standard directory from various path formats:
+            # - "GoldStandards/X/gold.seg.nrrd" -> "GoldStandards/X"
+            # - "GoldStandards/X/dicom" -> "GoldStandards/X"
+            # - "GoldStandards/X" -> "GoldStandards/X"
+            if gold_path.name == "gold.seg.nrrd":
+                gold_dir = gold_path.parent
+            elif gold_path.name == "dicom":
+                gold_dir = gold_path.parent
+            else:
+                gold_dir = gold_path
 
             # Try to resolve relative path from extension root (Tester module)
-            # Gold standards are stored in SegmentEditorAdaptiveBrushTester/GoldStandards/
             tester_dir = Path(__file__).parent.parent.parent / "SegmentEditorAdaptiveBrushTester"
-            resolved_path = tester_dir / gold_path
-            if resolved_path.exists():
-                return resolved_path
+            resolved_dir = tester_dir / gold_dir
+            if resolved_dir.exists():
+                dicom_path = resolved_dir / "dicom"
+                if dicom_path.exists():
+                    return dicom_path
+                # Fall back to directory for legacy check
+                return resolved_dir
 
-            # Also try relative to run directory
-            run_resolved = run.path / gold_path
+            # Try relative to run directory
+            run_resolved = run.path / gold_dir
             if run_resolved.exists():
+                dicom_path = run_resolved / "dicom"
+                if dicom_path.exists():
+                    return dicom_path
                 return run_resolved
 
-            # Return original path (will fail with helpful error message)
-            return gold_path
+            # Try absolute path
+            if gold_dir.is_absolute() and gold_dir.exists():
+                dicom_path = gold_dir / "dicom"
+                if dicom_path.exists():
+                    return dicom_path
+                return gold_dir
+
         return None

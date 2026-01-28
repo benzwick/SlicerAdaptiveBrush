@@ -1602,12 +1602,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             except Exception as e:
                 logging.warning(f"Could not auto-load sample data: {e}")
 
-        # Auto-load gold standard
+        # Auto-load gold standard from DICOM
         gold_path = self.results_loader.get_gold_standard_path(self.current_run)
         if gold_path and gold_path.exists():
             try:
-                if self.viz_controller.load_gold_segmentation(gold_path):
-                    logging.info(f"Auto-loaded gold standard: {gold_path.name}")
+                if self.viz_controller.load_gold_segmentation_from_dicom(gold_path):
+                    logging.info(f"Auto-loaded gold standard from DICOM: {gold_path.name}")
             except Exception as e:
                 logging.warning(f"Could not auto-load gold standard: {e}")
 
@@ -1810,19 +1810,19 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self.viz_controller.set_view_mode(modes[mode_id])
 
     def _on_load_gold(self):
-        """Load gold standard segmentation."""
+        """Load gold standard segmentation from DICOM."""
         if not self.current_run:
             _warning("No run loaded")
             return
 
-        # Try to get gold standard path from run config
+        # Try to get gold standard DICOM path from run config
         gold_path = self.results_loader.get_gold_standard_path(self.current_run)
 
         if gold_path and gold_path.exists():
-            if self.viz_controller.load_gold_segmentation(gold_path):
-                _info(f"Loaded gold standard: {gold_path.name}")
+            if self.viz_controller.load_gold_segmentation_from_dicom(gold_path):
+                _info(f"Loaded gold standard from DICOM: {gold_path.name}")
             else:
-                _error(f"Failed to load: {gold_path}")
+                _error(f"Failed to load DICOM SEG: {gold_path}")
         else:
             # Try using GoldStandardManager if path not in config
             try:

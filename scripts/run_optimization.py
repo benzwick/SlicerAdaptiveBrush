@@ -259,9 +259,26 @@ def load_gold_standard(gold_name: str):
     if not gold_path.exists():
         raise FileNotFoundError(f"Gold standard not found: {gold_path}")
 
-    # Load segmentation
-    seg_file = gold_path / "gold.seg.nrrd"
-    gold_seg_node = slicer.util.loadSegmentation(str(seg_file))
+    # Load segmentation from DICOM SEG
+    from DICOMLib import DICOMUtils
+
+    dicom_dir = gold_path / "dicom"
+    if not dicom_dir.exists():
+        raise FileNotFoundError(f"DICOM directory not found: {dicom_dir}")
+
+    dicom_files = list(dicom_dir.glob("*.dcm"))
+    if not dicom_files:
+        raise FileNotFoundError(f"No DICOM files in: {dicom_dir}")
+
+    # Import to DICOM database
+    indexer = DICOMUtils.importDicomToDatabase(str(dicom_dir))
+    if indexer:
+        indexer.waitForImportFinished()
+
+    gold_seg_node = slicer.util.loadNodeFromFile(
+        str(dicom_files[0]),
+        "DICOMSegmentationFile",
+    )
 
     # Show gold standard as outline only in a distinct color (cyan)
     display_node = gold_seg_node.GetDisplayNode()
@@ -397,15 +414,26 @@ def run_optimization(
 
     # Determine gold standard
     # recipe.gold_standard is just the name (e.g., "MRBrainTumor1_tumor")
-    # recipe_spec.gold_standard from config is a full path like "GoldStandards/X/gold.seg.nrrd"
+    # recipe_spec.gold_standard from config can be:
+    #   - "GoldStandards/X/gold.seg.nrrd" (legacy)
+    #   - "GoldStandards/X/dicom" (new)
+    #   - "GoldStandards/X" (directory)
+    #   - "X" (just the name)
     gold_name = recipe.gold_standard
     if recipe_spec.gold_standard:
-        # Extract directory name from path like "GoldStandards/MRBrainTumor1_tumor/gold.seg.nrrd"
         gold_path = recipe_spec.gold_standard
+        # Extract the gold standard name from various path formats
         if gold_path.name == "gold.seg.nrrd":
+            # Legacy format: GoldStandards/X/gold.seg.nrrd -> X
             gold_name = gold_path.parent.name
+        elif gold_path.name == "dicom":
+            # New format: GoldStandards/X/dicom -> X
+            gold_name = gold_path.parent.name
+        elif gold_path.parent.name == "GoldStandards":
+            # Directory format: GoldStandards/X -> X
+            gold_name = gold_path.name
         else:
-            # Might be just the directory name
+            # Just the name
             gold_name = str(gold_path.stem)
 
     if not gold_name:

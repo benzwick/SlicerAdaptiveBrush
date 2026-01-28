@@ -2,12 +2,15 @@
 
 Provides functionality to save, load, and compare gold standard segmentations
 for regression testing and optimization workflows.
+
+All gold standards are stored as DICOM SEG (no .seg.nrrd support).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,13 +22,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Import DicomManager from Reviewer module
+_reviewer_path = Path(__file__).parent.parent.parent / "SegmentEditorAdaptiveBrushReviewer"
+if str(_reviewer_path) not in sys.path:
+    sys.path.insert(0, str(_reviewer_path))
+
 
 class GoldStandardManager:
     """Manage gold standard segmentations for regression testing.
 
     Gold standards are saved in the GoldStandards/ directory with:
-    - gold.seg.nrrd: The segmentation file
-    - metadata.json: Creation info, parameters, click locations
+    - dicom/: DICOM SEG files
+    - metadata.json: Creation info, parameters, click locations, DICOM UIDs
     - reference_screenshots/: Visual references
 
     Usage:
@@ -54,6 +62,17 @@ class GoldStandardManager:
     def __init__(self) -> None:
         """Initialize gold standard manager."""
         self.GOLD_DIR.mkdir(exist_ok=True)
+        self._dicom_manager = None
+
+    def _get_dicom_manager(self):
+        """Get or create DicomManager instance."""
+        if self._dicom_manager is None:
+            from SegmentEditorAdaptiveBrushReviewerLib import DicomManager
+
+            self._dicom_manager = DicomManager()
+            if not self._dicom_manager.ensure_database_initialized():
+                raise RuntimeError("DICOM database initialization failed")
+        return self._dicom_manager
 
     def save_as_gold(
         self,
@@ -66,7 +85,7 @@ class GoldStandardManager:
         algorithm: str = "",
         parameters: dict | None = None,
     ) -> Path:
-        """Save current segmentation as new gold standard.
+        """Save current segmentation as new gold standard (DICOM SEG format).
 
         Args:
             segmentation_node: Segmentation MRML node to save.
@@ -82,15 +101,25 @@ class GoldStandardManager:
         Returns:
             Path to the gold standard directory.
         """
-        import slicer
-
         gold_path = self.GOLD_DIR / name
         gold_path.mkdir(parents=True, exist_ok=True)
 
-        # Save segmentation
-        seg_file = gold_path / "gold.seg.nrrd"
-        slicer.util.saveNode(segmentation_node, str(seg_file))
-        logger.info(f"Saved segmentation to {seg_file}")
+        # Save segmentation as DICOM SEG
+        dicom_manager = self._get_dicom_manager()
+        dicom_dir = gold_path / "dicom"
+
+        dicom_series_uid = dicom_manager.export_segmentation_as_dicom_seg(
+            segmentation_node=segmentation_node,
+            reference_volume_node=volume_node,
+            series_description=f"GoldStandard_{name}",
+            output_dir=dicom_dir,
+            segment_metadata={
+                "algorithm": algorithm,
+                "description": description,
+                "is_gold_standard": True,
+            },
+        )
+        logger.info(f"Saved DICOM SEG to {dicom_dir}, UID: {dicom_series_uid}")
 
         # Count voxels
         voxel_count = self._count_voxels(segmentation_node, segment_id, volume_node)
@@ -102,7 +131,7 @@ class GoldStandardManager:
             "dimensions": list(volume_node.GetImageData().GetDimensions()),
         }
 
-        # Save metadata
+        # Save metadata with DICOM info
         metadata = {
             "created": datetime.now().isoformat(),
             "volume": volume_info,
@@ -112,6 +141,10 @@ class GoldStandardManager:
             "parameters": parameters or {},
             "clicks": click_locations,
             "voxel_count": voxel_count,
+            "dicom": {
+                "series_uid": dicom_series_uid,
+                "seg_path": "dicom",
+            },
         }
 
         metadata_file = gold_path / "metadata.json"
@@ -138,28 +171,44 @@ class GoldStandardManager:
             FileNotFoundError: If gold standard does not exist.
         """
         import slicer
+        from DICOMLib import DICOMUtils
 
         gold_path = self.GOLD_DIR / name
 
         if not gold_path.exists():
             raise FileNotFoundError(f"Gold standard not found: {name}")
 
-        # Load segmentation
-        seg_file = gold_path / "gold.seg.nrrd"
-        if not seg_file.exists():
-            raise FileNotFoundError(f"Segmentation file not found: {seg_file}")
-
-        seg_node = slicer.util.loadSegmentation(str(seg_file))
-        logger.info(f"Loaded segmentation from {seg_file}")
-
-        # Load metadata
+        # Load metadata first to get DICOM path
         metadata_file = gold_path / "metadata.json"
         if not metadata_file.exists():
             raise FileNotFoundError(f"Metadata file not found: {metadata_file}")
 
         with open(metadata_file) as f:
             metadata = json.load(f)
-        logger.info(f"Loaded metadata from {metadata_file}")
+
+        # Load segmentation from DICOM SEG
+        dicom_info = metadata.get("dicom", {})
+        dicom_seg_path = gold_path / dicom_info.get("seg_path", "dicom")
+
+        if not dicom_seg_path.exists():
+            raise FileNotFoundError(f"DICOM SEG directory not found: {dicom_seg_path}")
+
+        # Find DICOM file in directory
+        dicom_files = list(dicom_seg_path.glob("*.dcm"))
+        if not dicom_files:
+            raise FileNotFoundError(f"No DICOM files in: {dicom_seg_path}")
+
+        # Import to DICOM database
+        indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
+        if indexer:
+            indexer.waitForImportFinished()
+
+        # Load the segmentation
+        seg_node = slicer.util.loadNodeFromFile(
+            str(dicom_files[0]),
+            "DICOMSegmentationFile",
+        )
+        logger.info(f"Loaded DICOM segmentation from {dicom_seg_path}")
 
         return seg_node, metadata
 
@@ -200,7 +249,9 @@ class GoldStandardManager:
             True if exists, False otherwise.
         """
         gold_path = self.GOLD_DIR / name
-        return (gold_path / "gold.seg.nrrd").exists() and (gold_path / "metadata.json").exists()
+        dicom_dir = gold_path / "dicom"
+        has_dicom = dicom_dir.exists() and any(dicom_dir.glob("*.dcm"))
+        return has_dicom and (gold_path / "metadata.json").exists()
 
     def get_gold_path(self, name: str) -> Path:
         """Get path to a gold standard directory.
