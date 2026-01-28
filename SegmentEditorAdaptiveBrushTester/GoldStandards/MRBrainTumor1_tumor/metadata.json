@@ -25,7 +25,11 @@
   },
   "clicks": [
     {
-      "ras": [-5.31, 34.77, 20.83],
+      "ras": [
+        -5.31,
+        34.77,
+        20.83
+      ],
       "params": {
         "algorithm": "watershed",
         "brush_radius_mm": 25.0,
@@ -33,7 +37,11 @@
       }
     },
     {
-      "ras": [-5.31, 25.12, 35.97],
+      "ras": [
+        -5.31,
+        25.12,
+        35.97
+      ],
       "params": {
         "algorithm": "watershed",
         "brush_radius_mm": 25.0,
@@ -41,7 +49,11 @@
       }
     },
     {
-      "ras": [-5.31, 20.7, 22.17],
+      "ras": [
+        -5.31,
+        20.7,
+        22.17
+      ],
       "params": {
         "algorithm": "watershed",
         "brush_radius_mm": 25.0,
@@ -49,7 +61,11 @@
       }
     },
     {
-      "ras": [-6.16, 38.28, 30.61],
+      "ras": [
+        -6.16,
+        38.28,
+        30.61
+      ],
       "params": {
         "algorithm": "watershed",
         "brush_radius_mm": 25.0,
@@ -57,7 +73,11 @@
       }
     },
     {
-      "ras": [-1.35, 28.65, 18.9],
+      "ras": [
+        -1.35,
+        28.65,
+        18.9
+      ],
       "params": {
         "algorithm": "watershed",
         "brush_radius_mm": 25.0,
@@ -66,12 +86,31 @@
     }
   ],
   "statistics": {
-    "voxel_count": 0,
-    "volume_mm3": 0.0,
-    "bounding_box_ijk": {"min": [0, 0, 0], "max": [0, 0, 0]},
-    "bounding_box_size_mm": [0.0, 0.0, 0.0],
-    "centroid_ras": [0.0, 0.0, 0.0],
-    "checksum_sha256": null,
-    "_note": "Statistics will be computed on next save via GoldStandardManager"
-  }
+    "voxel_count": 13502,
+    "volume_mm3": 16613.79,
+    "bounding_box_ijk": {
+      "min": [
+        113,
+        81,
+        64
+      ],
+      "max": [
+        147,
+        114,
+        89
+      ]
+    },
+    "bounding_box_size_mm": [
+      32.81,
+      31.88,
+      36.4
+    ],
+    "centroid_ras": [
+      -3.79,
+      28.28,
+      27.85
+    ],
+    "checksum_sha256": "73301bd4f9553b1c02fcbd032bd3794b6ab8920cb83dc0b092d779337ab84533"
+  },
+  "statistics_updated": "2026-01-28T18:55:45.926230"
 }

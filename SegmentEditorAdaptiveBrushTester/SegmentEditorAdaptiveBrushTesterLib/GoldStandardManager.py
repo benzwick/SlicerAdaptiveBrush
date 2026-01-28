@@ -506,7 +506,10 @@ class GoldStandardManager:
             centroid_ijk = [centroid_zyx[2], centroid_zyx[1], centroid_zyx[0]]
 
             # Convert centroid to RAS
-            ijk_to_ras = volume_node.GetIJKToRASMatrix()
+            import vtk
+
+            ijk_to_ras = vtk.vtkMatrix4x4()
+            volume_node.GetIJKToRASMatrix(ijk_to_ras)
             centroid_ras_homogeneous = ijk_to_ras.MultiplyPoint(
                 [centroid_ijk[0], centroid_ijk[1], centroid_ijk[2], 1.0]
             )
