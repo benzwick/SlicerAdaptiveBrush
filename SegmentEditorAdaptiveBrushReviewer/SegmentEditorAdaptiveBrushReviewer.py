@@ -808,6 +808,8 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
     def _on_compute_metrics(self):
         """Compute comparison metrics between loaded segmentations."""
+        import slicer
+
         gold_node = self.viz_controller.get_gold_node()
         test_node = self.viz_controller.get_test_node()
 
@@ -819,8 +821,21 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             _warning("Load test segmentation first")
             return
 
+        # Get reference volume from the loaded sample data
+        reference_volume = None
+        sample_name = self._get_sample_data_from_recipe()
+        if sample_name:
+            try:
+                reference_volume = slicer.util.getNode(sample_name + "*")
+            except slicer.util.MRMLNodeNotFoundException:
+                pass
+
+        if not reference_volume:
+            _warning("Load sample data first (needed for metrics computation)")
+            return
+
         try:
-            metrics = compute_metrics_from_nodes(test_node, gold_node)
+            metrics = compute_metrics_from_nodes(test_node, gold_node, reference_volume)
 
             if metrics:
                 self.current_metrics = metrics
@@ -1515,11 +1530,15 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
     def _refresh_run_list(self):
         """Refresh the list of optimization runs."""
+        # Block signals while populating to prevent double loading
+        self.runComboBox.blockSignals(True)
         self.runComboBox.clear()
 
         runs = self.results_loader.list_runs()
         for run_path in runs:
             self.runComboBox.addItem(run_path.name, str(run_path))
+
+        self.runComboBox.blockSignals(False)
 
         if runs:
             self._on_run_selected(runs[0].name)
@@ -1664,9 +1683,12 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
     def _populate_trials(self):
         """Populate trial dropdown from current run."""
+        # Block signals while populating to prevent multiple trial loads
+        self.trialComboBox.blockSignals(True)
         self.trialComboBox.clear()
 
         if not self.current_run:
+            self.trialComboBox.blockSignals(False)
             return
 
         for trial in self.current_run.trials:
@@ -1675,10 +1697,16 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 label += " (pruned)"
             self.trialComboBox.addItem(label, trial.trial_number)
 
+        self.trialComboBox.blockSignals(False)
+
         # Update best trial label
         if self.current_run.best_trial:
             best = self.current_run.best_trial
             self.bestTrialLabel.setText(f"Best: #{best.trial_number} (Dice: {best.value:.3f})")
+
+        # Manually trigger selection for first trial
+        if self.trialComboBox.count > 0:
+            self._on_trial_selected(0)
 
     def _on_trial_selected(self, index):
         """Handle trial selection."""
