@@ -72,10 +72,11 @@ class OptimizationResults:
     direction: str
     duration_seconds: float
     completed_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    dicom_info: dict[str, Any] | None = None  # DICOM volume/study UIDs
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "config_name": self.config_name,
             "n_trials": self.n_trials,
             "best_trial": self.best_trial.to_dict() if self.best_trial else None,
@@ -86,6 +87,9 @@ class OptimizationResults:
             "duration_seconds": self.duration_seconds,
             "completed_at": self.completed_at,
         }
+        if self.dicom_info:
+            result["dicom"] = self.dicom_info
+        return result
 
 
 class OptunaOptimizer:
@@ -128,6 +132,7 @@ class OptunaOptimizer:
         self.config = config
         self.study: optuna.Study | None = None
         self.trial_results: list[OptunaTrialResult] = []
+        self.dicom_info: dict[str, Any] | None = None
 
         # Set up output directory
         if output_dir is None:
@@ -142,6 +147,15 @@ class OptunaOptimizer:
         # Save config copy
         config_copy_path = self.output_dir / "config.yaml"
         config.save(config_copy_path)
+
+    def set_dicom_info(self, dicom_info: dict[str, Any]) -> None:
+        """Set DICOM volume/study information.
+
+        Args:
+            dicom_info: Dictionary with DICOM UIDs (patient_id, study_instance_uid,
+                       volume_series_uid, volume_name).
+        """
+        self.dicom_info = dicom_info
 
     def create_study(self, study_name: str | None = None) -> optuna.Study:
         """Create Optuna study with configured sampler and pruner.
@@ -408,6 +422,7 @@ class OptunaOptimizer:
             study_name=self.study.study_name if self.study else "",
             direction=self.config.direction,
             duration_seconds=duration_seconds,
+            dicom_info=self.dicom_info,
         )
 
     def get_param_importance(self) -> dict[str, float]:
