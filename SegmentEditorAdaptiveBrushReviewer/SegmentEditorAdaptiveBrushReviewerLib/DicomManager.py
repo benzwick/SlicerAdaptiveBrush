@@ -249,38 +249,44 @@ class DicomManager:
         logger.debug(f"  SeriesUID: {series_uid}")
 
         try:
-            # Get subject hierarchy for the volume
-            subject_hierarchy = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(
-                slicer.mrmlScene
-            )
+            # Get subject hierarchy
+            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
 
-            # Get subject hierarchy item for volume
-            volume_item = subject_hierarchy.GetItemByDataNode(volume_node)
-            if not volume_item:
+            # Create patient and study hierarchy for DICOM export
+            # This is required by DICOMScalarVolumePlugin
+            patientItemID = shNode.CreateSubjectItem(shNode.GetSceneItemID(), patient_name)
+            studyItemID = shNode.CreateStudyItem(patientItemID, study_description)
+
+            # Get volume's subject hierarchy item and move under study
+            volumeShItemID = shNode.GetItemByDataNode(volume_node)
+            if not volumeShItemID:
                 raise DicomManagerError("Volume not in subject hierarchy")
+            shNode.SetItemParent(volumeShItemID, studyItemID)
 
             # Export using DICOMScalarVolumePlugin
-            from DICOMScalarVolumePlugin import DICOMScalarVolumePluginClass
+            import DICOMScalarVolumePlugin
 
-            plugin = DICOMScalarVolumePluginClass()
+            exporter = DICOMScalarVolumePlugin.DICOMScalarVolumePluginClass()
 
-            # Create exportable
-            exportables = plugin.examineForExport(volume_item)
+            # Get exportables for the volume
+            exportables = exporter.examineForExport(volumeShItemID)
             if not exportables:
                 raise DicomManagerError("Volume cannot be exported as DICOM")
 
-            exportable = exportables[0]
-            exportable.directory = str(output_dir)
-            exportable.setTag("PatientID", patient_id)
-            exportable.setTag("PatientName", patient_name)
-            exportable.setTag("StudyDescription", study_description)
-            exportable.setTag("StudyDate", study_date)
-            exportable.setTag("SeriesDescription", series_description)
-            exportable.setTag("StudyInstanceUID", study_uid)
-            exportable.setTag("SeriesInstanceUID", series_uid)
+            # Configure all exportables
+            for exp in exportables:
+                exp.directory = str(output_dir)
+                exp.setTag("PatientID", patient_id)
+                exp.setTag("PatientName", patient_name)
+                exp.setTag("StudyID", study_description)
+                exp.setTag("StudyDescription", study_description)
+                exp.setTag("StudyDate", study_date)
+                exp.setTag("SeriesDescription", series_description)
+                exp.setTag("StudyInstanceUID", study_uid)
+                exp.setTag("SeriesInstanceUID", series_uid)
 
-            # Export
-            plugin.export(exportable)
+            # Export (takes list of exportables)
+            exporter.export(exportables)
 
             logger.info(f"Exported DICOM to: {output_dir}")
 
@@ -303,14 +309,14 @@ class DicomManager:
         reference_volume_node,
         series_description: str,
         output_dir: Path,
-        compression: str = "JPEG2000Lossless",
+        compression: str = "ExplicitVRLittleEndian",
         segment_metadata: dict | None = None,
     ) -> str:
         """Export segmentation as DICOM SEG with LABELMAP encoding.
 
         Uses highdicom for efficient multi-segment storage with:
         - LABELMAP encoding (DICOM Supplement 243)
-        - Lossless compression
+        - Optional lossless compression (requires additional packages)
         - Full segment metadata
 
         Args:
@@ -318,8 +324,10 @@ class DicomManager:
             reference_volume_node: Reference volume (must have DICOM attributes).
             series_description: DICOM SeriesDescription for the SEG.
             output_dir: Directory to save DICOM SEG file.
-            compression: Compression type - "JPEG2000Lossless" (default),
-                "JPEGLSLossless", "RLELossless", or "ExplicitVRLittleEndian" (none).
+            compression: Compression type - "ExplicitVRLittleEndian" (default, no compression),
+                "JPEG2000Lossless" (requires pylibjpeg+pylibjpeg-openjpeg),
+                "JPEGLSLossless" (requires pylibjpeg+pylibjpeg-libjpeg),
+                "RLELossless" (requires pylibjpeg).
             segment_metadata: Optional metadata to include (algorithm params, etc.).
 
         Returns:
@@ -469,12 +477,16 @@ class DicomManager:
         labelmap_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLabelMapVolumeNode")
 
         try:
-            # Export segmentation to labelmap
+            # Set reference geometry from volume
+            segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(
+                reference_volume_node
+            )
+
+            # Export segmentation to labelmap (3 arguments only)
             slicer.modules.segmentations.logic().ExportAllSegmentsToLabelmapNode(
                 segmentation_node,
                 labelmap_node,
                 slicer.vtkSegmentation.EXTENT_REFERENCE_GEOMETRY,
-                reference_volume_node,
             )
 
             # Get segment IDs in order
@@ -512,11 +524,14 @@ class DicomManager:
         Returns:
             List of highdicom SegmentDescription objects.
         """
+        from highdicom.color import CIELabColor
+        from highdicom.content import AlgorithmIdentificationSequence
         from highdicom.seg import (
             SegmentAlgorithmTypeValues,
             SegmentDescription,
         )
         from highdicom.sr.coding import CodedConcept
+        from pydicom.sr.coding import Code
 
         segmentation = segmentation_node.GetSegmentation()
         descriptions = []
@@ -529,9 +544,10 @@ class DicomManager:
             # Get segment properties
             name = segment.GetName() or f"Segment_{i + 1}"
 
-            # Get color (convert from 0-1 to 0-255)
+            # Get color (convert from 0-1 to 0-255) and convert to CIELab
             color_float = segment.GetColor()
-            color = tuple(int(c * 255) for c in color_float[:3])
+            r, g, b = (int(c * 255) for c in color_float[:3])
+            display_color = CIELabColor.from_rgb(r, g, b)
 
             # Create a generic tissue category and type
             # In production, would use proper SNOMED codes
@@ -552,18 +568,28 @@ class DicomManager:
             if segment_metadata and "algorithm" in segment_metadata:
                 algo_name = segment_metadata["algorithm"]
 
+            # Algorithm family code (using generic "Artificial Intelligence" category)
+            algo_family = Code(
+                value="129465004",
+                scheme_designator="SCT",
+                meaning="Artificial intelligence",
+            )
+
+            algo_identification = AlgorithmIdentificationSequence(
+                name=algo_name,
+                family=algo_family,
+                version="1.0",
+                source="SlicerAdaptiveBrush",
+            )
+
             desc = SegmentDescription(
                 segment_number=i + 1,
                 segment_label=name,
                 segmented_property_category=category,
                 segmented_property_type=segmented_property,
                 algorithm_type=SegmentAlgorithmTypeValues.AUTOMATIC,
-                algorithm_identification=CodedConcept(
-                    value="AdaptiveBrush",
-                    meaning=algo_name,
-                    scheme_designator="99LOCAL",
-                ),
-                recommended_display_rgb_value=color,
+                algorithm_identification=algo_identification,
+                display_color=display_color,
             )
             descriptions.append(desc)
 

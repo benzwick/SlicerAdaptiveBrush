@@ -211,14 +211,22 @@ slicer.util.pip_install("highdicom")
 
 ### Compression Options
 
-| Transfer Syntax | Compression | Speed | Support |
-|-----------------|-------------|-------|---------|
-| `JPEGLSLossless` | Best | Fast | Good |
-| `JPEG2000Lossless` | Excellent | Slow | Excellent |
-| `RLELossless` | Good | Fast | Universal |
-| `ExplicitVRLittleEndian` | None | N/A | Universal |
+| Transfer Syntax | Compression | Speed | Support | Python Dependencies |
+|-----------------|-------------|-------|---------|---------------------|
+| `JPEGLSLossless` | Best | Fast | Good | pylibjpeg, pylibjpeg-libjpeg |
+| `JPEG2000Lossless` | Excellent | Slow | Excellent | pylibjpeg, pylibjpeg-openjpeg |
+| `RLELossless` | Good | Fast | Universal | pylibjpeg or pydicom RLE plugin |
+| `ExplicitVRLittleEndian` | None | N/A | Universal | None (default fallback) |
 
-**Default: `JPEG2000Lossless`** - Best balance of compression and compatibility.
+**Default: `ExplicitVRLittleEndian`** - Works without additional dependencies.
+
+**For optimal compression**, install the pylibjpeg family:
+```python
+slicer.util.pip_install("pylibjpeg pylibjpeg-openjpeg")  # For JPEG2000
+slicer.util.pip_install("pylibjpeg pylibjpeg-libjpeg")   # For JPEG-LS
+```
+
+Then use `JPEG2000Lossless` for best compression ratio with excellent viewer compatibility.
 
 ### DicomManager Class
 
