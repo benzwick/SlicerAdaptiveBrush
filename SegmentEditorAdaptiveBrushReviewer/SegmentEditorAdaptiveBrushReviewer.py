@@ -1729,17 +1729,21 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             self._auto_load_trial_segmentation(trial)
 
     def _auto_load_trial_segmentation(self, trial):
-        """Auto-load segmentation for the selected trial."""
+        """Auto-load segmentation for the selected trial from DICOM."""
         if not trial:
             return
 
-        seg_path = trial.segmentation_path
-        if seg_path and seg_path.exists():
+        # Load from DICOM SEG
+        if trial.dicom_seg_path and trial.dicom_seg_path.exists():
             try:
-                if self.viz_controller.load_test_segmentation(seg_path):
-                    logging.info(f"Auto-loaded trial segmentation: {seg_path.name}")
+                if self.viz_controller.load_test_segmentation_from_dicom(trial.dicom_seg_path):
+                    logging.info(
+                        f"Auto-loaded trial segmentation from DICOM: {trial.dicom_seg_path.name}"
+                    )
             except Exception as e:
                 logging.warning(f"Could not auto-load trial segmentation: {e}")
+        elif trial.dicom_series_uid:
+            logging.warning(f"Trial has DICOM UID but no local path: {trial.dicom_series_uid}")
 
     def _display_trial(self, trial):
         """Display trial parameters and metrics."""
@@ -1851,19 +1855,24 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 _error(f"Failed to load gold standard: {e}")
 
     def _on_load_test(self):
-        """Load test segmentation."""
+        """Load test segmentation from DICOM."""
         if not self.current_trial:
             _warning("No trial selected")
             return
 
-        seg_path = self.current_trial.segmentation_path
+        # Load from DICOM SEG
+        seg_path = self.current_trial.dicom_seg_path
         if seg_path and seg_path.exists():
-            if self.viz_controller.load_test_segmentation(seg_path):
-                _info(f"Loaded test segmentation: {seg_path.name}")
+            if self.viz_controller.load_test_segmentation_from_dicom(seg_path):
+                _info(f"Loaded test segmentation from DICOM: {seg_path.name}")
             else:
-                _error(f"Failed to load: {seg_path}")
+                _error(f"Failed to load DICOM SEG: {seg_path}")
+        elif self.current_trial.dicom_series_uid:
+            _warning(
+                f"Trial has DICOM UID but no local path: {self.current_trial.dicom_series_uid}"
+            )
         else:
-            _warning(f"No segmentation file found for trial #{self.current_trial.trial_number}")
+            _warning(f"No DICOM segmentation for trial #{self.current_trial.trial_number}")
 
     def _on_toggle_gold(self, state):
         """Toggle gold standard visibility."""

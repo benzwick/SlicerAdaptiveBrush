@@ -23,7 +23,7 @@ from .ModelGrouping import (
     quick_compare_top_trials,
 )
 from .RatingManager import Rating, RatingManager, ReviewRecord
-from .ResultsLoader import OptimizationRun, ResultsLoader
+from .ResultsLoader import DicomInfo, OptimizationRun, ResultsLoader, TrialData
 from .ScreenshotViewer import ScreenshotViewer
 from .SequenceRecorder import SceneViewBookmarks, SequenceRecorder, ViewGroupManager
 from .VisualizationController import VisualizationController
@@ -31,6 +31,8 @@ from .VisualizationController import VisualizationController
 __all__ = [
     "ResultsLoader",
     "OptimizationRun",
+    "TrialData",
+    "DicomInfo",
     "VisualizationController",
     "ScreenshotViewer",
     "ContourRenderer",

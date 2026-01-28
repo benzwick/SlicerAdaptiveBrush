@@ -70,7 +70,9 @@ class VisualizationController:
             return False
 
     def load_test_segmentation(self, path: Path | str) -> bool:
-        """Load trial segmentation for comparison.
+        """Load trial segmentation for comparison from file.
+
+        DEPRECATED: Use load_test_segmentation_from_dicom instead.
 
         Args:
             path: Path to segmentation file.
@@ -103,6 +105,67 @@ class VisualizationController:
 
         except Exception as e:
             logger.exception(f"Failed to load test segmentation: {e}")
+            return False
+
+    def load_test_segmentation_from_dicom(self, dicom_seg_path: Path | str) -> bool:
+        """Load trial segmentation from DICOM SEG file.
+
+        Args:
+            dicom_seg_path: Path to DICOM SEG directory or file.
+
+        Returns:
+            True if loaded successfully.
+        """
+        try:
+            import slicer
+            from DICOMLib import DICOMUtils
+
+            dicom_seg_path = Path(dicom_seg_path)
+            if not dicom_seg_path.exists():
+                logger.error(f"DICOM SEG path not found: {dicom_seg_path}")
+                return False
+
+            # Remove previous test if exists
+            if self.test_seg_node:
+                slicer.mrmlScene.RemoveNode(self.test_seg_node)
+
+            # Import DICOM files from directory into database
+            if dicom_seg_path.is_dir():
+                dicom_files = list(dicom_seg_path.glob("*.dcm"))
+                if not dicom_files:
+                    logger.error(f"No DICOM files in: {dicom_seg_path}")
+                    return False
+                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
+                if indexer:
+                    indexer.waitForImportFinished()
+            else:
+                # Single file
+                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path.parent))
+                if indexer:
+                    indexer.waitForImportFinished()
+
+            # Load the segmentation - Slicer handles DICOM SEG automatically
+            loaded_nodes = slicer.util.loadNodeFromFile(
+                str(dicom_seg_path)
+                if dicom_seg_path.is_file()
+                else str(next(dicom_seg_path.glob("*.dcm"))),
+                "DICOMSegmentationFile",
+            )
+
+            if loaded_nodes:
+                self.test_seg_node = (
+                    loaded_nodes if hasattr(loaded_nodes, "GetID") else loaded_nodes[0]
+                )
+                self._apply_color(self.test_seg_node, self.TEST_COLOR)
+                self._set_display_mode(self.test_seg_node, self.view_mode)
+                self.test_seg_node.SetName("Test Segmentation")
+                logger.info(f"Loaded test segmentation from DICOM: {dicom_seg_path}")
+                return True
+
+            return False
+
+        except Exception as e:
+            logger.exception(f"Failed to load DICOM segmentation: {e}")
             return False
 
     def set_view_mode(self, mode: str) -> None:

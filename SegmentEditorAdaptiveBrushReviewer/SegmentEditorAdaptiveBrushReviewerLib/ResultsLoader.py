@@ -1,6 +1,7 @@
 """Load and parse optimization run results.
 
 Loads results from the optimization_results directory structure.
+All segmentations are stored as DICOM SEG (no .seg.nrrd support).
 """
 
 from __future__ import annotations
@@ -15,6 +16,26 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class DicomInfo:
+    """DICOM study/volume information for an optimization run."""
+
+    patient_id: str
+    study_description: str
+    volume_series_uid: str
+    volume_name: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DicomInfo:
+        """Create from dictionary."""
+        return cls(
+            patient_id=data.get("patient_id", ""),
+            study_description=data.get("study_description", ""),
+            volume_series_uid=data.get("volume_series_uid", ""),
+            volume_name=data.get("volume_name", ""),
+        )
+
+
+@dataclass
 class TrialData:
     """Data for a single optimization trial."""
 
@@ -25,8 +46,10 @@ class TrialData:
     pruned: bool = False
     user_attrs: dict[str, Any] = field(default_factory=dict)
     intermediate_values: dict[int, float] = field(default_factory=dict)
-    segmentation_path: Path | None = None
     screenshots: list[Path] = field(default_factory=list)
+    # DICOM SEG information
+    dicom_series_uid: str | None = None
+    dicom_seg_path: Path | None = None
 
 
 @dataclass
@@ -39,6 +62,7 @@ class OptimizationRun:
     trials: list[TrialData]
     best_trial: TrialData | None
     parameter_importance: dict[str, float]
+    dicom_info: DicomInfo | None = None
 
     def get_trial(self, trial_number: int) -> TrialData | None:
         """Get trial by number."""
@@ -137,6 +161,7 @@ class ResultsLoader:
         best_trial = None
         run_name = run_path.name  # Default name from directory
 
+        dicom_info = None
         if isinstance(results, list):
             # Test runner format - array of test results
             for i, test_data in enumerate(results):
@@ -149,6 +174,13 @@ class ResultsLoader:
         else:
             # Optuna format
             run_name = results.get("config_name", run_path.name)
+
+            # Parse DICOM info (required for optimization runs)
+            if "dicom" in results:
+                dicom_info = DicomInfo.from_dict(results["dicom"])
+            else:
+                logger.warning(f"No DICOM info in results - legacy run? {run_path}")
+
             for trial_data in results.get("trials", []):
                 trial = self._parse_trial(trial_data, run_path)
                 trials.append(trial)
@@ -162,6 +194,7 @@ class ResultsLoader:
             trials=trials,
             best_trial=best_trial,
             parameter_importance=importance,
+            dicom_info=dicom_info,
         )
 
         logger.info(f"Loaded run '{run.name}' with {len(trials)} trials")
@@ -170,14 +203,15 @@ class ResultsLoader:
     def _parse_trial(self, data: dict, run_path: Path) -> TrialData:
         """Parse trial data from Optuna format dictionary."""
         trial_num = data["trial_number"]
+        user_attrs = data.get("user_attrs", {})
 
-        # Find segmentation file
-        seg_path = None
-        seg_dir = run_path / "segmentations"
-        if seg_dir.exists():
-            candidates = list(seg_dir.glob(f"trial_{trial_num:03d}*.seg.nrrd"))
-            if candidates:
-                seg_path = candidates[0]
+        # Get DICOM SEG info from user_attrs
+        dicom_series_uid = user_attrs.get("dicom_series_uid")
+        dicom_seg_path_str = user_attrs.get("dicom_seg_path")
+        dicom_seg_path = run_path / dicom_seg_path_str if dicom_seg_path_str else None
+
+        if not dicom_series_uid:
+            logger.warning(f"Trial {trial_num} has no DICOM series UID - legacy format?")
 
         # Find screenshots
         screenshots = []
@@ -191,10 +225,11 @@ class ResultsLoader:
             value=data.get("value", 0.0),
             duration_ms=data.get("duration_ms", 0.0),
             pruned=data.get("pruned", False),
-            user_attrs=data.get("user_attrs", {}),
+            user_attrs=user_attrs,
             intermediate_values=data.get("intermediate_values", {}),
-            segmentation_path=seg_path,
             screenshots=screenshots,
+            dicom_series_uid=dicom_series_uid,
+            dicom_seg_path=dicom_seg_path,
         )
 
     def _parse_test_result(self, data: dict, index: int, run_path: Path) -> TrialData:
@@ -237,8 +272,10 @@ class ResultsLoader:
                 "assertions": data.get("assertions", []),
             },
             intermediate_values={},
-            segmentation_path=None,
             screenshots=screenshots,
+            # Test runner format doesn't have DICOM info
+            dicom_series_uid=None,
+            dicom_seg_path=None,
         )
 
     def get_gold_standard_path(self, run: OptimizationRun) -> Path | None:
