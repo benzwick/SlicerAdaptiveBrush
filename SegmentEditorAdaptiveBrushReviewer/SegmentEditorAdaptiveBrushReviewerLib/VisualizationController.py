@@ -2,6 +2,9 @@
 
 Manages display of gold standard and test segmentations with
 different view modes and color schemes.
+
+Gold standards: Loaded from .seg.nrrd (primary) or DICOM cache (for CSE)
+Test segmentations: Loaded from DICOM SEG (optimization output format)
 """
 
 from __future__ import annotations
@@ -18,6 +21,9 @@ class VisualizationController:
 
     Displays gold standard (yellow/gold) and test (cyan) segmentations
     with various view modes: outline, transparent, fill.
+
+    Gold standards are loaded from .seg.nrrd files (git-tracked canonical format).
+    Test segmentations are loaded from DICOM SEG (optimization output format).
     """
 
     # Color scheme (RGB 0-1)
@@ -34,12 +40,13 @@ class VisualizationController:
         self._test_visible: bool = True
 
     def load_gold_segmentation(self, path: Path | str) -> bool:
-        """Load gold standard segmentation from file.
+        """Load gold standard segmentation from .seg.nrrd file.
 
-        DEPRECATED: Use load_gold_segmentation_from_dicom instead.
+        This is the primary method for loading gold standards.
+        Gold standards are stored as .seg.nrrd in git for version tracking.
 
         Args:
-            path: Path to segmentation file.
+            path: Path to .seg.nrrd segmentation file.
 
         Returns:
             True if loaded successfully.
@@ -71,11 +78,14 @@ class VisualizationController:
             logger.exception(f"Failed to load gold standard: {e}")
             return False
 
-    def load_gold_segmentation_from_dicom(self, dicom_seg_path: Path | str) -> bool:
-        """Load gold standard segmentation from DICOM SEG file.
+    def load_gold_from_dicom_cache(self, dicom_seg_path: Path | str) -> bool:
+        """Load gold standard from DICOM cache.
+
+        Used for CrossSegmentationExplorer compatibility when DICOM format
+        is needed. The DICOM cache is generated on-demand from .seg.nrrd.
 
         Args:
-            dicom_seg_path: Path to DICOM SEG directory or file.
+            dicom_seg_path: Path to DICOM SEG directory or file in .dicom_cache/.
 
         Returns:
             True if loaded successfully.
@@ -86,7 +96,7 @@ class VisualizationController:
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
-                logger.error(f"DICOM SEG path not found: {dicom_seg_path}")
+                logger.error(f"DICOM cache not found: {dicom_seg_path}")
                 return False
 
             # Remove previous gold if exists
@@ -102,19 +112,15 @@ class VisualizationController:
                 indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
                 if indexer:
                     indexer.waitForImportFinished()
+                load_path = str(dicom_files[0])
             else:
-                # Single file
                 indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path.parent))
                 if indexer:
                     indexer.waitForImportFinished()
+                load_path = str(dicom_seg_path)
 
             # Load the segmentation
-            loaded_nodes = slicer.util.loadNodeFromFile(
-                str(dicom_seg_path)
-                if dicom_seg_path.is_file()
-                else str(next(dicom_seg_path.glob("*.dcm"))),
-                "DICOMSegmentationFile",
-            )
+            loaded_nodes = slicer.util.loadNodeFromFile(load_path, "DICOMSegmentationFile")
 
             if loaded_nodes:
                 self.gold_seg_node = (
@@ -123,55 +129,19 @@ class VisualizationController:
                 self._apply_color(self.gold_seg_node, self.GOLD_COLOR)
                 self._set_display_mode(self.gold_seg_node, self.view_mode)
                 self.gold_seg_node.SetName("Gold Standard")
-                logger.info(f"Loaded gold standard from DICOM: {dicom_seg_path}")
+                logger.info(f"Loaded gold standard from DICOM cache: {dicom_seg_path}")
                 return True
 
             return False
 
         except Exception as e:
-            logger.exception(f"Failed to load DICOM gold standard: {e}")
-            return False
-
-    def load_test_segmentation(self, path: Path | str) -> bool:
-        """Load trial segmentation for comparison from file.
-
-        DEPRECATED: Use load_test_segmentation_from_dicom instead.
-
-        Args:
-            path: Path to segmentation file.
-
-        Returns:
-            True if loaded successfully.
-        """
-        try:
-            import slicer
-
-            path = Path(path)
-            if not path.exists():
-                logger.error(f"Test segmentation not found: {path}")
-                return False
-
-            # Remove previous test if exists
-            if self.test_seg_node:
-                slicer.mrmlScene.RemoveNode(self.test_seg_node)
-
-            self.test_seg_node = slicer.util.loadSegmentation(str(path))
-
-            if self.test_seg_node:
-                self._apply_color(self.test_seg_node, self.TEST_COLOR)
-                self._set_display_mode(self.test_seg_node, self.view_mode)
-                self.test_seg_node.SetName("Test Segmentation")
-                logger.info(f"Loaded test segmentation: {path}")
-                return True
-
-            return False
-
-        except Exception as e:
-            logger.exception(f"Failed to load test segmentation: {e}")
+            logger.exception(f"Failed to load gold from DICOM cache: {e}")
             return False
 
     def load_test_segmentation_from_dicom(self, dicom_seg_path: Path | str) -> bool:
         """Load trial segmentation from DICOM SEG file.
+
+        Test segmentations from optimization runs are stored as DICOM SEG.
 
         Args:
             dicom_seg_path: Path to DICOM SEG directory or file.
@@ -201,19 +171,15 @@ class VisualizationController:
                 indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
                 if indexer:
                     indexer.waitForImportFinished()
+                load_path = str(dicom_files[0])
             else:
-                # Single file
                 indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path.parent))
                 if indexer:
                     indexer.waitForImportFinished()
+                load_path = str(dicom_seg_path)
 
-            # Load the segmentation - Slicer handles DICOM SEG automatically
-            loaded_nodes = slicer.util.loadNodeFromFile(
-                str(dicom_seg_path)
-                if dicom_seg_path.is_file()
-                else str(next(dicom_seg_path.glob("*.dcm"))),
-                "DICOMSegmentationFile",
-            )
+            # Load the segmentation
+            loaded_nodes = slicer.util.loadNodeFromFile(load_path, "DICOMSegmentationFile")
 
             if loaded_nodes:
                 self.test_seg_node = (

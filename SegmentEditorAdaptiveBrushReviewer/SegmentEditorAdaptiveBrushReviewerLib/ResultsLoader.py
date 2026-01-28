@@ -278,14 +278,17 @@ class ResultsLoader:
             dicom_seg_path=None,
         )
 
-    def get_gold_standard_path(self, run: OptimizationRun) -> Path | None:
-        """Get gold standard DICOM path from run config.
+    def get_gold_standard_path(self, run: OptimizationRun) -> tuple[Path | None, str]:
+        """Get gold standard path from run config.
+
+        Supports both .seg.nrrd (preferred) and DICOM formats.
 
         Args:
             run: Optimization run.
 
         Returns:
-            Path to gold standard DICOM directory, or None if not found.
+            Tuple of (path, format) where format is "nrrd" or "dicom",
+            or (None, "") if not found.
         """
         recipes = run.config.get("recipes", [])
         if recipes and "gold_standard" in recipes[0]:
@@ -306,25 +309,32 @@ class ResultsLoader:
             tester_dir = Path(__file__).parent.parent.parent / "SegmentEditorAdaptiveBrushTester"
             resolved_dir = tester_dir / gold_dir
             if resolved_dir.exists():
+                # Prefer .seg.nrrd
+                seg_path = resolved_dir / "gold.seg.nrrd"
+                if seg_path.exists():
+                    return seg_path, "nrrd"
+                # Fall back to DICOM
                 dicom_path = resolved_dir / "dicom"
-                if dicom_path.exists():
-                    return dicom_path
-                # Fall back to directory for legacy check
-                return resolved_dir
+                if dicom_path.exists() and any(dicom_path.glob("*.dcm")):
+                    return dicom_path, "dicom"
 
             # Try relative to run directory
             run_resolved = run.path / gold_dir
             if run_resolved.exists():
+                seg_path = run_resolved / "gold.seg.nrrd"
+                if seg_path.exists():
+                    return seg_path, "nrrd"
                 dicom_path = run_resolved / "dicom"
-                if dicom_path.exists():
-                    return dicom_path
-                return run_resolved
+                if dicom_path.exists() and any(dicom_path.glob("*.dcm")):
+                    return dicom_path, "dicom"
 
             # Try absolute path
             if gold_dir.is_absolute() and gold_dir.exists():
+                seg_path = gold_dir / "gold.seg.nrrd"
+                if seg_path.exists():
+                    return seg_path, "nrrd"
                 dicom_path = gold_dir / "dicom"
-                if dicom_path.exists():
-                    return dicom_path
-                return gold_dir
+                if dicom_path.exists() and any(dicom_path.glob("*.dcm")):
+                    return dicom_path, "dicom"
 
-        return None
+        return None, ""
