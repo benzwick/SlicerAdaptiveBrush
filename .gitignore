@@ -55,3 +55,6 @@ docs/_build/
 
 # Review reports (can be regenerated)
 reviews/
+
+# Reference repositories (cloned for reference, not part of project)
+__reference__/
