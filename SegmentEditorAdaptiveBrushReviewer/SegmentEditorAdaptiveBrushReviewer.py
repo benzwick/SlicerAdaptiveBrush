@@ -1923,13 +1923,16 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         if self.current_run:
             default_name = f"{self.current_run.name}_{default_name}"
 
-        name, ok = qt.QInputDialog.getText(
+        # QInputDialog.getText returns different tuple sizes in different Qt versions
+        result = qt.QInputDialog.getText(
             slicer.util.mainWindow(),
             "Save as Gold Standard",
             "Gold standard name:",
             qt.QLineEdit.Normal,
             default_name,
         )
+        name = result[0]
+        ok = result[1]
 
         if not ok or not name:
             return
