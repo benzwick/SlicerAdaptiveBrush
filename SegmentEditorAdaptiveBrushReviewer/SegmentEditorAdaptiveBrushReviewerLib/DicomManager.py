@@ -171,7 +171,7 @@ class DicomManager:
         try:
             import DICOMLib
 
-            if not slicer.dicomDatabase:
+            if not slicer.dicomDatabase or not slicer.dicomDatabase.isOpen:
                 # Create default database in Slicer settings directory
                 settings_dir = Path(slicer.app.slicerHome) / "DICOM"
                 settings_dir.mkdir(exist_ok=True)
@@ -179,7 +179,13 @@ class DicomManager:
 
                 DICOMLib.DICOMUtils.openDatabase(db_path)
                 logger.info(f"Initialized DICOM database at: {db_path}")
-            return True
+
+            # Verify database is actually open
+            if slicer.dicomDatabase and slicer.dicomDatabase.isOpen:
+                return True
+            else:
+                logger.error("DICOM database failed to open after initialization")
+                return False
         except Exception as e:
             logger.error(f"Failed to initialize DICOM database: {e}")
             return False
@@ -309,7 +315,7 @@ class DicomManager:
         reference_volume_node,
         series_description: str,
         output_dir: Path,
-        compression: str = "ExplicitVRLittleEndian",
+        compression: str = "RLELossless",
         segment_metadata: dict | None = None,
     ) -> str:
         """Export segmentation as DICOM SEG with LABELMAP encoding.

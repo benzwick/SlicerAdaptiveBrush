@@ -58,3 +58,8 @@ reviews/
 
 # Reference repositories (cloned for reference, not part of project)
 __reference__/
+
+# DICOM cache (generated on-demand for CSE compatibility)
+.dicom_cache/
+volume_dicom/
+dicom/

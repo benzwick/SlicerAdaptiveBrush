@@ -241,11 +241,14 @@ def compute_dice(
         return 0.0
 
 
-def load_gold_standard(gold_name: str):
+def load_gold_standard(gold_name: str, volume_node=None):
     """Load gold standard segmentation and metadata.
+
+    Loads from .seg.nrrd format and verifies checksum if volume provided.
 
     Args:
         gold_name: Name of the gold standard.
+        volume_node: Reference volume for checksum verification (optional but recommended).
 
     Returns:
         Tuple of (gold_seg_node, gold_segment_id, click_locations, metadata).
@@ -259,28 +262,14 @@ def load_gold_standard(gold_name: str):
     if not gold_path.exists():
         raise FileNotFoundError(f"Gold standard not found: {gold_path}")
 
-    # Load segmentation from DICOM SEG
-    from DICOMLib import DICOMUtils
+    # Load segmentation from .seg.nrrd
+    seg_file = gold_path / "gold.seg.nrrd"
+    if not seg_file.exists():
+        raise FileNotFoundError(f"Segmentation file not found: {seg_file}")
 
-    dicom_dir = gold_path / "dicom"
-    if not dicom_dir.exists():
-        raise FileNotFoundError(f"DICOM directory not found: {dicom_dir}")
+    gold_seg_node = slicer.util.loadSegmentation(str(seg_file))
 
-    dicom_files = list(dicom_dir.glob("*.dcm"))
-    if not dicom_files:
-        raise FileNotFoundError(f"No DICOM files in: {dicom_dir}")
-
-    # Import to DICOM database
-    indexer = DICOMUtils.importDicomToDatabase(str(dicom_dir))
-    if indexer:
-        indexer.waitForImportFinished()
-
-    gold_seg_node = slicer.util.loadNodeFromFile(
-        str(dicom_files[0]),
-        "DICOMSegmentationFile",
-    )
-
-    # Show gold standard as outline only in a distinct color (cyan)
+    # Show gold standard as outline only in a distinct color (gold)
     display_node = gold_seg_node.GetDisplayNode()
     display_node.SetVisibility(True)
     display_node.SetVisibility2DFill(False)  # No fill
@@ -297,6 +286,34 @@ def load_gold_standard(gold_name: str):
         metadata = json.load(f)
 
     click_locations = metadata.get("clicks", [])
+
+    # Verify checksum if volume provided
+    stored_stats = metadata.get("statistics", {})
+    stored_checksum = stored_stats.get("checksum_sha256")
+
+    if volume_node is not None and stored_checksum:
+        from SegmentEditorAdaptiveBrushTesterLib import GoldStandardManager
+
+        manager = GoldStandardManager()
+        current_stats = manager._compute_statistics(gold_seg_node, gold_segment_id, volume_node)
+
+        if current_stats["checksum_sha256"] != stored_checksum:
+            logger.error(
+                f"CHECKSUM MISMATCH for {gold_name}!\n"
+                f"  Expected: {stored_stats.get('voxel_count', '?'):,} voxels\n"
+                f"  Found:    {current_stats['voxel_count']:,} voxels"
+            )
+            raise ValueError(
+                f"Gold standard '{gold_name}' has been modified! "
+                f"Expected {stored_stats.get('voxel_count', '?'):,} voxels, "
+                f"found {current_stats['voxel_count']:,}."
+            )
+        logger.info(
+            f"Gold standard verified: {gold_name} "
+            f"({stored_stats.get('voxel_count', 0):,} voxels, checksum OK)"
+        )
+    elif stored_checksum is None:
+        logger.warning(f"No checksum in metadata for {gold_name}, skipping verification")
 
     logger.info(f"Loaded gold standard: {gold_name} with {len(click_locations)} clicks")
 
@@ -457,8 +474,11 @@ def run_optimization(
     logger.info("DICOM database initialized")
 
     # Load gold standard AFTER scene setup (so it doesn't get cleared)
+    # Pass volume_node for checksum verification
     logger.info(f"Loading gold standard: {gold_name}")
-    gold_seg_node, gold_segment_id, click_locations, gold_metadata = load_gold_standard(gold_name)
+    gold_seg_node, gold_segment_id, click_locations, gold_metadata = load_gold_standard(
+        gold_name, volume_node=volume_node
+    )
     logger.info(f"Gold standard has {len(click_locations)} clicks")
 
     # Set up effect
