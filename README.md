@@ -1,142 +1,108 @@
 # SlicerAdaptiveBrush
 
 [![CI](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml)
-[![Documentation](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml)
+[![Documentation](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml/badge.svg)](https://benzwick.github.io/SlicerAdaptiveBrush/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![3D Slicer](https://img.shields.io/badge/3D_Slicer-5.10%2B-green.svg)](https://www.slicer.org/)
 
-An **Adaptive Brush** segment editor effect extension for [3D Slicer](https://www.slicer.org/).
+An **Adaptive Brush** segment editor effect for [3D Slicer](https://www.slicer.org/).
 
-## Overview
+<!-- ![Adaptive Brush in action](Screenshots/main-ui.png) -->
 
-The Adaptive Brush automatically segments regions based on image intensity similarity within the brush area, adapting to image features (edges, boundaries) rather than using a fixed geometric shape. This is similar to the adaptive brush tools found in ITK-SNAP and ImFusion Labels.
+**[Documentation](https://benzwick.github.io/SlicerAdaptiveBrush/)** |
+[User Guide](https://benzwick.github.io/SlicerAdaptiveBrush/user-guide/) |
+[Algorithms](https://benzwick.github.io/SlicerAdaptiveBrush/algorithms/)
+
+## What is Adaptive Brush?
+
+The Adaptive Brush automatically segments regions based on image intensity similarity. Unlike a fixed geometric brush, it adapts to image features (edges, boundaries), similar to tools in ITK-SNAP and ImFusion Labels.
 
 ## Features
 
-- **Multiple algorithm choices** - Geodesic Distance, Watershed, Random Walker, Level Set, Connected Threshold, Region Growing, Threshold Brush
-- **Auto-threshold methods** - Otsu, Huang, Triangle, Maximum Entropy, IsoData, Li
-- **Automatic intensity analysis** - GMM-based threshold estimation adapts to image content
+- **Multiple algorithms** - Watershed, Geodesic Distance, Level Set, and more
+- **Auto-threshold detection** - Otsu, Huang, Triangle, and other methods
 - **Edge-aware boundaries** - Respects anatomical boundaries automatically
-- **2D and 3D modes** - Works on single slices or volumetrically (sphere mode)
-- **Adjustable parameters** - Control brush radius, edge sensitivity, algorithm choice
-- **Visual brush outline** - See brush radius as you paint
-- **Undo support** - Full undo/redo integration with Slicer
-
-## Planned Features
-
-- GPU acceleration for Level Set algorithm (OpenCL/CUDA)
-- Performance caching optimization for smoother drag operations
-- Preview mode during drag (reduced resolution for speed)
+- **2D and 3D modes** - Paint on slices or volumetrically
+- **Full undo support** - Integrated with Slicer's undo/redo system
 
 ## Installation
 
-> **Note:** SlicerAdaptiveBrush is not yet available in the Extension Index.
-> Once published, installation will be via Extension Manager search.
+> **Note:** SlicerAdaptiveBrush is not yet in the Extension Index.
 
-### From GitHub Release (Recommended)
+### From GitHub Release
 
-1. Download the package for your platform from [GitHub Releases](https://github.com/benzwick/SlicerAdaptiveBrush/releases)
-2. Open 3D Slicer
-3. Go to **View** > **Extension Manager**
-4. Click **Install from file...**
-5. Select the downloaded `.tar.gz` (Linux/macOS) or `.zip` (Windows) file
-6. Restart Slicer
+1. Download the package for your platform from [Releases](https://github.com/benzwick/SlicerAdaptiveBrush/releases)
+2. In Slicer: **View > Extension Manager > Install from file...**
+3. Select the downloaded file and restart Slicer
 
 ### From Source
 
-1. Clone this repository: `git clone https://github.com/benzwick/SlicerAdaptiveBrush.git`
-2. Open 3D Slicer
-3. Drag-and-drop the `SlicerAdaptiveBrush/SlicerAdaptiveBrush` folder onto the Slicer application window
-4. In the popup, select **Add Python scripted modules to the application**
-5. Select which modules to load and click **Yes**
-6. Check **Add selected modules to 'Additional module paths'** if you want them to load on future sessions
+1. Clone: `git clone https://github.com/benzwick/SlicerAdaptiveBrush.git`
+2. Drag-and-drop the `SlicerAdaptiveBrush` folder onto Slicer
+3. Select **Add Python scripted modules** and click **Yes**
 
-**Alternative method:** Go to **Edit** > **Application Settings** > **Modules** and drag-and-drop individual module folders to the **Additional module paths** list, then restart Slicer.
+## Quick Start
 
-Included modules:
-- **Segment Editor Adaptive Brush** - Adaptive brush effect for Segment Editor
-- **Adaptive Brush Reviewer** - Review optimization results and manage gold standards
-- **Adaptive Brush Tester** - Testing framework with automated and manual testing
-
-<!--
-### From Extension Manager (After Publishing)
-
-1. Open 3D Slicer
-2. Go to **View** > **Extension Manager**
-3. Search for "AdaptiveBrush"
-4. Click **Install**
-5. Restart Slicer
--->
-
-## Usage
-
-1. Load a volume (CT, MRI, etc.)
-2. Open the **Segment Editor** module
+1. Load a volume (CT, MRI)
+2. Open **Segment Editor**
 3. Create or select a segment
-4. Select the **Adaptive Brush** effect from the effects toolbar
-5. Adjust parameters:
-   - **Radius**: Size of the brush in mm
-   - **Edge Sensitivity**: How strictly to follow intensity boundaries (0-100%)
-   - **3D Mode**: Enable for volumetric painting
-6. Click and drag on the image to paint
-7. For **Threshold Brush** algorithm:
-   - Enable **Auto threshold** for automatic method selection
-   - Choose threshold method (Otsu, Huang, Triangle, etc.)
-   - Or disable auto and set manual thresholds with sliders
+4. Select **Adaptive Brush** from effects
+5. Click and drag on the image to paint
+
+## Controls
+
+| Action | Shortcut |
+|--------|----------|
+| Paint | Left-click drag |
+| Erase | Ctrl + Left-click drag |
+| Erase (alternate) | Middle + Left-click drag |
+| Adjust brush size | Shift + Scroll wheel |
+| Adjust threshold zone | Ctrl + Shift + Scroll wheel |
 
 ## Algorithms
 
-| Algorithm | Description |
-|-----------|-------------|
-| **Geodesic Distance** | Fast marching with edge weighting (default) |
-| **Watershed** | Marker-based morphological watershed |
-| **Random Walker** | Probabilistic diffusion from seeds |
-| **Level Set (GPU)** | Geodesic active contours (GPU accelerated) |
-| **Level Set (CPU)** | Geodesic active contours (CPU fallback) |
-| **Connected Threshold** | Flood-fill within intensity range |
-| **Region Growing** | Confidence-connected expansion |
-| **Threshold Brush** | Intensity thresholding with auto-detection |
+| Algorithm | Speed | Best For |
+|-----------|-------|----------|
+| Geodesic Distance | Fast | General use (default) |
+| Watershed | Medium | Marker-based segmentation |
+| Level Set | Slow | High precision, irregular boundaries |
+| Connected Threshold | Very Fast | Quick rough segmentation |
+| Threshold Brush | Very Fast | Simple intensity thresholding |
 
-### Shared Pipeline
+See the [Algorithms Guide](https://benzwick.github.io/SlicerAdaptiveBrush/algorithms/) for details.
 
-All algorithms share a common pipeline:
-1. **ROI Extraction** - Extract region around cursor
-2. **Intensity Analysis** - Automatically estimate optimal thresholds using GMM
-3. **Algorithm-specific segmentation** - Your chosen algorithm
-4. **Post-processing** - Apply circular/spherical brush mask
+## Troubleshooting
+
+### Brush outline not appearing
+- Ensure a segmentation node exists
+- Verify you're in a slice view (Red, Yellow, or Green)
+- Check that the effect is selected in Segment Editor
+
+### Segmentation leaking into unwanted regions
+- Increase **Edge Sensitivity** (higher = stricter boundaries)
+- Use a smaller brush radius
+- Try a different algorithm (Watershed or Level Set)
+
+### Algorithm is slow
+- Use 2D mode instead of 3D for faster interaction
+- Try Connected Threshold or Threshold Brush for speed
+- Reduce brush radius
 
 ## Requirements
 
 - 3D Slicer 5.10 or later
 - No additional dependencies (uses bundled SimpleITK, NumPy, VTK)
-- Optional: scikit-learn for GMM analysis (falls back to simple statistics if unavailable)
 
-## Development
+## Contributing
 
-This project follows Test-Driven Development (TDD). See [CLAUDE.md](CLAUDE.md) for development guidelines.
-
-```bash
-# Local development with uv
-uv sync --extra dev
-uv run pytest -v
-uv run ruff check .
-
-# Run tests in Slicer Python console
-import SegmentEditorAdaptiveBrush
-SegmentEditorAdaptiveBrush.SegmentEditorAdaptiveBrushTest().runTest()
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## References
 
-- [ITK-SNAP Adaptive Brush](https://www.itksnap.org/) - Original inspiration
+- [ITK-SNAP](https://www.itksnap.org/) - Original inspiration
 - [3D Slicer Segment Editor](https://slicer.readthedocs.io/en/latest/user_guide/modules/segmenteditor.html)
 - [SlicerSegmentEditorExtraEffects](https://github.com/lassoan/SlicerSegmentEditorExtraEffects)
-- [SimpleITK Documentation](https://simpleitk.readthedocs.io/)
 
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please read [CLAUDE.md](CLAUDE.md) for development guidelines and see [ROADMAP.md](ROADMAP.md) for planned features.
