@@ -1,6 +1,9 @@
 # SlicerAdaptiveBrush
 
 [![CI](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml)
+[![Documentation](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![3D Slicer](https://img.shields.io/badge/3D_Slicer-5.10%2B-green.svg)](https://www.slicer.org/)
 
 An **Adaptive Brush** segment editor effect extension for [3D Slicer](https://www.slicer.org/).
 
