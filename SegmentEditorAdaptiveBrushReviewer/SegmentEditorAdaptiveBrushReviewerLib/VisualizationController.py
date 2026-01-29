@@ -91,8 +91,8 @@ class VisualizationController:
             True if loaded successfully.
         """
         try:
+            import ctk
             import slicer
-            from DICOMLib import DICOMUtils
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
@@ -104,19 +104,16 @@ class VisualizationController:
                 slicer.mrmlScene.RemoveNode(self.gold_seg_node)
 
             # Import DICOM files from directory into database
+            indexer = ctk.ctkDICOMIndexer()
             if dicom_seg_path.is_dir():
                 dicom_files = list(dicom_seg_path.glob("*.dcm"))
                 if not dicom_files:
                     logger.error(f"No DICOM files in: {dicom_seg_path}")
                     return False
-                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
-                if indexer:
-                    indexer.waitForImportFinished()
+                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path))
                 load_path = str(dicom_files[0])
             else:
-                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path.parent))
-                if indexer:
-                    indexer.waitForImportFinished()
+                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path.parent))
                 load_path = str(dicom_seg_path)
 
             # Load the segmentation
@@ -150,8 +147,8 @@ class VisualizationController:
             True if loaded successfully.
         """
         try:
+            import ctk
             import slicer
-            from DICOMLib import DICOMUtils
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
@@ -163,19 +160,16 @@ class VisualizationController:
                 slicer.mrmlScene.RemoveNode(self.test_seg_node)
 
             # Import DICOM files from directory into database
+            indexer = ctk.ctkDICOMIndexer()
             if dicom_seg_path.is_dir():
                 dicom_files = list(dicom_seg_path.glob("*.dcm"))
                 if not dicom_files:
                     logger.error(f"No DICOM files in: {dicom_seg_path}")
                     return False
-                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path))
-                if indexer:
-                    indexer.waitForImportFinished()
+                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path))
                 load_path = str(dicom_files[0])
             else:
-                indexer = DICOMUtils.importDicomToDatabase(str(dicom_seg_path.parent))
-                if indexer:
-                    indexer.waitForImportFinished()
+                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path.parent))
                 load_path = str(dicom_seg_path)
 
             # Load the segmentation

@@ -2222,10 +2222,13 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
             from DICOMLib import DICOMUtils
 
             try:
-                loaded_nodes = DICOMUtils.loadSeriesByUID([volume_series_uid])
-                if loaded_nodes:
+                # loadSeriesByUID returns node IDs (strings), not node objects
+                loaded_node_ids = DICOMUtils.loadSeriesByUID([volume_series_uid])
+                if loaded_node_ids:
                     volume_loaded = True
-                    logger.info(f"Loaded volume: {loaded_nodes[0].GetName()}")
+                    node = slicer.mrmlScene.GetNodeByID(loaded_node_ids[0])
+                    if node:
+                        logger.info(f"Loaded volume: {node.GetName()}")
             except Exception as e:
                 logger.warning(f"Could not load volume: {e}")
 
