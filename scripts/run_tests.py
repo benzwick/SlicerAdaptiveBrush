@@ -80,13 +80,19 @@ def main() -> None:
         return
 
     # Create and configure test runner
+    print("Creating TestRunner...", flush=True)
     runner = TestRunner()
+    print("TestRunner created", flush=True)
 
     # Discover tests
+    print("Discovering tests...", flush=True)
     runner.discover_tests()
+    print(f"Tests discovered: {len(runner.list_tests())}", flush=True)
 
     # Run tests
+    print(f"Running suite: {suite}", flush=True)
     result = runner.run_suite(suite)
+    print("Suite complete", flush=True)
 
     # Print summary
     status = "PASSED" if result.passed else "FAILED"
