@@ -146,12 +146,12 @@ def navigate_to_tumor_slice(volume_node) -> None:
 
     # Search around center for slice with good tumor visibility
     best_slice = center_k
-    best_variance = 0
+    best_variance = 0.0
 
     for k in range(center_k - 20, center_k + 20):
         if 0 <= k < dims[0]:
             slice_data = arr[k, :, :]
-            variance = np.var(slice_data)
+            variance = float(np.var(slice_data))
             if variance > best_variance:
                 best_variance = variance
                 best_slice = k
