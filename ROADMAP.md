@@ -262,6 +262,38 @@
   - [x] test_wizard_analyzer.py (22 tests)
   - [x] test_parameter_recommender.py (23 tests)
 
+## Version 0.17.0 - DICOM Native Architecture
+
+- [x] DICOM SEG Infrastructure (ADR-017)
+  - [x] DicomManager class for DICOM database operations
+  - [x] Synthetic DICOM creation for SampleData volumes
+  - [x] DICOM SEG export with LABELMAP encoding (highdicom)
+  - [x] RLELossless compression support
+
+- [x] Gold Standard Storage
+  - [x] Hybrid .seg.nrrd + on-demand DICOM strategy
+  - [x] GoldStandardManager with statistics computation
+  - [x] Checksum verification on load
+  - [x] Statistics comparison (gold vs trial)
+
+- [x] CrossSegmentationExplorer Integration (ADR-018)
+  - [x] CSE-compatible DICOM tags (StudyInstanceUID, ReferencedSeriesSequence)
+  - [x] "Compare in CSE" workflow documentation
+  - [x] Use CSE directly for multi-trial comparison
+
+- [x] Custom DICOM LABELMAP Plugin (ADR-019)
+  - [x] DICOMLabelMapSegPlugin using highdicom for loading
+  - [x] Detection of Label Map Segmentation Storage SOP Class
+  - [x] Conversion of LABELMAP pixel data to Slicer segmentation
+  - [x] Segment metadata preservation (colors, names, terminology)
+  - [x] Auto-registration on module load
+
+- [x] Documentation
+  - [x] ADR-017: DICOM SEG Data Format Standard
+  - [x] ADR-018: CrossSegmentationExplorer Integration
+  - [x] ADR-019: Custom DICOM LABELMAP Plugin
+  - [x] Update ROADMAP with Known Issues section
+
 ## Version 1.0.0 - Production Ready
 
 - [ ] All tests passing (unit + integration)
@@ -278,3 +310,21 @@
 - [ ] Adaptive radius based on local features
 - [ ] Background computation thread
 - [x] Auto-parameter suggestion based on image characteristics (see v0.16.0 wizard)
+
+---
+
+## Known Issues
+
+### DICOM SEG LABELMAP Loading (2026-01-29)
+
+**Issue:** highdicom creates DICOM SEG with LABELMAP encoding using SOP Class `1.2.840.10008.5.1.4.1.1.66.7` (Label Map Segmentation Storage). dcmqi/QuantitativeReporting only supports SOP Class `1.2.840.10008.5.1.4.1.1.66.4` (Segmentation Storage).
+
+**Impact:** Cannot load LABELMAP DICOM SEG files via standard Slicer DICOM workflow without the custom plugin.
+
+**Solution:** Custom DICOMLabelMapSegPlugin using highdicom for loading (ADR-019). The plugin auto-registers when the Reviewer module loads.
+
+**Upstream Tracking:**
+- dcmqi issue [#518](https://github.com/QIICR/dcmqi/issues/518) - LABELMAP support (high priority, assigned)
+- OHIF already supports LABELMAP natively (v3.11+, [PR#5158](https://github.com/OHIF/Viewers/pull/5158))
+
+**When Resolved:** When dcmqi adds LABELMAP support, the custom plugin can be deprecated.

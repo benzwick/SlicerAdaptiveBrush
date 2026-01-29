@@ -20,6 +20,15 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Proposed |
 | [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Proposed |
 | [ADR-010](ADR-010-testing-framework.md) | Slicer Testing Framework Architecture | Accepted |
+| [ADR-011](ADR-011-optimization-framework.md) | Smart Optimization Framework (Optuna) | Accepted |
+| [ADR-012](ADR-012-results-review-module.md) | Results Review Module | Accepted |
+| [ADR-013](ADR-013-segmentation-recipes.md) | Segmentation Recipes | Accepted |
+| [ADR-014](ADR-014-enhanced-testing-recipe-replay.md) | Enhanced Testing with Recipe Replay | Accepted |
+| [ADR-015](ADR-015-parameter-wizard.md) | Parameter Wizard | Accepted |
+| [ADR-016](ADR-016-enhanced-review-visualization.md) | Enhanced Review Visualization | Accepted |
+| [ADR-017](ADR-017-dicom-seg-data-format.md) | DICOM SEG Data Format Standard | Accepted |
+| [ADR-018](ADR-018-cross-segmentation-explorer-integration.md) | CrossSegmentationExplorer Integration | Accepted |
+| [ADR-019](ADR-019-custom-dicom-labelmap-plugin.md) | Custom DICOM Label Map Segmentation Plugin | Accepted |
 
 ## Template
 

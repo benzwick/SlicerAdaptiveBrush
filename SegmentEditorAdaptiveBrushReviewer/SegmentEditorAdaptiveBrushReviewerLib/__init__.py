@@ -6,10 +6,19 @@ See ADR-012 for architecture decisions.
 See ADR-016 for enhanced visualization and navigation.
 See ADR-017 for DICOM SEG data format.
 See ADR-018 for CrossSegmentationExplorer integration.
+See ADR-019 for custom DICOM LABELMAP plugin.
 """
 
 from .ComparisonMetrics import ComparisonMetrics, SegmentationMetrics, compute_metrics_from_nodes
 from .ContourRenderer import ContourRenderer
+from .DICOMLabelMapSegPlugin import (
+    LABELMAP_SEG_SOP_CLASS,
+    DICOMLabelMapSegPlugin,
+    is_labelmap_seg,
+)
+from .DICOMLabelMapSegPlugin import (
+    register_plugin as register_labelmap_plugin,
+)
 from .DicomManager import (
     DicomDatabaseNotAvailable,
     DicomManager,
@@ -27,6 +36,14 @@ from .ResultsLoader import DicomInfo, OptimizationRun, ResultsLoader, TrialData
 from .ScreenshotViewer import ScreenshotViewer
 from .SequenceRecorder import SceneViewBookmarks, SequenceRecorder, ViewGroupManager
 from .VisualizationController import VisualizationController
+
+# Auto-register the LABELMAP DICOM plugin when this library is imported
+# This enables CrossSegmentationExplorer to load our LABELMAP SEG files
+try:
+    register_labelmap_plugin()
+except Exception:
+    # Silently ignore if registration fails (e.g., outside Slicer)
+    pass
 
 __all__ = [
     "ResultsLoader",
@@ -51,6 +68,11 @@ __all__ = [
     "DicomManagerError",
     "DicomDatabaseNotAvailable",
     "HighdicomNotAvailable",
+    # DICOM LABELMAP plugin (ADR-019) - loads LABELMAP SEG for CSE compatibility
+    "DICOMLabelMapSegPlugin",
+    "LABELMAP_SEG_SOP_CLASS",
+    "is_labelmap_seg",
+    "register_labelmap_plugin",
     # Model grouping for cross-comparison (ADR-018)
     "ComparisonModel",
     "TrialModelMapper",

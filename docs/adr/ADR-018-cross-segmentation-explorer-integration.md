@@ -415,6 +415,40 @@ This could be added as a collapsible section in the Reviewer module or as a sepa
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+## Known Issue: LABELMAP SOP Class Support
+
+### The Problem
+
+highdicom creates DICOM SEG files with LABELMAP encoding using the correct SOP Class UID:
+- **LABELMAP SOP Class:** `1.2.840.10008.5.1.4.1.1.66.7` (Label Map Segmentation Storage)
+
+However, dcmqi (used by Slicer's DICOMSegmentationPlugin and QuantitativeReporting) only supports:
+- **Standard SEG SOP Class:** `1.2.840.10008.5.1.4.1.1.66.4` (Segmentation Storage)
+
+This means CrossSegmentationExplorer cannot load our LABELMAP files using the standard Slicer DICOM infrastructure.
+
+### Upstream Status
+
+- **dcmqi issue [#518](https://github.com/QIICR/dcmqi/issues/518)** - Tracks LABELMAP support (high priority, assigned)
+- **OHIF v3.11+** already supports LABELMAP natively ([PR#5158](https://github.com/OHIF/Viewers/pull/5158))
+
+### Solution: Custom DICOM Plugin
+
+We created a custom DICOM plugin (`DICOMLabelMapSegPlugin`) that uses highdicom to load LABELMAP files. See [ADR-019](ADR-019-custom-dicom-labelmap-plugin.md) for details.
+
+The plugin:
+- Detects files with SOP Class `1.2.840.10008.5.1.4.1.1.66.7`
+- Uses highdicom for parsing LABELMAP pixel data
+- Converts to Slicer vtkMRMLSegmentationNode
+- Preserves segment metadata (colors, names, terminology)
+- Auto-registers when the Reviewer module loads
+
+### Workaround Until dcmqi Update
+
+1. Install the Reviewer module (auto-registers the custom plugin)
+2. Import LABELMAP DICOM SEG files normally
+3. CSE will now load them via DICOMLabelMapSegPlugin
+
 ## DICOM Requirements for CSE Compatibility
 
 Our optimization pipeline (run_optimization.py) generates DICOM with these tags:

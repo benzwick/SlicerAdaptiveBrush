@@ -53,7 +53,10 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["SegmentEditorAdaptiveBrush/Testing/Python"]
+testpaths = [
+    "SegmentEditorAdaptiveBrush/Testing/Python",
+    "SegmentEditorAdaptiveBrushReviewer/Testing/Python",
+]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

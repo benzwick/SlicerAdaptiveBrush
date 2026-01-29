@@ -2,7 +2,9 @@
 
 ## Status
 
-**Proposed** (2026-01-28)
+**Accepted** (2026-01-28)
+
+Updated 2026-01-29: Added SOP Class details and custom LABELMAP plugin solution (ADR-019).
 
 ## Context
 
@@ -44,15 +46,33 @@ The DICOM standard supports multiple segmentation encoding types:
 - Full segment metadata preserved (names, colors, terminology)
 - Supports lossless compression (RLE, JPEG2000, JPEGLS)
 
+### DICOM SOP Classes
+
+BINARY and FRACTIONAL encodings use a different SOP Class UID than LABELMAP:
+
+| Encoding | SOP Class UID | Name |
+|----------|---------------|------|
+| BINARY | `1.2.840.10008.5.1.4.1.1.66.4` | Segmentation Storage |
+| FRACTIONAL | `1.2.840.10008.5.1.4.1.1.66.4` | Segmentation Storage |
+| **LABELMAP** | `1.2.840.10008.5.1.4.1.1.66.7` | Label Map Segmentation Storage |
+
+This distinction is important because:
+1. **Older tools only support the BINARY/FRACTIONAL SOP Class** - including dcmqi/QuantitativeReporting
+2. **highdicom correctly uses the LABELMAP SOP Class** - when creating LABELMAP-encoded segmentations
+3. **OHIF v3.11+ supports both SOP Classes** - full LABELMAP support added in 2024
+
 ### Tool Compatibility
 
 | Tool | LABELMAP Support | Compression | Notes |
 |------|-----------------|-------------|-------|
 | **DICOM 2025b** | ✓ Standard | ✓ RLE, JPEG2000, JPEGLS, Deflate | Supplement 243 |
 | **OHIF v3.11** | ✓ Full | ✓ | "Revolutionizing how we handle large segmentations" |
-| **highdicom** | ✓ Full | ✓ RLE, JPEG2000, JPEGLS | Python library |
-| **dcmqi/Slicer** | ✗ Not yet | ✗ Limited | Uses BINARY only |
-| **CrossSegmentationExplorer** | ✓ Via OHIF | ✓ | DICOM SEG native |
+| **highdicom** | ✓ Full | ✓ RLE, JPEG2000, JPEGLS | Python library for reading/writing |
+| **dcmqi/Slicer** | ✗ Not yet | ✗ Limited | Only supports SOP Class `1.2.840.10008.5.1.4.1.1.66.4` ([issue #518](https://github.com/QIICR/dcmqi/issues/518)) |
+| **DICOMLabelMapSegPlugin** | ✓ Full | ✓ | Our custom plugin using highdicom (ADR-019) |
+| **CrossSegmentationExplorer** | ✓ Via custom plugin | ✓ | Works with DICOMLabelMapSegPlugin |
+
+**Note:** dcmqi issue [#518](https://github.com/QIICR/dcmqi/issues/518) tracks native LABELMAP support. Until then, use our custom DICOMLabelMapSegPlugin (ADR-019) for loading LABELMAP files in Slicer.
 
 ### CrossSegmentationExplorer Requirements
 
