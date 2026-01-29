@@ -2,11 +2,11 @@
 
 ## Status
 
-**Proposed** (2026-01-28)
+**Accepted** (2026-01-28)
 
 ## Context
 
-CrossSegmentationExplorer is a 3D Slicer extension for comparing multiple AI-generated segmentations side-by-side. It provides:
+CrossSegmentationExplorer (CSE) is a 3D Slicer extension for comparing multiple AI-generated segmentations side-by-side. It provides:
 
 - Dynamic multi-view layouts (2D + 3D) for N segmentations
 - View linking (synchronized navigation)
@@ -14,11 +14,18 @@ CrossSegmentationExplorer is a 3D Slicer extension for comparing multiple AI-gen
 - Segment-by-segment comparison across models
 - DICOM SEG native support
 
-Our optimization framework generates multiple trial segmentations that would benefit from this comparison capability. Currently, the Reviewer module (ADR-012, ADR-016) only supports comparing one trial against one gold standard at a time.
+Our optimization framework generates multiple trial segmentations that benefit from this comparison capability. The Reviewer module (ADR-012, ADR-016) handles single gold-vs-trial comparison with detailed metrics and ratings.
+
+### Use Cases
+
+1. **Compare top trials per algorithm** - See best watershed vs best geodesic vs best level_set
+2. **Compare trial evolution** - View trial_001, trial_050, trial_100 side-by-side
+3. **Compare against gold standard** - Gold + multiple trials simultaneously
+4. **Robustness analysis** - Same algorithm with different click patterns
 
 ### Reference Implementation
 
-CrossSegmentationExplorer is cloned at `__reference__/CrossSegmentationExplorer/` for reference. Key patterns:
+CrossSegmentationExplorer is cloned at `__reference__/CrossSegmentationExplorer/` for reference. Key patterns we may need to extend or fix:
 
 ```python
 # Dynamic layout XML generation (SegmentationComparison.py:1693-1744)
@@ -37,23 +44,9 @@ def _set2DLink(self, status):
     """Link/unlink 2D slice navigation."""
 ```
 
-### Use Cases
-
-1. **Compare top trials per algorithm** - See best watershed vs best geodesic vs best level_set
-2. **Compare trial evolution** - View trial_001, trial_050, trial_100 side-by-side
-3. **Compare against gold standard** - Gold + multiple trials simultaneously
-4. **Robustness analysis** - Same algorithm with different click patterns
-
-## Decision
-
-Integrate CrossSegmentationExplorer-style comparison into the Reviewer module with two modes:
-
-1. **Single Trial Mode** (existing) - Gold vs one trial, detailed metrics
-2. **Cross-Comparison Mode** (new) - Multiple trials side-by-side
-
 ### Trial-to-Model Mapping
 
-CrossSegmentationExplorer groups segmentations into "models" by keyword matching. For optimization trials, we map:
+CSE groups segmentations into "models" by keyword matching. For optimization trials, we may need custom mapping logic:
 
 | Grouping Strategy | CSE Equivalent | Use Case |
 |-------------------|----------------|----------|
@@ -64,7 +57,10 @@ CrossSegmentationExplorer groups segmentations into "models" by keyword matching
 
 ```python
 class TrialModelMapper:
-    """Map optimization trials to CrossSegmentationExplorer models."""
+    """Map optimization trials to CrossSegmentationExplorer models.
+
+    This class can be used to extend CSE with optimization-aware grouping.
+    """
 
     def group_by_algorithm(self, trials: list[TrialData]) -> dict[str, list[TrialData]]:
         """
@@ -101,34 +97,18 @@ class TrialModelMapper:
         ranges: [(0.95, 1.0, "excellent"), (0.90, 0.95, "good"), ...]
         Returns: {"excellent": [...], "good": [...], ...}
         """
+        groups = {name: [] for _, _, name in ranges}
+        for trial in trials:
+            for low, high, name in ranges:
+                if low <= trial.value < high:
+                    groups[name].append(trial)
+                    break
+        return groups
 ```
 
-### UI Integration
+### Layout Generation Pattern
 
-Add "Cross-Comparison" collapsible section to Reviewer:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ ▼ Cross-Comparison Mode                                         │
-├─────────────────────────────────────────────────────────────────┤
-│ Grouping: [By Algorithm ▼]  [Top N: 1 ▼]                        │
-│                                                                 │
-│ Select Models:                                                  │
-│ ☑ watershed (best: 0.956)    ☑ geodesic (best: 0.948)          │
-│ ☑ level_set (best: 0.942)    ☐ random_walker (best: 0.921)     │
-│ ☑ Gold Standard                                                 │
-│                                                                 │
-│ Layout: (•) 2D only  ( ) 3D only  ( ) Both                      │
-│ Arrangement: (•) Horizontal  ( ) Vertical                       │
-│ ☑ Link views  ☑ Show outlines                                  │
-│                                                                 │
-│ [Apply Layout]                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Layout Generation
-
-Port CrossSegmentationExplorer's dynamic layout XML generation:
+CSE's dynamic layout XML generation pattern (for custom extensions):
 
 ```python
 def generate_comparison_layout(
@@ -184,7 +164,7 @@ def generate_comparison_layout(
     return xml
 ```
 
-### View Assignment
+### View Assignment Pattern
 
 After creating the layout, assign segmentations to their views:
 
@@ -230,7 +210,7 @@ def assign_trials_to_views(
                     display.SetVisibility2DOutline(True)
 ```
 
-### View Linking
+### View Linking Pattern
 
 Use native Slicer view groups for synchronized navigation:
 
@@ -251,12 +231,217 @@ def link_comparison_views(self, linked: bool):
         view_node.SetLinkedControl(linked)
 ```
 
-## Integration with DICOM
+## Decision
+
+**Use CrossSegmentationExplorer directly** for multi-trial comparison instead of reimplementing comparison features.
+
+Our DICOM SEG output is fully CSE-compatible (verified 2026-01-28):
+
+| Requirement | Status | Details |
+|-------------|--------|---------|
+| Same StudyInstanceUID | ✓ | Volume and all trial SEGs share StudyInstanceUID |
+| ReferencedSeriesSequence | ✓ | Correctly points to volume SeriesInstanceUID |
+| Modality | ✓ | SEG |
+| SeriesDescription | ✓ | Contains trial info for grouping |
+
+### Module Division
+
+| Module | Purpose | Format |
+|--------|---------|--------|
+| **Reviewer** | Single trial review (gold vs trial) | .seg.nrrd + DICOM |
+| **CSE** | Multi-trial comparison | DICOM SEG |
+
+### Why Not Reimplement?
+
+1. **CSE is actively maintained** - No maintenance burden for us
+2. **Better features** - Multi-pane layout, view linking, outline modes
+3. **No code duplication** - CSE already does this well
+4. **Future compatibility** - CSE developer considering Slicer format support
+
+## Workflow: Multi-Trial Comparison with CSE
+
+### Step 1: Run Optimization
+
+```bash
+Slicer --python-script scripts/run_optimization.py configs/tumor_optimization.yaml
+```
+
+Output structure:
+```
+optimization_results/<timestamp>/
+├── dicom/
+│   ├── volume/              # Synthetic DICOM of SampleData
+│   │   └── *.dcm
+│   └── segmentations/       # DICOM SEG per trial
+│       ├── trial_000/seg.dcm
+│       ├── trial_001/seg.dcm
+│       └── ...
+├── results.json
+└── ...
+```
+
+### Step 2: Import to DICOM Browser
+
+1. Open 3D Slicer
+2. **File → Import DICOM Files...**
+3. Select folder: `optimization_results/<run>/dicom/`
+4. Wait for import to complete
+
+All trials appear under the same Patient/Study because they share StudyInstanceUID.
+
+### Step 3: Open CrossSegmentationExplorer
+
+1. **Modules → Informatics → CrossSegmentationExplorer**
+2. Or search "Cross" in module finder
+
+### Step 4: Select Reference Volume
+
+1. In CSE, select the reference volume (the imported SampleData)
+2. CSE auto-discovers all DICOM SEGs that reference this volume
+3. Trials appear grouped by SeriesDescription
+
+### Step 5: Compare
+
+CSE provides:
+- **Multi-pane layout** - Up to 6 segmentations side-by-side
+- **Synchronized navigation** - All views move together
+- **Outline mode** - See boundaries clearly
+- **3D view** - Volume rendering comparison
+
+### Example Session
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ CSE: Multi-Pane Layout (4 trials)                               │
+├────────────────┬────────────────┬────────────────┬──────────────┤
+│ Trial 000      │ Trial 025      │ Trial 050      │ Trial 099    │
+│ (watershed)    │ (geodesic)     │ (level_set)    │ (best)       │
+│ Dice: 0.823    │ Dice: 0.891    │ Dice: 0.934    │ Dice: 0.956  │
+├────────────────┼────────────────┼────────────────┼──────────────┤
+│                │                │                │              │
+│  [Axial view]  │  [Axial view]  │  [Axial view]  │ [Axial view] │
+│                │                │                │              │
+│  Outlines show │  segmentation  │  boundaries    │  for visual  │
+│                │                │                │  comparison  │
+└────────────────┴────────────────┴────────────────┴──────────────┘
+       ↑ Views are synchronized - scroll one, all scroll ↑
+```
+
+## Gold Standard in CSE
+
+To include gold standard in CSE comparison:
+
+1. Generate DICOM cache: The GoldStandardManager creates `.dicom_cache/` on demand
+2. Import gold's DICOM: `GoldStandards/<name>/.dicom_cache/`
+3. Gold appears alongside trials in CSE
+
+Or use the **Reviewer module** for dedicated gold-vs-trial comparison with metrics.
+
+## Integration with Reviewer Module
+
+The modules are complementary:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Review Workflow                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Quick Comparison (CSE)                                      │
+│     └── Multi-trial visual comparison                           │
+│     └── Identify promising trials                               │
+│                                                                 │
+│  2. Detailed Review (Reviewer Module)                           │
+│     └── Gold vs trial overlay                                   │
+│     └── Dice, Hausdorff, Surface Dice metrics                   │
+│     └── Ratings and notes                                       │
+│     └── Workflow recording                                      │
+│                                                                 │
+│  3. Export Results                                              │
+│     └── Ratings CSV                                             │
+│     └── Best parameters                                         │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Potential Custom UI Integration
+
+If we need to add optimization-specific widgets to CSE or create a launcher:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ ▼ Optimization Run Comparison                                    │
+├─────────────────────────────────────────────────────────────────┤
+│ Run: [2026-01-28_tumor_opt ▼]                                   │
+│                                                                 │
+│ Grouping: [By Algorithm ▼]  [Top N: 1 ▼]                        │
+│                                                                 │
+│ Select Models:                                                  │
+│ ☑ watershed (best: 0.956)    ☑ geodesic (best: 0.948)          │
+│ ☑ level_set (best: 0.942)    ☐ random_walker (best: 0.921)     │
+│ ☑ Gold Standard                                                 │
+│                                                                 │
+│ [Open in CSE]  [Import to DICOM Browser]                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+This could be added as a collapsible section in the Reviewer module or as a separate launcher widget.
+
+## Module Relationship
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Reviewer Module                               │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
+│  │ Single Trial Mode   │    │ CSE Launcher (future)           │ │
+│  │ (ADR-012, ADR-016)  │    │                                 │ │
+│  │                     │    │ - Select optimization run        │ │
+│  │ - Gold vs Trial     │    │ - Group trials by algorithm      │ │
+│  │ - Full metrics      │    │ - Import to DICOM browser        │ │
+│  │ - Ratings           │    │ - Launch CSE                     │ │
+│  │ - Workflow recording│    │                                 │ │
+│  └─────────────────────┘    └─────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│                    CrossSegmentationExplorer                     │
+│  - Multi-trial layout                                            │
+│  - View linking                                                  │
+│  - Outline/fill modes                                            │
+│  - (May extend with custom widgets)                              │
+├─────────────────────────────────────────────────────────────────┤
+│                    DICOM Data Layer (ADR-017)                    │
+│  - DICOM SEG storage                                             │
+│  - Synthetic DICOM for SampleData                                │
+│  - DICOM database queries                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## DICOM Requirements for CSE Compatibility
+
+Our optimization pipeline (run_optimization.py) generates DICOM with these tags:
+
+```python
+# Volume and all SEGs share same StudyInstanceUID
+StudyInstanceUID = "1.2.826.0.1.3680043.8.498.{hash}"
+
+# SEG references volume via:
+ReferencedSeriesSequence[0].SeriesInstanceUID = volume_series_uid
+
+# SEG identification:
+Modality = "SEG"
+SeriesDescription = f"Trial {trial_num:03d} - {algorithm}"
+```
+
+This allows CSE to:
+1. Group all SEGs under one Study
+2. Link SEGs to the correct volume
+3. Display meaningful labels for each segmentation
+
+## Integration with DICOM Ecosystem
 
 This integration depends on ADR-017 (DICOM SEG Data Format):
 
 1. **LABELMAP encoding (Supplement 243)** - Efficient multi-segment storage
-2. **Compression (JPEG2000/JPEGLS)** - Compact files for many trials
+2. **Compression (RLELossless/JPEG2000)** - Compact files for many trials
 3. **Load trials from DICOM database** - Query by ReferencedSeriesSequence
 4. **Use DICOM metadata** - SeriesDescription for model naming
 5. **OHIF v3.11 compatibility** - LABELMAP optimized for OHIF viewer
@@ -274,73 +459,64 @@ When comparing N algorithms × M trials, storage efficiency is critical:
 
 LABELMAP encoding makes multi-trial comparison practical.
 
+### OHIF Viewer Support
+
+Our DICOM SEG output is compatible with OHIF v3.11+:
+- LABELMAP encoding supported since OHIF 3.11
+- Can view optimization results in web browser
+- Useful for remote review or collaboration
+
+```
+Workflow: Local optimization → DICOM SEG → Upload to OHIF server → Web review
+```
+
 ## Consequences
 
 ### Positive
 
-- **Multi-trial comparison** - See multiple algorithms/trials simultaneously
-- **Leverages proven patterns** - CrossSegmentationExplorer's layout/view code
-- **Enhanced review workflow** - Quick visual comparison before detailed analysis
-- **Algorithm selection insight** - See which algorithm works best visually
+- **Leverage existing tool** - Use CSE directly for core comparison
+- **Better features** - CSE has more comparison options than we could build alone
+- **Clear separation** - Reviewer for detailed review, CSE for multi-trial comparison
+- **Extensible** - Can add custom widgets/logic as needed
+- **Reference code available** - CSE patterns documented for bug fixes or extensions
 
 ### Negative
 
-- **UI complexity** - More options in Reviewer module
-- **Memory usage** - Multiple segmentations loaded simultaneously
-- **Layout limitations** - Screen space limits practical comparison to ~4-5 models
+- **Requires CSE installation** - Additional extension dependency
+- **DICOM workflow** - Must import to DICOM browser first
+- **Learning curve** - Users must learn two modules
+- **May need CSE modifications** - Some optimization-specific features may require CSE changes
 
 ### Trade-offs
 
-| Aspect | Single Trial Mode | Cross-Comparison Mode |
-|--------|-------------------|----------------------|
-| Detail | High (full metrics) | Lower (visual only) |
-| Throughput | One at a time | Many at once |
-| Use case | Detailed review | Quick comparison |
-| Memory | Low | Higher |
-
-## Module Relationship
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Reviewer Module                               │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────┐    ┌─────────────────────────────────┐ │
-│  │ Single Trial Mode   │    │ Cross-Comparison Mode           │ │
-│  │ (ADR-012, ADR-016)  │    │ (ADR-018)                       │ │
-│  │                     │    │                                 │ │
-│  │ - Gold vs Trial     │    │ - Multi-trial layout            │ │
-│  │ - Full metrics      │    │ - Trial-to-model mapping        │ │
-│  │ - Ratings           │    │ - View linking                  │ │
-│  │ - Workflow recording│    │ - Based on CSE patterns         │ │
-│  └─────────────────────┘    └─────────────────────────────────┘ │
-├─────────────────────────────────────────────────────────────────┤
-│                    DICOM Data Layer (ADR-017)                    │
-│  - DICOM SEG storage                                             │
-│  - Synthetic DICOM for SampleData                                │
-│  - DICOM database queries                                        │
-└─────────────────────────────────────────────────────────────────┘
-```
+| Aspect | Reviewer Module | CrossSegmentationExplorer |
+|--------|-----------------|---------------------------|
+| Detail | High (full metrics, ratings) | Visual comparison only |
+| Trials | One at a time | Many simultaneously |
+| Use case | Quality assessment | Quick comparison |
+| Customization | Full control | May need upstream PRs |
 
 ## Alternatives Considered
 
-### Use CrossSegmentationExplorer Directly
+### Reimplement Cross-Comparison from Scratch
 
-**Rejected**: CSE assumes clinical DICOM workflow (patient studies, DICOM database queries). Our optimization results need trial-to-model mapping that CSE doesn't support.
+**Rejected**: Would duplicate CSE functionality. CSE is better maintained and has more features. Reference patterns kept for potential extensions.
 
 ### Fork CrossSegmentationExplorer
 
-**Rejected**: Creates maintenance burden. Better to port specific patterns into our module.
+**Deferred**: Creates maintenance burden. Prefer upstream contributions. May revisit if CSE doesn't accept needed features.
 
 ### External Comparison Tool
 
-**Rejected**: Breaks workflow. Users want comparison in same environment as review.
+**Rejected**: Breaks workflow. Users want comparison within Slicer environment.
 
 ## References
 
 - [ADR-012: Results Review Module](ADR-012-results-review-module.md)
 - [ADR-016: Enhanced Review Visualization](ADR-016-enhanced-review-visualization.md)
-- [ADR-017: DICOM SEG Data Format Standard](ADR-017-dicom-seg-data-format.md) - LABELMAP encoding details
-- [CrossSegmentationExplorer](https://github.com/ImagingDataCommons/CrossSegmentationExplorer)
+- [ADR-017: DICOM SEG Data Format Standard](ADR-017-dicom-seg-data-format.md)
+- [CrossSegmentationExplorer GitHub](https://github.com/ImagingDataCommons/CrossSegmentationExplorer)
+- [CrossSegmentationExplorer Documentation](https://github.com/ImagingDataCommons/CrossSegmentationExplorer#readme)
 - [OHIF v3.11 LABELMAP Support](https://ohif.org/release-notes/3p11/)
 - [DICOM Supplement 243: Label Map Segmentation](https://www.dicomstandard.org/news-dir/current/docs/sups/sup243.pdf)
 - [Slicer Layout Documentation](https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#customize-view-layout)
