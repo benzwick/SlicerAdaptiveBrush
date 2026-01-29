@@ -94,10 +94,11 @@ class TestAllAlgorithmsSelection(TestCase):
 
     def setup(self, ctx: TestContext) -> None:
         """Load sample data and set up segment editor."""
-        logger.info("Setting up algorithm selection test")
+        print("[setup] Starting algorithm selection test setup", flush=True)
 
         # Clear scene
         slicer.mrmlScene.Clear(0)
+        print("[setup] Scene cleared", flush=True)
 
         # Load MRHead sample data
         import SampleData
@@ -105,37 +106,49 @@ class TestAllAlgorithmsSelection(TestCase):
         self.volume_node = SampleData.downloadSample("MRHead")
         if self.volume_node is None:
             raise RuntimeError("Failed to load MRHead sample data")
-
-        ctx.log(f"Loaded volume: {self.volume_node.GetName()}")
+        print(f"[setup] Volume loaded: {self.volume_node.GetName()}", flush=True)
 
         # Create segmentation node
         self.segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
         self.segmentation_node.CreateDefaultDisplayNodes()
         self.segmentation_node.SetReferenceImageGeometryParameterFromVolumeNode(self.volume_node)
+        print("[setup] Segmentation node created", flush=True)
 
         # Add a segment
         self.segment_id = self.segmentation_node.GetSegmentation().AddEmptySegment("TestSegment")
+        print("[setup] Segment added", flush=True)
 
         # Switch to Segment Editor module
+        print("[setup] Switching to SegmentEditor module...", flush=True)
         slicer.util.selectModule("SegmentEditor")
         slicer.app.processEvents()
+        print("[setup] SegmentEditor module active", flush=True)
 
         # Get segment editor widget
+        print("[setup] Getting segment editor widget...", flush=True)
         segment_editor_module = slicer.modules.segmenteditor.widgetRepresentation().self()
         self.segment_editor_widget = segment_editor_module.editor
+        print("[setup] Setting segmentation node...", flush=True)
         self.segment_editor_widget.setSegmentationNode(self.segmentation_node)
+        print("[setup] Setting source volume...", flush=True)
         self.segment_editor_widget.setSourceVolumeNode(self.volume_node)
+        print("[setup] Setting current segment...", flush=True)
         self.segment_editor_widget.setCurrentSegmentID(self.segment_id)
         slicer.app.processEvents()
+        print("[setup] Segment editor configured", flush=True)
 
         # Activate Adaptive Brush
+        print("[setup] Activating Adaptive Brush effect...", flush=True)
         self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
+        print("[setup] Getting active effect...", flush=True)
         self.effect = self.segment_editor_widget.activeEffect()
 
         if self.effect is None:
             raise RuntimeError("Failed to activate Adaptive Brush effect")
+        print("[setup] Adaptive Brush activated", flush=True)
 
         ctx.screenshot("[setup] Ready to test algorithm selection")
+        print("[setup] Setup complete", flush=True)
 
     def run(self, ctx: TestContext) -> None:
         """Test selecting each algorithm."""
