@@ -304,7 +304,9 @@ def run_single_algorithm_optimization(
         # Sample algorithm-specific parameters
         for param_name, bounds in algo_params.items():
             if "iterations" in param_name or "beta" in param_name:
-                params[param_name] = trial.suggest_int(param_name, bounds["low"], bounds["high"])
+                params[param_name] = trial.suggest_int(
+                    param_name, int(bounds["low"]), int(bounds["high"])
+                )
             else:
                 params[param_name] = trial.suggest_float(param_name, bounds["low"], bounds["high"])
 

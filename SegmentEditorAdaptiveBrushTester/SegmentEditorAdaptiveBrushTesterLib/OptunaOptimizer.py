@@ -404,7 +404,7 @@ class OptunaOptimizer:
             best_trial = OptunaTrialResult(
                 trial_number=bt.number,
                 params=bt.params,
-                value=bt.value,
+                value=bt.value if bt.value is not None else 0.0,
                 duration_ms=bt.duration.total_seconds() * 1000 if bt.duration else 0,
                 pruned=False,
                 user_attrs=dict(bt.user_attrs),

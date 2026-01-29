@@ -415,14 +415,14 @@ def generate_review_images(
 
     for i in range(n_slices):
         if numpy_axis == 0:
-            has_seg = np.any(seg_array[i, :, :] > 0)
-            has_gold = gold_array is not None and np.any(gold_array[i, :, :] > 0)
+            has_seg = bool(np.any(seg_array[i, :, :] > 0))
+            has_gold = gold_array is not None and bool(np.any(gold_array[i, :, :] > 0))
         elif numpy_axis == 1:
-            has_seg = np.any(seg_array[:, i, :] > 0)
-            has_gold = gold_array is not None and np.any(gold_array[:, i, :] > 0)
+            has_seg = bool(np.any(seg_array[:, i, :] > 0))
+            has_gold = gold_array is not None and bool(np.any(gold_array[:, i, :] > 0))
         else:
-            has_seg = np.any(seg_array[:, :, i] > 0)
-            has_gold = gold_array is not None and np.any(gold_array[:, :, i] > 0)
+            has_seg = bool(np.any(seg_array[:, :, i] > 0))
+            has_gold = gold_array is not None and bool(np.any(gold_array[:, :, i] > 0))
 
         if has_seg:
             slices_with_seg.append(i)
@@ -520,8 +520,8 @@ def generate_review_images(
         error_img = create_error_image(img_slice, trial_slice, gold_slice)
         Image.fromarray(error_img).save(error_dir / filename)
 
-        has_trial = slice_idx in slices_with_seg
-        has_gold = slice_idx in slices_with_gold
+        has_trial = bool(slice_idx in slices_with_seg)
+        has_gold = bool(slice_idx in slices_with_gold)
 
         images_list.append(
             {

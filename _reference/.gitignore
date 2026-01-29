@@ -1,0 +1,5 @@
+# Ignore everything in this folder except documentation and example config
+*
+!.gitignore
+!README.md
+!.setup.json.example

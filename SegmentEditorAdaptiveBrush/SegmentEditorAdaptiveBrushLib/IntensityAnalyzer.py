@@ -98,7 +98,7 @@ class IntensityAnalyzer:
         except IndexError:
             logging.warning(f"Seed point {seed_point} out of bounds")
             # Return conservative thresholds based on full image
-            return self._simple_statistics(image.flatten(), np.mean(image), edge_sensitivity)
+            return self._simple_statistics(image.flatten(), float(np.mean(image)), edge_sensitivity)
 
         # Use GMM if available and requested
         if self.use_gmm:

@@ -770,9 +770,23 @@ Paths configured in `.env` (see `.env.example` for setup):
 - **SLICER_PATH**: Path to Slicer executable for running scripts
 - **SLICER_SOURCE**: Path to Slicer source code for reference
 
+### Reference Code (`_reference/`)
+
+The `_reference/` folder contains reference implementations for development. Each developer sets up their own references using the `/setup-references` skill.
+
+**When exploring unfamiliar APIs**, check `_reference/` for examples:
+
+| Reference | What to look for |
+|-----------|------------------|
+| `SlicerSource/` | Slicer Python API, MRML nodes, built-in modules |
+| `SlicerSegmentEditorExtraEffects/` | Segment editor effect patterns |
+| `QuantitativeReporting/` | DICOM SEG handling with dcmqi |
+
+Run `/setup-references` to configure this folder with clones or symlinks.
+
 ### Slicer Source Code
 
-When you need to understand Slicer internals, check the source at `$SLICER_SOURCE`:
+When you need to understand Slicer internals, check `_reference/SlicerSource/` or `$SLICER_SOURCE`:
 
 | Path | Contents |
 |------|----------|

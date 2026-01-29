@@ -79,10 +79,22 @@ exclude_lines = [
 
 [tool.mypy]
 python_version = "3.9"
-warn_return_any = true
+warn_return_any = false  # Too many false positives with numpy
 warn_unused_configs = true
 ignore_missing_imports = true
-exclude = ["Testing/", "build/", "TestCases/"]
+disable_error_code = ["var-annotated"]  # Too strict for numpy array assignments
+exclude = [
+    "Testing/",
+    "build/",
+    "TestCases/",
+    "_reference/",
+    "__reference__/",      # Legacy, remove when cleaned up
+    "__nogit__REFERENCE/", # Legacy, remove when cleaned up
+]
+
+[[tool.mypy.overrides]]
+module = ["_pytest.*", "pytest.*"]
+follow_imports = "skip"
 
 # Ruff replaces black, flake8, isort
 [tool.ruff]

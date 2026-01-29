@@ -1,0 +1,31 @@
+{
+  "_comment": "This file tracks your reference setup choices. Copy to .setup.json and customize.",
+  "references": {
+    "SlicerSource": {
+      "enabled": true,
+      "method": "symlink",
+      "source": "/path/to/your/Slicer",
+      "notes": "Local Slicer source clone"
+    },
+    "SlicerSegmentEditorExtraEffects": {
+      "enabled": true,
+      "method": "clone",
+      "source": "https://github.com/lassoan/SlicerSegmentEditorExtraEffects.git",
+      "shallow": true,
+      "notes": "Segment editor effect examples"
+    },
+    "QuantitativeReporting": {
+      "enabled": false,
+      "method": "clone",
+      "source": "https://github.com/QIICR/QuantitativeReporting.git",
+      "shallow": true,
+      "notes": "DICOM SEG with dcmqi"
+    },
+    "CrossSegmentationExplorer": {
+      "enabled": false,
+      "method": "symlink",
+      "source": "/path/to/CrossSegmentationExplorer",
+      "notes": "Segmentation comparison tool"
+    }
+  }
+}

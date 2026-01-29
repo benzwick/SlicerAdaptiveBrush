@@ -60,8 +60,8 @@ docs/source/_static/screenshots/
 # Review reports (can be regenerated)
 reviews/
 
-# Reference repositories (cloned for reference, not part of project)
-__reference__/
+# Reference code folder manages its own .gitignore
+# See _reference/README.md for setup instructions
 
 # DICOM cache (generated on-demand for CSE compatibility)
 .dicom_cache/
