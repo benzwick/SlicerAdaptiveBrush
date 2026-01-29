@@ -159,14 +159,20 @@ class TestRunner:
         error_traceback = None
 
         try:
+            print(f"[{name}] Setup starting", flush=True)
             logger.info(f"[{name}] Setup")
             test_instance.setup(ctx)
+            print(f"[{name}] Setup complete", flush=True)
 
+            print(f"[{name}] Run starting", flush=True)
             logger.info(f"[{name}] Run")
             test_instance.run(ctx)
+            print(f"[{name}] Run complete", flush=True)
 
+            print(f"[{name}] Verify starting", flush=True)
             logger.info(f"[{name}] Verify")
             test_instance.verify(ctx)
+            print(f"[{name}] Verify complete", flush=True)
 
         except Exception as e:
             error = str(e)

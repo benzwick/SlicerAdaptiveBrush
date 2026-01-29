@@ -152,19 +152,24 @@ class TestAllAlgorithmsSelection(TestCase):
 
     def run(self, ctx: TestContext) -> None:
         """Test selecting each algorithm."""
+        print("[run] Starting algorithm selection test", flush=True)
         logger.info("Testing algorithm selection")
 
+        print("[run] Getting scripted effect", flush=True)
         scripted_effect = self.effect.self()
+        print("[run] Getting algorithm combo", flush=True)
         combo = scripted_effect.algorithmCombo
 
         # Start from a known state - set to last algorithm first to ensure
         # the first algorithm will trigger a change signal
+        print("[run] Setting initial algorithm state", flush=True)
         last_idx = combo.findData(ALGORITHMS[-1][0])
         if last_idx >= 0:
             combo.setCurrentIndex(last_idx)
             slicer.app.processEvents()
 
-        for data_value, display_name in ALGORITHMS:
+        for i, (data_value, display_name) in enumerate(ALGORITHMS):
+            print(f"[run] [{i + 1}/{len(ALGORITHMS)}] Selecting: {display_name}", flush=True)
             ctx.log(f"Selecting algorithm: {display_name}")
 
             idx = combo.findData(data_value)
@@ -180,8 +185,12 @@ class TestAllAlgorithmsSelection(TestCase):
                 f"Algorithm should be set to {data_value}",
             )
 
+            print(f"[run] [{i + 1}/{len(ALGORITHMS)}] Taking screenshot", flush=True)
             ctx.screenshot(f"[{data_value}] Algorithm selected: {display_name}")
             ctx.record_metric(f"algorithm_{data_value}_found", 1)
+            print(f"[run] [{i + 1}/{len(ALGORITHMS)}] Done", flush=True)
+
+        print("[run] Algorithm selection test complete", flush=True)
 
     def verify(self, ctx: TestContext) -> None:
         """Verify all algorithms were found."""
