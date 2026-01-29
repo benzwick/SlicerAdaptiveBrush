@@ -1109,6 +1109,13 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         self.compareAlgosButton.clicked.connect(self._on_compare_algorithms)
         layout.addWidget(self.compareAlgosButton)
 
+        self.openInCseButton = qt.QPushButton("Compare in CSE")
+        self.openInCseButton.setToolTip(
+            "Import DICOM and open in CrossSegmentationExplorer for multi-trial comparison"
+        )
+        self.openInCseButton.clicked.connect(self._on_open_in_cse)
+        layout.addWidget(self.openInCseButton)
+
         self.layout.addWidget(collapsible)
 
     def _create_recipe_replay_section(self):
@@ -2149,6 +2156,115 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         layout.addWidget(close_button)
 
         dialog.exec_()
+
+    def _on_open_in_cse(self):
+        """Import DICOM, load volume, and open CrossSegmentationExplorer."""
+        if not self.current_run:
+            _warning("No run loaded")
+            return
+
+        # Check for DICOM folder
+        dicom_path = self.current_run.path / "dicom"
+        if not dicom_path.exists():
+            _warning(
+                f"No DICOM folder found at:\n{dicom_path}\n\n"
+                "Run optimization with DICOM export enabled to use CSE comparison."
+            )
+            return
+
+        # Initialize DICOM database if needed
+        db = slicer.dicomDatabase
+        if not db or not db.isOpen:
+            import tempfile
+
+            db_path = Path(tempfile.mkdtemp()) / "ctkDICOM.sql"
+            slicer.dicomDatabase.openDatabase(str(db_path))
+            logger.info(f"Created temp DICOM database: {db_path}")
+
+        # Import DICOM files
+        logger.info(f"Importing DICOM from: {dicom_path}")
+        import ctk
+
+        indexer = ctk.ctkDICOMIndexer()
+        volume_series_uid = None
+
+        # Import volume and get series UID
+        volume_path = dicom_path / "volume"
+        if volume_path.exists():
+            indexer.addDirectory(slicer.dicomDatabase, str(volume_path))
+            logger.info("Imported volume DICOM")
+
+            # Find the volume series UID
+            import pydicom
+
+            for dcm_file in volume_path.rglob("*.dcm"):
+                try:
+                    dcm = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+                    if dcm.Modality != "SEG":
+                        volume_series_uid = dcm.SeriesInstanceUID
+                        break
+                except Exception:
+                    continue
+
+        # Import segmentations
+        seg_path = dicom_path / "segmentations"
+        seg_count = 0
+        if seg_path.exists():
+            for trial_dir in sorted(seg_path.iterdir()):
+                if trial_dir.is_dir():
+                    indexer.addDirectory(slicer.dicomDatabase, str(trial_dir))
+                    seg_count += 1
+            logger.info(f"Imported {seg_count} trial segmentations")
+
+        # Load the volume
+        volume_loaded = False
+        if volume_series_uid:
+            from DICOMLib import DICOMUtils
+
+            try:
+                loaded_nodes = DICOMUtils.loadSeriesByUID([volume_series_uid])
+                if loaded_nodes:
+                    volume_loaded = True
+                    logger.info(f"Loaded volume: {loaded_nodes[0].GetName()}")
+            except Exception as e:
+                logger.warning(f"Could not load volume: {e}")
+
+        # Check if CSE is installed
+        try:
+            _cse_module = slicer.modules.crosssegmentationexplorer
+            has_cse = True
+        except AttributeError:
+            has_cse = False
+
+        if has_cse:
+            # Open CSE
+            slicer.util.selectModule("CrossSegmentationExplorer")
+            if volume_loaded:
+                _info(
+                    f"Loaded volume and imported {seg_count} trial segmentations.\n\n"
+                    "In CrossSegmentationExplorer:\n"
+                    "1. Select the loaded volume as reference\n"
+                    "2. Trial SEGs are auto-discovered\n"
+                    "3. Use multi-pane layout to compare"
+                )
+            else:
+                _info(
+                    f"Imported {seg_count} trials to DICOM database.\n\n"
+                    "In CrossSegmentationExplorer:\n"
+                    "1. Load the volume from DICOM browser\n"
+                    "2. Trial SEGs will be auto-discovered"
+                )
+        else:
+            # Open DICOM browser
+            slicer.util.selectModule("DICOM")
+            _warning(
+                f"CrossSegmentationExplorer not installed.\n\n"
+                f"Imported {seg_count} trials to DICOM database.\n\n"
+                "To install CSE:\n"
+                "1. View > Extension Manager\n"
+                "2. Search 'CrossSegmentationExplorer'\n"
+                "3. Install and restart Slicer"
+            )
 
     def _set_layout(self, layout_id: int):
         """Set the Slicer view layout.
