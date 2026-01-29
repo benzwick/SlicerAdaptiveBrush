@@ -45,16 +45,25 @@ jobs:
 
       - name: Download and install 3D Slicer
         run: |
-          # Download Slicer 5.6.2 (stable release with known compatibility)
-          SLICER_VERSION="5.6.2"
-          SLICER_URL="https://download.slicer.org/bitstream/65f0b9f02069cf08eede6ccf"
+          # Download Slicer stable release for Linux
+          # Using the redirect URL which always points to the latest stable
+          SLICER_URL="https://download.slicer.org/download?os=linux&stability=release"
 
-          echo "Downloading Slicer ${SLICER_VERSION}..."
-          wget -q -O slicer.tar.gz "${SLICER_URL}"
+          echo "Downloading Slicer stable release..."
+          # Follow redirects to get the actual download
+          wget --content-disposition -q "${SLICER_URL}" || \
+            curl -L -o slicer.tar.gz "${SLICER_URL}"
 
-          echo "Extracting Slicer..."
-          tar -xzf slicer.tar.gz
-          rm slicer.tar.gz
+          # Find the downloaded file
+          DOWNLOAD_FILE=$(ls Slicer*.tar.gz 2>/dev/null || ls slicer.tar.gz 2>/dev/null)
+          if [ -z "$DOWNLOAD_FILE" ]; then
+            echo "Error: Download failed"
+            exit 1
+          fi
+
+          echo "Extracting ${DOWNLOAD_FILE}..."
+          tar -xzf "${DOWNLOAD_FILE}"
+          rm "${DOWNLOAD_FILE}"
 
           # Find the extracted directory
           SLICER_DIR=$(ls -d Slicer-* 2>/dev/null | head -1)
@@ -68,8 +77,12 @@ jobs:
           echo "SLICER_PATH=${SLICER_PATH}" >> $GITHUB_ENV
           echo "SLICER_EXECUTABLE=${SLICER_PATH}/Slicer" >> $GITHUB_ENV
 
+          # Get Slicer version for module path
+          SLICER_VERSION=$(echo "$SLICER_DIR" | grep -oP '\d+\.\d+' | head -1)
+          echo "SLICER_VERSION=${SLICER_VERSION}" >> $GITHUB_ENV
+
           # Verify installation
-          echo "Slicer installed at: ${SLICER_PATH}"
+          echo "Slicer installed at: ${SLICER_PATH} (version ${SLICER_VERSION})"
           ls -la "${SLICER_PATH}/Slicer"
 
       - name: Install extension dependencies
@@ -86,7 +99,10 @@ jobs:
       - name: Install extension into Slicer
         run: |
           # Copy extension modules to Slicer's module paths
-          SLICER_MODULES="${SLICER_PATH}/lib/Slicer-5.6/qt-scripted-modules"
+          SLICER_MODULES="${SLICER_PATH}/lib/Slicer-${SLICER_VERSION}/qt-scripted-modules"
+
+          # Create directory if it doesn't exist
+          mkdir -p "${SLICER_MODULES}"
 
           # Copy the AdaptiveBrush modules
           cp -r SegmentEditorAdaptiveBrush "${SLICER_MODULES}/"
