@@ -421,3 +421,32 @@ class TestContext:
         else:
             logger.error(f"FAIL: {message} (value is {value}, not None)")
         return assertion
+
+    def assert_almost_equal(
+        self, actual: float, expected: float, delta: float, message: str
+    ) -> Assertion:
+        """Assert that two values are approximately equal.
+
+        Args:
+            actual: Actual value.
+            expected: Expected value.
+            delta: Maximum allowed difference.
+            message: Description of what is being checked.
+
+        Returns:
+            Assertion result.
+        """
+        diff = abs(actual - expected)
+        passed = diff <= delta
+        assertion = Assertion(
+            passed=passed,
+            message=message,
+            expected=f"{expected} ± {delta}",
+            actual=actual,
+        )
+        self._assertions.append(assertion)
+        if passed:
+            logger.info(f"PASS: {message} ({actual} ≈ {expected}, diff={diff:.4f})")
+        else:
+            logger.error(f"FAIL: {message} ({actual} != {expected}, diff={diff:.4f} > {delta})")
+        return assertion

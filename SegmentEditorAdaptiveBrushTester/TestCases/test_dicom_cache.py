@@ -85,8 +85,8 @@ class TestDicomCacheGeneration(TestCase):
             "Should return a valid SeriesInstanceUID",
         )
 
-        # Verify DICOM files were created
-        dicom_files = list(volume_dicom_dir.glob("*.dcm"))
+        # Verify DICOM files were created (may be in subdirectory)
+        dicom_files = list(volume_dicom_dir.rglob("*.dcm"))
         ctx.assert_greater(
             len(dicom_files),
             0,
@@ -218,6 +218,7 @@ class TestDicomCacheGeneration(TestCase):
         )
 
         total_files = len(list(self.temp_dir.rglob("*.dcm")))
+        ctx.log(f"Temp dir contents: {list(self.temp_dir.rglob('*'))[:10]}")
         ctx.log(f"Total DICOM files created: {total_files}")
         ctx.assert_greater(
             total_files,
@@ -316,8 +317,8 @@ class TestDicomCseCompatibility(TestCase):
         try:
             import pydicom
 
-            # Read volume DICOM
-            vol_files = list(volume_dir.glob("*.dcm"))
+            # Read volume DICOM (may be in subdirectory)
+            vol_files = list(volume_dir.rglob("*.dcm"))
             vol_dcm = pydicom.dcmread(str(vol_files[0]))
             vol_study_uid = vol_dcm.StudyInstanceUID
             vol_series_uid_actual = vol_dcm.SeriesInstanceUID
