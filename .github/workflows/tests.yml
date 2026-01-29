@@ -157,12 +157,13 @@ jobs:
           mkdir -p test-results/screenshots
 
           # Run the main test suite
+          # Note: --additional-module-paths must come BEFORE --python-script
           timeout 600 $SLICER_HOME/Slicer --no-splash \
-            --python-script scripts/run_tests.py --exit all \
             --additional-module-paths \
               $(pwd)/SegmentEditorAdaptiveBrush \
               $(pwd)/SegmentEditorAdaptiveBrushTester \
               $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+            --python-script scripts/run_tests.py --exit all \
             2>&1 | tee test-results/slicer-output.log || true
 
           # Find and copy screenshots from test run
@@ -180,12 +181,13 @@ jobs:
           mkdir -p test-results/doc-screenshots
 
           # Run docs category tests specifically for documentation screenshots
+          # Note: --additional-module-paths must come BEFORE --python-script
           timeout 600 $SLICER_HOME/Slicer --no-splash \
-            --python-script scripts/run_tests.py --exit docs \
             --additional-module-paths \
               $(pwd)/SegmentEditorAdaptiveBrush \
               $(pwd)/SegmentEditorAdaptiveBrushTester \
               $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+            --python-script scripts/run_tests.py --exit docs \
             2>&1 | tee test-results/docs-tests-output.log || true
 
           # Find and copy doc screenshots from latest test run
