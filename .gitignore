@@ -53,6 +53,10 @@ reference_screenshots/
 # Sphinx build output
 docs/_build/
 
+# Generated documentation (regenerated in CI from source code)
+docs/source/generated/
+docs/source/_static/screenshots/
+
 # Review reports (can be regenerated)
 reviews/
 
