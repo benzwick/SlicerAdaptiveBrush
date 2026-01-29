@@ -23,8 +23,9 @@
     },
     "CrossSegmentationExplorer": {
       "enabled": false,
-      "method": "symlink",
-      "source": "/path/to/CrossSegmentationExplorer",
+      "method": "clone",
+      "source": "https://github.com/ImagingDataCommons/SlicerCrossSegmentationExplorer.git",
+      "shallow": true,
       "notes": "Segmentation comparison tool"
     }
   }

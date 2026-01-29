@@ -15,7 +15,7 @@ Set up the `_reference/` folder with reference code for development.
 | SlicerSource | https://github.com/Slicer/Slicer | 3D Slicer source code |
 | SlicerSegmentEditorExtraEffects | https://github.com/lassoan/SlicerSegmentEditorExtraEffects | Extra segment editor effects |
 | QuantitativeReporting | https://github.com/QIICR/QuantitativeReporting | DICOM SEG with dcmqi |
-| CrossSegmentationExplorer | (local project) | Segmentation comparison tool |
+| CrossSegmentationExplorer | https://github.com/ImagingDataCommons/SlicerCrossSegmentationExplorer | Segmentation comparison tool |
 
 ## Workflow
 
@@ -45,6 +45,11 @@ REFERENCES = {
     "QuantitativeReporting": {
         "url": "https://github.com/QIICR/QuantitativeReporting.git",
         "description": "DICOM SEG handling with dcmqi",
+        "default": "clone",
+    },
+    "CrossSegmentationExplorer": {
+        "url": "https://github.com/ImagingDataCommons/SlicerCrossSegmentationExplorer.git",
+        "description": "Segmentation comparison tool",
         "default": "clone",
     },
 }

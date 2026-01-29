@@ -26,8 +26,9 @@ Your choices are saved in `.setup.json` (gitignored). See `.setup.json.example` 
 
 ```bash
 cd _reference
-git clone https://github.com/lassoan/SlicerSegmentEditorExtraEffects.git
-git clone https://github.com/QIICR/QuantitativeReporting.git
+git clone --depth 1 https://github.com/lassoan/SlicerSegmentEditorExtraEffects.git
+git clone --depth 1 https://github.com/QIICR/QuantitativeReporting.git
+git clone --depth 1 https://github.com/ImagingDataCommons/SlicerCrossSegmentationExplorer.git CrossSegmentationExplorer
 ```
 
 ### Option 2: Symlink to existing local copies
@@ -53,5 +54,6 @@ When exploring unfamiliar Slicer APIs or patterns, check this folder for referen
 
 - **Segment Editor effects**: `SlicerSegmentEditorExtraEffects/`
 - **DICOM handling**: `QuantitativeReporting/`
+- **Segmentation comparison**: `CrossSegmentationExplorer/`
 - **Slicer Python API**: `SlicerSource/Base/Python/slicer/`
 - **MRML nodes**: `SlicerSource/Libs/MRML/Core/`
