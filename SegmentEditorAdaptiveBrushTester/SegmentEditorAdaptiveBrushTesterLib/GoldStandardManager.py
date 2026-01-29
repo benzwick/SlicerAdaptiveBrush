@@ -259,7 +259,7 @@ class GoldStandardManager:
         # Need to generate DICOM cache
         if volume_node is None:
             raise ValueError(
-                "volume_node required to generate DICOM cache. " "Load the reference volume first."
+                "volume_node required to generate DICOM cache. Load the reference volume first."
             )
 
         logger.info(f"Generating DICOM cache for {name}...")

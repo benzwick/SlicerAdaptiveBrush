@@ -183,7 +183,7 @@ def test_dicom_labelmap():
             seg_file = seg_files[0]
             file_size = seg_file.stat().st_size
             print(f"  Output file: {seg_file.name}")
-            print(f"  File size: {file_size:,} bytes ({file_size/1024:.1f} KB)")
+            print(f"  File size: {file_size:,} bytes ({file_size / 1024:.1f} KB)")
 
             # Verify it's a LABELMAP SEG
             import pydicom

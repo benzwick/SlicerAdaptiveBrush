@@ -315,10 +315,7 @@ def main():
             avg = algo_stats["avg_dice"]
             avg_str = f"{avg:.4f}" if avg else "N/A"
             best_str = f"{best:.4f}" if best else "N/A"
-            print(
-                f"{algo:<20} {trials:>8} {complete:>10} "
-                f"{pruned:>8} {best_str:>12} {avg_str:>12}"
-            )
+            print(f"{algo:<20} {trials:>8} {complete:>10} {pruned:>8} {best_str:>12} {avg_str:>12}")
 
     if args.review:
         print()

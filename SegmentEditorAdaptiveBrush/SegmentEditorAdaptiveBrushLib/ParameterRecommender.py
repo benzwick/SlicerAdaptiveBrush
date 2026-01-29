@@ -1004,8 +1004,7 @@ class ParameterRecommender:
         # Very large structure warning
         if shape.is_large_structure(80.0):
             warnings.append(
-                "Large structure may benefit from multiple brush strokes "
-                "or a larger brush radius"
+                "Large structure may benefit from multiple brush strokes or a larger brush radius"
             )
 
         # Very small structure warning

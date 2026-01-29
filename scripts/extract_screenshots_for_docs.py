@@ -224,8 +224,7 @@ def main():
     # Filter to only screenshots with doc_tags
     doc_screenshots = [s for s in screenshots if s.get("doc_tags")]
     logger.info(
-        f"Found {len(doc_screenshots)} screenshots with doc_tags "
-        f"(out of {len(screenshots)} total)"
+        f"Found {len(doc_screenshots)} screenshots with doc_tags (out of {len(screenshots)} total)"
     )
 
     if not doc_screenshots:
