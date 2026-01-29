@@ -8,8 +8,10 @@ on:
   workflow_dispatch:
 
 env:
+  # 3D Slicer 5.10.0 (revision 34045, built 2025-11-10)
+  # Direct bitstream URL from https://download.slicer.org/
   SLICER_VERSION: "5.10.0"
-  SLICER_DOWNLOAD_URL: "https://download.slicer.org/download?os=linux&stability=release"
+  SLICER_DOWNLOAD_URL: "https://download.slicer.org/bitstream/6911b598ac7b1c95e7934427"
   DISPLAY: ":99"
 
 jobs:
@@ -141,10 +143,6 @@ jobs:
             exit 1
           fi
 
-      - name: Install extension dependencies in Slicer
-        run: |
-          $SLICER_HOME/Slicer --no-splash --python-code "import subprocess, sys; subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'scikit-image', 'scikit-learn', '--quiet']); print('Dependencies installed')"
-
       - name: Run Slicer integration tests
         id: slicer-tests
         run: |
@@ -152,12 +150,10 @@ jobs:
 
           # Run the main test suite
           # Note: --additional-module-paths must come BEFORE --python-script
+          # so Slicer processes it (not passed to the Python script as args)
           set +e  # Don't exit on error - we want to capture artifacts
-          timeout 600 $SLICER_HOME/Slicer --no-splash \
-            --additional-module-paths \
-              $(pwd)/SegmentEditorAdaptiveBrush \
-              $(pwd)/SegmentEditorAdaptiveBrushTester \
-              $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+          timeout 300 $SLICER_HOME/Slicer --no-splash \
+            --additional-module-paths $(pwd)/SegmentEditorAdaptiveBrush $(pwd)/SegmentEditorAdaptiveBrushTester $(pwd)/SegmentEditorAdaptiveBrushReviewer \
             --python-script scripts/run_tests.py --exit all \
             2>&1 | tee test-results/slicer-output.log
           TEST_EXIT_CODE=${PIPESTATUS[0]}
@@ -184,13 +180,9 @@ jobs:
           mkdir -p test-results/doc-screenshots
 
           # Run docs category tests specifically for documentation screenshots
-          # Note: --additional-module-paths must come BEFORE --python-script
           set +e  # Don't exit on error - we want to capture artifacts
-          timeout 600 $SLICER_HOME/Slicer --no-splash \
-            --additional-module-paths \
-              $(pwd)/SegmentEditorAdaptiveBrush \
-              $(pwd)/SegmentEditorAdaptiveBrushTester \
-              $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+          timeout 300 $SLICER_HOME/Slicer --no-splash \
+            --additional-module-paths $(pwd)/SegmentEditorAdaptiveBrush $(pwd)/SegmentEditorAdaptiveBrushTester $(pwd)/SegmentEditorAdaptiveBrushReviewer \
             --python-script scripts/run_tests.py --exit docs \
             2>&1 | tee test-results/docs-tests-output.log
           DOCS_EXIT_CODE=${PIPESTATUS[0]}

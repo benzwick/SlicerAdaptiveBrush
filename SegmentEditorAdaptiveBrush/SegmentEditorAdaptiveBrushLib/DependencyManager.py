@@ -209,13 +209,22 @@ class DependencyManager:
 
         # Check for CI environment variables
         ci_vars = ["CI", "GITHUB_ACTIONS", "JENKINS_HOME", "TRAVIS", "GITLAB_CI"]
-        if any(os.environ.get(var) for var in ci_vars):
+        ci_values = {var: os.environ.get(var) for var in ci_vars}
+        logging.debug(f"CI environment check: {ci_values}")
+
+        if any(ci_values.values()):
+            logging.info("Headless mode detected via CI environment variable")
             return True
 
         # Check if Slicer main window is available
         if HAS_SLICER:
-            main_window = slicer.util.mainWindow()
-            if main_window is None:
+            try:
+                main_window = slicer.util.mainWindow()
+                if main_window is None:
+                    logging.info("Headless mode detected: no main window")
+                    return True
+            except Exception as e:
+                logging.debug(f"Error checking main window: {e}")
                 return True
 
         return False
@@ -229,10 +238,14 @@ class DependencyManager:
         Returns:
             True if installation succeeded
         """
+        logging.debug(f"_prompt_and_install called for {key}")
+
         # Skip dialogs in headless/CI mode to prevent hanging
         if self._is_headless():
             logging.info(f"Headless mode: skipping install prompt for {key}")
             return False
+
+        logging.debug(f"Not headless, will show dialog for {key}")
 
         spec = self._dependencies[key]
         message = self._get_install_message(key)

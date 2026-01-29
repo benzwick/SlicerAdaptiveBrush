@@ -2545,22 +2545,33 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
     def activate(self) -> None:
         """Called when the effect is selected."""
+        logging.debug("AdaptiveBrush activate() starting")
         self.cache.clear()
+        logging.debug("activate: cache cleared")
         self._createOutlinePipelines()
+        logging.debug("activate: outline pipelines created")
         self._updateThresholdRanges()
+        logging.debug("activate: threshold ranges updated")
         # Track current source volume for change detection
         self._lastSourceVolumeId = self._getCurrentSourceVolumeId()
+        logging.debug("activate: source volume ID tracked")
 
         # Prompt to install sklearn for GMM if not available
         # Do this at activation time, not during painting
         from IntensityAnalyzer import HAS_SKLEARN, _ensure_sklearn
 
+        logging.debug(f"activate: HAS_SKLEARN={HAS_SKLEARN}")
         if not HAS_SKLEARN:
+            logging.debug("activate: calling _ensure_sklearn()")
             if _ensure_sklearn():
+                logging.debug("activate: sklearn now available, recreating analyzer")
                 # Recreate analyzer with GMM now available
                 from IntensityAnalyzer import IntensityAnalyzer
 
                 self.intensityAnalyzer = IntensityAnalyzer()
+            else:
+                logging.debug("activate: sklearn not available, using fallback")
+        logging.debug("AdaptiveBrush activate() complete")
 
     def deactivate(self) -> None:
         """Called when the effect is deselected."""
