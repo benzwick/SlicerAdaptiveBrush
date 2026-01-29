@@ -236,7 +236,7 @@ def main():
     parser.add_argument(
         "--docs-dir",
         type=Path,
-        default=Path("docs/build/html"),
+        default=Path("docs/_build/html"),
         help="Built documentation directory",
     )
     parser.add_argument(

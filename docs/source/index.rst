@@ -24,6 +24,18 @@ features (edges, boundaries) rather than using a fixed geometric shape.
    developer_guide/algorithm_profiles
    developer_guide/api_reference
 
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
+   generated/api/index
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Algorithm Reference
+
+   generated/algorithms/index
+
 Indices and tables
 ==================
 
