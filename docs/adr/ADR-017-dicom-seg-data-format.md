@@ -76,7 +76,7 @@ This distinction is important because:
 
 ### CrossSegmentationExplorer Requirements
 
-CrossSegmentationExplorer (reference: `__reference__/CrossSegmentationExplorer/`) requires:
+CrossSegmentationExplorer (reference: `_reference/CrossSegmentationExplorer/`) requires:
 - DICOM volumes with `DICOM.instanceUIDs` attribute
 - DICOM SEG files with `ReferencedSeriesSequence` pointing to source volume
 - Slicer DICOM database for querying relationships

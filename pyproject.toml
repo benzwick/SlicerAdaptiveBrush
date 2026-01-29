@@ -88,8 +88,6 @@ exclude = [
     "build/",
     "TestCases/",
     "_reference/",
-    "__reference__/",      # Legacy, remove when cleaned up
-    "__nogit__REFERENCE/", # Legacy, remove when cleaned up
 ]
 
 [[tool.mypy.overrides]]

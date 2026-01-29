@@ -25,7 +25,7 @@ Our optimization framework generates multiple trial segmentations that benefit f
 
 ### Reference Implementation
 
-CrossSegmentationExplorer is cloned at `__reference__/CrossSegmentationExplorer/` for reference. Key patterns we may need to extend or fix:
+CrossSegmentationExplorer is cloned at `_reference/CrossSegmentationExplorer/` for reference. Key patterns we may need to extend or fix:
 
 ```python
 # Dynamic layout XML generation (SegmentationComparison.py:1693-1744)
