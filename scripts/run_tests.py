@@ -28,13 +28,23 @@ from __future__ import annotations
 import logging
 import sys
 
-# Configure logging
+# Configure logging with immediate flush
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s %(levelname)s [%(name)s:%(lineno)d] %(message)s",
+    stream=sys.stdout,
 )
 
+# Force unbuffered output
+sys.stdout.reconfigure(line_buffering=True) if hasattr(sys.stdout, "reconfigure") else None
+sys.stderr.reconfigure(line_buffering=True) if hasattr(sys.stderr, "reconfigure") else None
+
 logger = logging.getLogger(__name__)
+
+print("=" * 60, flush=True)
+print("run_tests.py starting", flush=True)
+print(f"Arguments: {sys.argv}", flush=True)
+print("=" * 60, flush=True)
 
 
 def main() -> None:
@@ -52,16 +62,21 @@ def main() -> None:
     logger.info(f"Running test suite: {suite}")
     logger.info(f"Exit after tests: {exit_after_tests}")
 
-    # Import the testing framework
+    # Import the testing framework - FAIL FAST if not available
+    print("Importing SegmentEditorAdaptiveBrushTesterLib...", flush=True)
     try:
         from SegmentEditorAdaptiveBrushTesterLib import TestRunner
-    except ImportError:
-        logger.error(
-            "SegmentEditorAdaptiveBrushTester module not found. "
-            "Make sure the extension is installed."
+
+        print("Import successful!", flush=True)
+    except ImportError as e:
+        error_msg = (
+            f"FATAL: SegmentEditorAdaptiveBrushTesterLib import failed: {e}\n"
+            "Make sure --additional-module-paths is set BEFORE --python-script"
         )
-        if exit_after_tests:
-            slicer.app.exit(1)
+        print(error_msg, flush=True)
+        logger.error(error_msg)
+        # Always exit on import failure - don't hang
+        slicer.app.exit(1)
         return
 
     # Create and configure test runner

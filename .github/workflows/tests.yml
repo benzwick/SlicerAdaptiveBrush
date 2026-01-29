@@ -158,13 +158,22 @@ jobs:
 
           # Run the main test suite
           # Note: --additional-module-paths must come BEFORE --python-script
+          set +e  # Don't exit on error - we want to capture artifacts
           timeout 600 $SLICER_HOME/Slicer --no-splash \
             --additional-module-paths \
               $(pwd)/SegmentEditorAdaptiveBrush \
               $(pwd)/SegmentEditorAdaptiveBrushTester \
               $(pwd)/SegmentEditorAdaptiveBrushReviewer \
             --python-script scripts/run_tests.py --exit all \
-            2>&1 | tee test-results/slicer-output.log || true
+            2>&1 | tee test-results/slicer-output.log
+          TEST_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          echo "Slicer exited with code: $TEST_EXIT_CODE"
+          echo "TEST_EXIT_CODE=$TEST_EXIT_CODE" >> $GITHUB_ENV
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "::error::Slicer integration tests failed with exit code $TEST_EXIT_CODE"
+          fi
 
           # Find and copy screenshots from test run
           TEST_RUN_DIR=$(ls -td test_runs/*/ 2>/dev/null | head -1)
@@ -182,13 +191,22 @@ jobs:
 
           # Run docs category tests specifically for documentation screenshots
           # Note: --additional-module-paths must come BEFORE --python-script
+          set +e  # Don't exit on error - we want to capture artifacts
           timeout 600 $SLICER_HOME/Slicer --no-splash \
             --additional-module-paths \
               $(pwd)/SegmentEditorAdaptiveBrush \
               $(pwd)/SegmentEditorAdaptiveBrushTester \
               $(pwd)/SegmentEditorAdaptiveBrushReviewer \
             --python-script scripts/run_tests.py --exit docs \
-            2>&1 | tee test-results/docs-tests-output.log || true
+            2>&1 | tee test-results/docs-tests-output.log
+          DOCS_EXIT_CODE=${PIPESTATUS[0]}
+          set -e
+
+          echo "Docs tests exited with code: $DOCS_EXIT_CODE"
+          echo "DOCS_EXIT_CODE=$DOCS_EXIT_CODE" >> $GITHUB_ENV
+          if [ $DOCS_EXIT_CODE -ne 0 ]; then
+            echo "::error::Documentation screenshot tests failed with exit code $DOCS_EXIT_CODE"
+          fi
 
           # Find and copy doc screenshots from latest test run
           TEST_RUN_DIR=$(ls -td test_runs/*/ 2>/dev/null | head -1)
@@ -230,6 +248,15 @@ jobs:
           name: doc-screenshots
           path: test-results/doc-screenshots/
           retention-days: 30
+
+      - name: Fail if tests failed
+        if: always()
+        run: |
+          if [ "$TEST_EXIT_CODE" != "0" ] || [ "$DOCS_EXIT_CODE" != "0" ]; then
+            echo "Tests failed: TEST_EXIT_CODE=$TEST_EXIT_CODE, DOCS_EXIT_CODE=$DOCS_EXIT_CODE"
+            exit 1
+          fi
+          echo "All tests passed"
 
   # ============================================================================
   # Job 3: Build Documentation with Screenshots
