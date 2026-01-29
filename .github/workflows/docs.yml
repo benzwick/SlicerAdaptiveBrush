@@ -1,238 +1,38 @@
 name: Documentation
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
     branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
-# Allow only one concurrent deployment
 concurrency:
   group: "pages"
   cancel-in-progress: false
 
 jobs:
-  generate-screenshots:
-    name: Generate Documentation Screenshots
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Set up Xvfb
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 \
-            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
-            libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 x11-utils \
-            libgl1 libgl1-mesa-dri libglu1-mesa libopengl0 \
-            libpulse0 libnss3 libxss1 libasound2t64
-          # Start Xvfb in the background
-          Xvfb :99 -screen 0 1920x1080x24 &
-          sleep 3
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-
-      - name: Download and install 3D Slicer
-        run: |
-          # Download Slicer stable release for Linux
-          # Using the redirect URL which always points to the latest stable
-          SLICER_URL="https://download.slicer.org/download?os=linux&stability=release"
-
-          echo "Downloading Slicer stable release..."
-          # Follow redirects to get the actual download
-          wget --content-disposition -q "${SLICER_URL}" || \
-            curl -L -o slicer.tar.gz "${SLICER_URL}"
-
-          # Find the downloaded file
-          DOWNLOAD_FILE=$(ls Slicer*.tar.gz 2>/dev/null || ls slicer.tar.gz 2>/dev/null)
-          if [ -z "$DOWNLOAD_FILE" ]; then
-            echo "Error: Download failed"
-            exit 1
-          fi
-
-          echo "Extracting ${DOWNLOAD_FILE}..."
-          tar -xzf "${DOWNLOAD_FILE}"
-          rm "${DOWNLOAD_FILE}"
-
-          # Find the extracted directory
-          SLICER_DIR=$(ls -d Slicer-* 2>/dev/null | head -1)
-          if [ -z "$SLICER_DIR" ]; then
-            echo "Error: Could not find extracted Slicer directory"
-            exit 1
-          fi
-
-          # Set environment variables
-          SLICER_PATH="$(pwd)/${SLICER_DIR}"
-          echo "SLICER_PATH=${SLICER_PATH}" >> $GITHUB_ENV
-          echo "SLICER_EXECUTABLE=${SLICER_PATH}/Slicer" >> $GITHUB_ENV
-
-          # Get Slicer version for module path
-          SLICER_VERSION=$(echo "$SLICER_DIR" | grep -oP '\d+\.\d+' | head -1)
-          echo "SLICER_VERSION=${SLICER_VERSION}" >> $GITHUB_ENV
-
-          # Verify installation
-          echo "Slicer installed at: ${SLICER_PATH} (version ${SLICER_VERSION})"
-          ls -la "${SLICER_PATH}/Slicer"
-
-      - name: Install extension dependencies
-        run: |
-          # Install Python dependencies in Slicer's Python environment
-          ${SLICER_EXECUTABLE} --no-splash --python-code "
-          import subprocess
-          import sys
-          subprocess.check_call([sys.executable, '-m', 'pip', 'install',
-                                 'scikit-image', 'scikit-learn', '--quiet'])
-          print('Dependencies installed successfully')
-          " || echo "Warning: Some dependencies may not have installed"
-
-      - name: Install extension into Slicer
-        run: |
-          # Copy extension modules to Slicer's module paths
-          SLICER_MODULES="${SLICER_PATH}/lib/Slicer-${SLICER_VERSION}/qt-scripted-modules"
-
-          # Create directory if it doesn't exist
-          mkdir -p "${SLICER_MODULES}"
-
-          # Copy the AdaptiveBrush modules
-          cp -r SegmentEditorAdaptiveBrush "${SLICER_MODULES}/"
-          cp -r SegmentEditorAdaptiveBrushTester "${SLICER_MODULES}/"
-          cp -r SegmentEditorAdaptiveBrushReviewer "${SLICER_MODULES}/"
-
-          echo "Extension modules installed to: ${SLICER_MODULES}"
-          ls -la "${SLICER_MODULES}/" | grep -i adaptive
-
-      - name: Run documentation tests
-        run: |
-          export QT_QPA_PLATFORM=offscreen
-          export XDG_RUNTIME_DIR=/tmp/runtime-runner
-          mkdir -p $XDG_RUNTIME_DIR
-
-          # Run tests with the docs category
-          ${SLICER_EXECUTABLE} --no-splash --python-script scripts/run_tests.py --exit docs
-        timeout-minutes: 30
-        continue-on-error: true  # Continue even if some screenshots fail
-
-      - name: Upload screenshots artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: doc-screenshots
-          path: test_runs/*/screenshots/
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Upload manifest artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: doc-manifest
-          path: test_runs/*/screenshots/manifest.json
-          retention-days: 7
-          if-no-files-found: warn
-
-  build-docs:
-    name: Build Documentation
-    needs: generate-screenshots
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install documentation dependencies
-        run: |
-          pip install sphinx sphinx-rtd-theme myst-parser
-
-      - name: Download screenshots artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: doc-screenshots
-          path: downloaded-screenshots/
-        continue-on-error: true  # Screenshots are optional
-
-      - name: Download manifest artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: doc-manifest
-          path: downloaded-manifest/
-        continue-on-error: true  # Manifest is optional
-
-      - name: Extract screenshots for docs
-        run: |
-          # Only run if we have screenshots
-          if [ -d "downloaded-screenshots" ] && [ "$(ls -A downloaded-screenshots 2>/dev/null)" ]; then
-            python scripts/extract_screenshots_for_docs.py \
-              --screenshots-dir downloaded-screenshots/ \
-              --manifest-dir downloaded-manifest/ \
-              --output-dir docs/source/_static/screenshots/
-          else
-            echo "No screenshots found, continuing without them"
-            mkdir -p docs/source/_static/screenshots/
-          fi
-
-      - name: Generate algorithm documentation
-        run: |
-          python scripts/generate_algorithm_docs.py \
-            --screenshots-dir docs/source/_static/screenshots/ \
-            --output-dir docs/source/generated/algorithms/
-
-      - name: Generate UI documentation
-        run: |
-          python scripts/generate_ui_docs.py \
-            --screenshots-dir docs/source/_static/screenshots/ \
-            --output-dir docs/source/generated/ui/
-
-      - name: Generate API documentation
-        run: |
-          python scripts/generate_api_docs.py \
-            --output-dir docs/source/generated/api/
-
-      - name: Build Sphinx documentation
-        run: |
-          cd docs
-          sphinx-build -b html source _build/html -W --keep-going || sphinx-build -b html source _build/html
-
-      - name: Validate documentation
-        run: |
-          python scripts/validate_docs.py \
-            --docs-dir docs/_build/html/ \
-            --screenshots-dir docs/source/_static/screenshots/ || true
-        continue-on-error: true  # Validation warnings shouldn't fail the build
-
-      - name: Upload documentation artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: documentation
-          path: docs/_build/html/
-          retention-days: 7
-
   deploy:
     name: Deploy to GitHub Pages
-    needs: build-docs
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Download documentation artifact
+      - name: Download docs from tests workflow
         uses: actions/download-artifact@v4
         with:
-          name: documentation
-          path: docs/
+          name: docs-with-screenshots
+          path: docs-html
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -240,7 +40,7 @@ jobs:
       - name: Upload to GitHub Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/
+          path: docs-html
 
       - name: Deploy to GitHub Pages
         id: deployment

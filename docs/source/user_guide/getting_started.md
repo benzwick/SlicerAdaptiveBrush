@@ -43,9 +43,9 @@ Once published, installation will be simpler:
 4. Adjust the brush radius using the slider or **Shift + scroll wheel**
 5. Click on the region you want to segment
 
-```{image} /_static/adaptive_brush_panel.png
+```{image} /_static/screenshots/ui/ui_options_panel_default_001.png
 :alt: Adaptive Brush options panel
-:width: 300px
+:width: 100%
 ```
 
 ### Basic Controls

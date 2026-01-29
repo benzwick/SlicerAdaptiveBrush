@@ -1,0 +1,383 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  SLICER_VERSION: "5.10.0"
+  SLICER_DOWNLOAD_URL: "https://download.slicer.org/download?os=linux&stability=release"
+  DISPLAY: ":99"
+
+jobs:
+  # ============================================================================
+  # Job 1: Unit Tests (fast, no Slicer needed)
+  # ============================================================================
+  unit-tests:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Lint with ruff
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Type check with mypy
+        run: uv run mypy .
+
+      - name: Run unit tests
+        run: |
+          mkdir -p test-results
+          uv run pytest -v --tb=short --junitxml=test-results/unit-tests.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results-py${{ matrix.python-version }}
+          path: test-results/
+          retention-days: 30
+
+  # ============================================================================
+  # Job 2: Slicer Integration Tests + Documentation Screenshots
+  # ============================================================================
+  slicer-tests:
+    name: Slicer Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up virtual display
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xvfb \
+            libxcb-xinerama0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxkbcommon-x11-0 \
+            libgl1-mesa-dri \
+            libegl1 \
+            libxkbcommon0 \
+            libdbus-1-3 \
+            libfontconfig1 \
+            libfreetype6 \
+            libnss3 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxrandr2 \
+            libxtst6 \
+            libasound2t64 \
+            libpulse-mainloop-glib0 \
+            libpulse0 \
+            libglib2.0-0 \
+            libopengl0 \
+            libglx0 \
+            libgl1 \
+            libglu1-mesa \
+            libsm6 \
+            libice6
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 3
+
+      - name: Cache Slicer installation
+        id: cache-slicer
+        uses: actions/cache@v4
+        with:
+          path: ~/Slicer
+          key: slicer-${{ env.SLICER_VERSION }}-linux
+
+      - name: Download and install Slicer
+        if: steps.cache-slicer.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/Slicer
+          cd ~/Slicer
+
+          echo "Downloading 3D Slicer..."
+          curl -L -o slicer.tar.gz "${{ env.SLICER_DOWNLOAD_URL }}"
+          tar -xzf slicer.tar.gz --strip-components=1
+          rm slicer.tar.gz
+
+          echo "Slicer installed to ~/Slicer"
+          ls -la
+
+      - name: Verify Slicer installation
+        run: |
+          export SLICER_HOME=~/Slicer
+          echo "SLICER_HOME=$SLICER_HOME" >> $GITHUB_ENV
+
+          if [ -f "$SLICER_HOME/Slicer" ]; then
+            echo "Slicer executable found"
+          else
+            echo "ERROR: Slicer executable not found"
+            ls -la $SLICER_HOME/
+            exit 1
+          fi
+
+      - name: Install extension dependencies in Slicer
+        run: |
+          $SLICER_HOME/Slicer --no-splash --python-code "
+          import subprocess
+          import sys
+          subprocess.check_call([sys.executable, '-m', 'pip', 'install',
+                                 'scikit-image', 'scikit-learn', '--quiet'])
+          print('Dependencies installed successfully')
+          " || echo "Warning: Some dependencies may not have installed"
+
+      - name: Run Slicer integration tests
+        id: slicer-tests
+        run: |
+          mkdir -p test-results/screenshots
+
+          # Run the main test suite
+          timeout 600 $SLICER_HOME/Slicer --no-splash \
+            --python-script scripts/run_tests.py --exit all \
+            --additional-module-paths \
+              $(pwd)/SegmentEditorAdaptiveBrush \
+              $(pwd)/SegmentEditorAdaptiveBrushTester \
+              $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+            2>&1 | tee test-results/slicer-output.log || true
+
+          # Find and copy screenshots from test run
+          TEST_RUN_DIR=$(ls -td test_runs/*/ 2>/dev/null | head -1)
+          if [ -n "$TEST_RUN_DIR" ] && [ -d "$TEST_RUN_DIR/screenshots" ]; then
+            cp -r "$TEST_RUN_DIR/screenshots/"* test-results/screenshots/ 2>/dev/null || true
+            cp "$TEST_RUN_DIR/results.json" test-results/ 2>/dev/null || true
+          fi
+
+          echo "=== Screenshots captured ==="
+          ls -la test-results/screenshots/ || echo "No screenshots"
+
+      - name: Run documentation screenshot tests
+        run: |
+          mkdir -p test-results/doc-screenshots
+
+          # Run docs category tests specifically for documentation screenshots
+          timeout 600 $SLICER_HOME/Slicer --no-splash \
+            --python-script scripts/run_tests.py --exit docs \
+            --additional-module-paths \
+              $(pwd)/SegmentEditorAdaptiveBrush \
+              $(pwd)/SegmentEditorAdaptiveBrushTester \
+              $(pwd)/SegmentEditorAdaptiveBrushReviewer \
+            2>&1 | tee test-results/docs-tests-output.log || true
+
+          # Find and copy doc screenshots from latest test run
+          TEST_RUN_DIR=$(ls -td test_runs/*/ 2>/dev/null | head -1)
+          if [ -n "$TEST_RUN_DIR" ] && [ -d "$TEST_RUN_DIR/screenshots" ]; then
+            cp -r "$TEST_RUN_DIR/screenshots/"* test-results/doc-screenshots/ 2>/dev/null || true
+            cp "$TEST_RUN_DIR/screenshots/manifest.json" test-results/doc-screenshots/ 2>/dev/null || true
+          fi
+
+          echo "=== Doc screenshots captured ==="
+          ls -la test-results/doc-screenshots/ || echo "No doc screenshots"
+          cat test-results/doc-screenshots/manifest.json 2>/dev/null || echo "No manifest"
+
+      - name: Collect generated documentation
+        run: |
+          mkdir -p test-results/user_guide/_generated
+
+          # Find generated docs from latest test run
+          TEST_RUN_DIR=$(ls -td test_runs/*/ 2>/dev/null | head -1)
+
+          # Also check docs/source/user_guide/_generated (where test writes)
+          GEN_DIR="docs/source/user_guide/_generated"
+          if [ -d "$GEN_DIR" ]; then
+            cp -r "$GEN_DIR/"* test-results/user_guide/_generated/ 2>/dev/null || true
+            echo "Copied generated docs from $GEN_DIR"
+            ls -la test-results/user_guide/_generated/
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slicer-test-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload screenshots for docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-screenshots
+          path: test-results/doc-screenshots/
+          retention-days: 30
+
+  # ============================================================================
+  # Job 3: Build Documentation with Screenshots
+  # ============================================================================
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    needs: slicer-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install documentation dependencies
+        run: pip install sphinx sphinx-rtd-theme myst-parser
+
+      - name: Download screenshots artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: doc-screenshots
+          path: downloaded-screenshots/
+        continue-on-error: true
+
+      - name: Extract screenshots for docs
+        run: |
+          mkdir -p docs/source/_static/screenshots
+
+          # Copy screenshots if they exist
+          if [ -d "downloaded-screenshots" ] && [ "$(ls -A downloaded-screenshots 2>/dev/null)" ]; then
+            python scripts/extract_screenshots_for_docs.py \
+              --screenshots-dir downloaded-screenshots/ \
+              --manifest-dir downloaded-screenshots/ \
+              --output-dir docs/source/_static/screenshots/
+          else
+            echo "No screenshots found, continuing without them"
+          fi
+
+      - name: Download generated docs
+        uses: actions/download-artifact@v4
+        with:
+          name: slicer-test-results
+          path: test-results/
+        continue-on-error: true
+
+      - name: Copy generated user guide docs
+        run: |
+          # Copy generated getting_started.md if it exists
+          GEN_DIR="test-results/user_guide/_generated"
+          if [ -d "$GEN_DIR" ]; then
+            # Replace hand-written docs with generated versions
+            if [ -f "$GEN_DIR/getting_started.md" ]; then
+              cp "$GEN_DIR/getting_started.md" docs/source/user_guide/getting_started.md
+              echo "Copied generated getting_started.md"
+            fi
+          else
+            echo "No generated user guide docs found"
+          fi
+
+      - name: Generate algorithm documentation
+        run: |
+          python scripts/generate_algorithm_docs.py \
+            --screenshots-dir docs/source/_static/screenshots/ \
+            --output-dir docs/source/generated/algorithms/
+
+      - name: Generate UI documentation
+        run: |
+          python scripts/generate_ui_docs.py \
+            --screenshots-dir docs/source/_static/screenshots/ \
+            --output-dir docs/source/generated/ui/
+
+      - name: Generate API documentation
+        run: |
+          python scripts/generate_api_docs.py \
+            --output-dir docs/source/generated/api/
+
+      - name: Build Sphinx documentation
+        run: |
+          cd docs
+          sphinx-build -b html source _build/html -W --keep-going || sphinx-build -b html source _build/html
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-with-screenshots
+          path: docs/_build/html/
+          retention-days: 30
+
+  # ============================================================================
+  # Job 4: Test Report
+  # ============================================================================
+  test-report:
+    name: Generate Test Report
+    runs-on: ubuntu-latest
+    needs: [unit-tests, slicer-tests, build-docs]
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Generate report
+        run: |
+          mkdir -p report
+
+          cat > report/test-report.md << 'EOF'
+          # AdaptiveBrush Test Report
+
+          **Generated**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Commit**: ${{ github.sha }}
+          **Branch**: ${{ github.ref_name }}
+
+          ## Unit Test Results
+
+          See `unit-test-results-*/` artifacts for detailed results.
+
+          ## Slicer Integration Test Results
+
+          See `slicer-test-results/` artifact for:
+          - `slicer-output.log` - Full test output
+          - `screenshots/` - UI screenshots with manifest.json
+
+          ## Documentation
+
+          Documentation with screenshots is available in `docs-with-screenshots/` artifact.
+
+          ## Screenshot Manifest
+
+          If screenshots were captured, review `doc-screenshots/manifest.json` for descriptions.
+          EOF
+
+          # Include manifest if present
+          if [ -f "artifacts/doc-screenshots/manifest.json" ]; then
+            echo "" >> report/test-report.md
+            echo "## Screenshot Details" >> report/test-report.md
+            echo '```json' >> report/test-report.md
+            cat artifacts/doc-screenshots/manifest.json >> report/test-report.md
+            echo '```' >> report/test-report.md
+          fi
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: report/
+          retention-days: 30

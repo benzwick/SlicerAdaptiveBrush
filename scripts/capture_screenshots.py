@@ -4,6 +4,9 @@
 This script captures standardized screenshots of the Adaptive Brush effect
 for use in README, documentation, and the 3D Slicer Extension Index.
 
+NOTE: For CI documentation builds, screenshots are captured by the test framework
+(test_docs_*.py test cases). This script is for manual/local screenshot capture.
+
 Run via:
     Slicer --python-script scripts/capture_screenshots.py
 
