@@ -246,8 +246,11 @@ class TestRunner:
         start_time = time.time()
         results = []
 
-        for info in tests:
+        for i, info in enumerate(tests):
+            print(f"[{i + 1}/{len(tests)}] Running: {info.name}...", flush=True)
             result = self.run_test(info.name, test_run_folder=test_run_folder)
+            status = "PASS" if result.passed else "FAIL"
+            print(f"[{i + 1}/{len(tests)}] {info.name}: {status}", flush=True)
             results.append(result)
 
         duration = time.time() - start_time
