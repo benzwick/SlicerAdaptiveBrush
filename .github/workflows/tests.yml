@@ -143,6 +143,20 @@ jobs:
             exit 1
           fi
 
+      - name: Install Python dependencies in Slicer
+        run: |
+          # Use Slicer's bundled Python to install packages directly
+          # This avoids launching the full Slicer application
+          SLICER_PYTHON="$SLICER_HOME/bin/PythonSlicer"
+
+          echo "Installing scikit-learn and scikit-image..."
+          $SLICER_PYTHON -m pip install --quiet scikit-learn scikit-image
+
+          echo "Verifying installations..."
+          $SLICER_PYTHON -c "import sklearn; print(f'scikit-learn: {sklearn.__version__}')"
+          $SLICER_PYTHON -c "import skimage; print(f'scikit-image: {skimage.__version__}')"
+          echo "Dependencies installed successfully"
+
       - name: Run Slicer integration tests
         id: slicer-tests
         run: |
