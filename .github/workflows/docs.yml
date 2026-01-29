@@ -147,15 +147,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-
       - name: Set up Python
-        run: uv python install 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Install documentation dependencies
         run: |
-          uv pip install --system sphinx sphinx-rtd-theme myst-parser
+          pip install sphinx sphinx-rtd-theme myst-parser
 
       - name: Download screenshots artifact
         uses: actions/download-artifact@v4
