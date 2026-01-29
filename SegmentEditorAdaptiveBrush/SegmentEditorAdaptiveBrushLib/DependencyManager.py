@@ -199,6 +199,27 @@ class DependencyManager:
             f"(Package: {spec.pip_name}{spec.version_constraint})"
         )
 
+    def _is_headless(self) -> bool:
+        """Check if running in headless/CI mode where dialogs would block.
+
+        Returns:
+            True if dialogs should be skipped
+        """
+        import os
+
+        # Check for CI environment variables
+        ci_vars = ["CI", "GITHUB_ACTIONS", "JENKINS_HOME", "TRAVIS", "GITLAB_CI"]
+        if any(os.environ.get(var) for var in ci_vars):
+            return True
+
+        # Check if Slicer main window is available
+        if HAS_SLICER:
+            main_window = slicer.util.mainWindow()
+            if main_window is None:
+                return True
+
+        return False
+
     def _prompt_and_install(self, key: str) -> bool:
         """Show confirmation dialog and install if user accepts.
 
@@ -208,6 +229,11 @@ class DependencyManager:
         Returns:
             True if installation succeeded
         """
+        # Skip dialogs in headless/CI mode to prevent hanging
+        if self._is_headless():
+            logging.info(f"Headless mode: skipping install prompt for {key}")
+            return False
+
         spec = self._dependencies[key]
         message = self._get_install_message(key)
 
