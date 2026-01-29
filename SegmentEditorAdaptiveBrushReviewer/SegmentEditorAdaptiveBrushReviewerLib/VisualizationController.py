@@ -16,6 +16,17 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _check_dicom_seg_plugin() -> bool:
+    """Check if DICOMSegmentationPlugin is available.
+
+    Returns:
+        True if QuantitativeReporting extension is installed.
+    """
+    import slicer
+
+    return "DICOMSegmentationPlugin" in slicer.modules.dicomPlugins
+
+
 class VisualizationController:
     """Control dual segmentation visualization.
 
@@ -84,6 +95,8 @@ class VisualizationController:
         Used for CrossSegmentationExplorer compatibility when DICOM format
         is needed. The DICOM cache is generated on-demand from .seg.nrrd.
 
+        Requires QuantitativeReporting extension for DICOMSegmentationPlugin.
+
         Args:
             dicom_seg_path: Path to DICOM SEG directory or file in .dicom_cache/.
 
@@ -94,6 +107,14 @@ class VisualizationController:
             import pydicom
             import slicer
             from DICOMLib import DICOMUtils
+
+            # Check for required extension
+            if not _check_dicom_seg_plugin():
+                logger.error(
+                    "QuantitativeReporting extension required for DICOM SEG loading. "
+                    "Install via: View > Extension Manager > QuantitativeReporting"
+                )
+                return False
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
@@ -147,6 +168,8 @@ class VisualizationController:
 
         Test segmentations from optimization runs are stored as DICOM SEG.
 
+        Requires QuantitativeReporting extension for DICOMSegmentationPlugin.
+
         Args:
             dicom_seg_path: Path to DICOM SEG directory or file.
 
@@ -157,6 +180,14 @@ class VisualizationController:
             import pydicom
             import slicer
             from DICOMLib import DICOMUtils
+
+            # Check for required extension
+            if not _check_dicom_seg_plugin():
+                logger.error(
+                    "QuantitativeReporting extension required for DICOM SEG loading. "
+                    "Install via: View > Extension Manager > QuantitativeReporting"
+                )
+                return False
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
