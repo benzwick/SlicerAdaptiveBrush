@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -12,6 +12,7 @@ The project needs automated testing and deployment to:
 2. Verify the extension installs and works in actual Slicer environment
 3. Package the extension for Slicer Extensions Index submission
 4. Provide confidence for contributors and users
+5. Generate documentation automatically with screenshots
 
 ### Testing Levels
 
@@ -60,6 +61,63 @@ Implement a **multi-stage GitHub Actions pipeline**:
     Slicer --python-script scripts/e2e_test.py
 ```
 
+### Stage 4: Documentation Generation (on main)
+
+```yaml
+name: Documentation
+
+jobs:
+  generate-screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1920x1080x24 &
+          export DISPLAY=:99
+
+      - name: Install Slicer
+        uses: Slicer/slicer-action@v1
+
+      - name: Run documentation tests
+        run: |
+          Slicer --python-script scripts/run_tests.py --exit docs
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-screenshots
+          path: test_runs/*/screenshots/
+
+  build-docs:
+    needs: generate-screenshots
+    steps:
+      - name: Download screenshots
+        uses: actions/download-artifact@v4
+
+      - name: Extract screenshots for docs
+        run: python scripts/extract_screenshots_for_docs.py
+
+      - name: Build Sphinx docs
+        run: |
+          cd docs
+          make html
+
+      - name: Validate documentation
+        run: python scripts/validate_docs.py
+
+  deploy:
+    needs: build-docs
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/build/html
+```
+
 ### Record-and-Replay Testing
 
 Slicer has a **QtTesting** framework for recording GUI interactions to XML files, but it's
@@ -101,13 +159,16 @@ Add badge to README:
 - Catches regressions before merge
 - Verified installation process
 - Builds confidence for extension submission
-- Screenshots generated for documentation
+- Screenshots generated automatically for documentation
+- Documentation always up-to-date with code
+- Single source of truth (tests drive docs)
 
 ### Negative
 
 - CI runs add time to PR process
 - Slicer installation in CI is complex
 - Headless testing has limitations (no real GPU)
+- Documentation build adds CI time (~5 min)
 
 ## Alternatives Considered
 
@@ -133,10 +194,17 @@ Add badge to README:
     ci.yml           # Fast checks on every commit
     integration.yml  # Slicer tests on PR/main
     release.yml      # Full tests + packaging on release
+    docs.yml         # Documentation generation and deployment
   scripts/
     install_extension.py
     e2e_test.py
     generate_screenshots.py
+scripts/
+  extract_screenshots_for_docs.py  # Copy screenshots to docs
+  generate_api_docs.py             # Auto-generate API reference
+  generate_algorithm_docs.py       # Auto-generate algorithm pages
+  generate_ui_docs.py              # Auto-generate UI reference
+  validate_docs.py                 # Verify documentation completeness
 ```
 
 ### Slicer Action Reference

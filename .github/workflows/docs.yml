@@ -1,0 +1,160 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  generate-screenshots:
+    name: Generate Documentation Screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxkbcommon-x11-0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-xinerama0 libxcb-xfixes0 x11-utils
+          # Start Xvfb in the background
+          Xvfb :99 -screen 0 1920x1080x24 &
+          sleep 3
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Install Slicer
+        uses: Slicer/slicer-action@v1
+        with:
+          slicer-version: "5.10"
+
+      - name: Install extension dependencies
+        run: |
+          # Install Python dependencies that might be needed
+          $SLICER_EXECUTABLE --python-code "import pip; pip.main(['install', 'scikit-image', 'scikit-learn'])" || true
+
+      - name: Run documentation tests
+        run: |
+          export QT_QPA_PLATFORM=offscreen
+          $SLICER_EXECUTABLE --python-script scripts/run_tests.py --exit docs
+        timeout-minutes: 30
+
+      - name: Upload screenshots artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-screenshots
+          path: test_runs/*/screenshots/
+          retention-days: 7
+
+      - name: Upload manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: doc-manifest
+          path: test_runs/*/screenshots/manifest.json
+          retention-days: 7
+
+  build-docs:
+    name: Build Documentation
+    needs: generate-screenshots
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install documentation dependencies
+        run: |
+          uv pip install --system sphinx sphinx-rtd-theme myst-parser
+
+      - name: Download screenshots artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: doc-screenshots
+          path: downloaded-screenshots/
+
+      - name: Download manifest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: doc-manifest
+          path: downloaded-manifest/
+
+      - name: Extract screenshots for docs
+        run: |
+          python scripts/extract_screenshots_for_docs.py \
+            --screenshots-dir downloaded-screenshots/ \
+            --manifest-dir downloaded-manifest/ \
+            --output-dir docs/source/_static/screenshots/
+
+      - name: Generate algorithm documentation
+        run: |
+          python scripts/generate_algorithm_docs.py \
+            --screenshots-dir docs/source/_static/screenshots/ \
+            --output-dir docs/source/generated/
+
+      - name: Generate API documentation
+        run: |
+          python scripts/generate_api_docs.py \
+            --output-dir docs/source/generated/api/
+
+      - name: Build Sphinx documentation
+        run: |
+          cd docs
+          make html
+
+      - name: Validate documentation
+        run: |
+          python scripts/validate_docs.py \
+            --docs-dir docs/build/html/ \
+            --screenshots-dir docs/source/_static/screenshots/
+
+      - name: Upload documentation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/build/html/
+          retention-days: 7
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build-docs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download documentation artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation
+          path: docs/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

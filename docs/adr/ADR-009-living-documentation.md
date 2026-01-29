@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -83,20 +83,41 @@ docs/
 
 ### Website Generation
 
-Use MkDocs or Sphinx with GitHub Pages:
+Use **Sphinx** with GitHub Pages (Sphinx chosen for better Python API documentation support via autodoc):
 
 ```yaml
 # .github/workflows/docs.yml
-- name: Generate screenshots
-  run: |
-    Slicer --python-script scripts/generate_screenshots.py
+jobs:
+  generate-screenshots:
+    steps:
+      - name: Run documentation tests
+        run: Slicer --python-script scripts/run_tests.py --exit docs
 
-- name: Build docs
-  run: mkdocs build
+  build-docs:
+    needs: generate-screenshots
+    steps:
+      - name: Extract screenshots
+        run: python scripts/extract_screenshots_for_docs.py
 
-- name: Deploy to GitHub Pages
-  uses: peaceiris/actions-gh-pages@v3
+      - name: Build Sphinx docs
+        run: cd docs && make html
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
 ```
+
+### Documentation Tagging
+
+Screenshots are tagged for documentation purposes:
+
+```python
+def test_watershed_algorithm(ctx: TestContext):
+    """Test watershed algorithm with documentation screenshots."""
+    ctx.screenshot("Watershed result",
+                   doc_tags=["algorithm", "watershed", "result"])
+```
+
+Tags allow filtering screenshots for specific documentation pages.
 
 ### Claude's Role
 
@@ -150,26 +171,55 @@ def capture_screenshot(filename: str, view: str = "Red"):
     pixmap.save(f"docs/screenshots/{filename}")
 ```
 
-### MkDocs Configuration
+### Sphinx Configuration
 
-```yaml
-# mkdocs.yml
-site_name: SlicerAdaptiveBrush
-theme:
-  name: material
-nav:
-  - Home: index.md
-  - User Guide:
-    - Getting Started: user-guide/getting-started.md
-    - Algorithms: user-guide/algorithms.md
-plugins:
-  - search
-  - mkdocstrings  # Generate API docs from docstrings
+```python
+# docs/source/conf.py
+extensions = [
+    "myst_parser",           # Markdown support
+    "sphinx_rtd_theme",      # ReadTheDocs theme
+    "sphinx.ext.autodoc",    # API from docstrings
+    "sphinx.ext.napoleon",   # Google-style docstrings
+    "sphinx.ext.viewcode",   # Source code links
+]
+
+# MyST parser for Markdown
+myst_enable_extensions = [
+    "colon_fence",
+    "deflist",
+    "tasklist",
+]
+```
+
+### Test-to-Documentation Pipeline
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│  Documentation  │───▶│   Screenshots    │───▶│  Extract for    │
+│  Test Suite     │    │   (doc_tags)     │    │  Docs Pages     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                                              │
+         │                                              ▼
+         │                                     ┌─────────────────┐
+         │                                     │  Algorithm      │
+         │                                     │  Docs Generator │
+         │                                     └─────────────────┘
+         │                                              │
+         ▼                                              ▼
+┌─────────────────┐                           ┌─────────────────┐
+│  API Docstrings │──────────────────────────▶│  Sphinx Build   │
+└─────────────────┘                           └─────────────────┘
+                                                       │
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │  GitHub Pages   │
+                                              └─────────────────┘
 ```
 
 ## References
 
-- [MkDocs](https://www.mkdocs.org/)
+- [Sphinx Documentation](https://www.sphinx-doc.org/)
+- [MyST Parser](https://myst-parser.readthedocs.io/)
 - [GitHub Pages](https://pages.github.com/)
 - [Living Documentation (Gojko Adzic)](https://gojko.net/books/specification-by-example/)
 - [Slicer Screenshot Capture](https://slicer.readthedocs.io/en/latest/developer_guide/script_repository.html#capture-a-screenshot)

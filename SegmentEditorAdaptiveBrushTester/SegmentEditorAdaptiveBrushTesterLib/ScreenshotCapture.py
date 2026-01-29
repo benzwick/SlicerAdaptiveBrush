@@ -30,6 +30,7 @@ class ScreenshotInfo:
     view_name: str | None = None  # For slice views: "Red", "Yellow", "Green"
     width: int = 0
     height: int = 0
+    doc_tags: list[str] = field(default_factory=list)  # Tags for documentation filtering
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
@@ -44,6 +45,7 @@ class ScreenshotInfo:
             "view_name": self.view_name,
             "width": self.width,
             "height": self.height,
+            "doc_tags": self.doc_tags,
         }
 
 
@@ -169,22 +171,29 @@ class ScreenshotCapture:
         """Get the current screenshot group."""
         return self._current_group
 
-    def screenshot(self, description: str = "") -> ScreenshotInfo:
+    def screenshot(
+        self, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Take a screenshot of the current layout (auto-numbered).
 
         Args:
             description: Description of what the screenshot shows.
+            doc_tags: Tags for documentation filtering (e.g., ["algorithm", "watershed"]).
+                      Screenshots with doc_tags are included in auto-generated documentation.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        return self.capture_layout(description)
+        return self.capture_layout(description, doc_tags=doc_tags)
 
-    def capture_layout(self, description: str = "") -> ScreenshotInfo:
+    def capture_layout(
+        self, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture screenshot of the entire Slicer layout.
 
         Args:
             description: Human-readable description.
+            doc_tags: Tags for documentation filtering (e.g., ["algorithm", "watershed"]).
 
         Returns:
             ScreenshotInfo with path and metadata.
@@ -217,19 +226,24 @@ class ScreenshotCapture:
             view_type="layout",
             width=pixmap.width(),
             height=pixmap.height(),
+            doc_tags=doc_tags or [],
         )
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
+        tags_str = f" [tags: {', '.join(doc_tags)}]" if doc_tags else ""
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}{tags_str}")
         return info
 
-    def capture_slice_view(self, view: str, description: str = "") -> ScreenshotInfo:
+    def capture_slice_view(
+        self, view: str, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture screenshot of a specific slice view.
 
         Args:
             view: View name ("Red", "Yellow", "Green").
             description: Human-readable description.
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             ScreenshotInfo with path and metadata.
@@ -266,15 +280,17 @@ class ScreenshotCapture:
             view_name=view,
             width=pixmap.width(),
             height=pixmap.height(),
+            doc_tags=doc_tags or [],
         )
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
+        tags_str = f" [tags: {', '.join(doc_tags)}]" if doc_tags else ""
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}{tags_str}")
         return info
 
     def capture_layout_with_3d(
-        self, description: str = ""
+        self, description: str = "", doc_tags: list[str] | None = None
     ) -> tuple[ScreenshotInfo, ScreenshotInfo | None]:
         """Capture both layout and 3D view as separate files.
 
@@ -284,27 +300,34 @@ class ScreenshotCapture:
 
         Args:
             description: Human-readable description for the screenshots.
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             Tuple of (layout_info, three_d_info). three_d_info is None if
             no 3D view is available in the current layout.
         """
-        layout_info = self.capture_layout(description)
+        layout_info = self.capture_layout(description, doc_tags=doc_tags)
 
         try:
-            three_d_info = self.capture_3d_view(f"{description} (3D)")
+            three_d_info = self.capture_3d_view(f"{description} (3D)", doc_tags=doc_tags)
             return layout_info, three_d_info
         except ValueError:
             # No 3D view available in current layout
             logger.debug("No 3D view available for capture_layout_with_3d")
             return layout_info, None
 
-    def capture_3d_view(self, description: str = "", view_node_index: int = 0) -> ScreenshotInfo:
+    def capture_3d_view(
+        self,
+        description: str = "",
+        view_node_index: int = 0,
+        doc_tags: list[str] | None = None,
+    ) -> ScreenshotInfo:
         """Capture screenshot of the 3D view.
 
         Args:
             description: Human-readable description.
             view_node_index: Index of 3D view node (default 0 for first).
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             ScreenshotInfo with path and metadata.
@@ -340,19 +363,24 @@ class ScreenshotCapture:
             view_type="3d",
             width=pixmap.width(),
             height=pixmap.height(),
+            doc_tags=doc_tags or [],
         )
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
+        tags_str = f" [tags: {', '.join(doc_tags)}]" if doc_tags else ""
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}{tags_str}")
         return info
 
-    def capture_widget(self, widget, description: str = "") -> ScreenshotInfo:
+    def capture_widget(
+        self, widget, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture screenshot of a specific Qt widget.
 
         Args:
             widget: Qt widget to capture.
             description: Human-readable description.
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             ScreenshotInfo with path and metadata.
@@ -380,11 +408,13 @@ class ScreenshotCapture:
             view_type="widget",
             width=pixmap.width(),
             height=pixmap.height(),
+            doc_tags=doc_tags or [],
         )
 
         group.screenshots.append(info)
         self._all_screenshots.append(info)
-        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}")
+        tags_str = f" [tags: {', '.join(doc_tags)}]" if doc_tags else ""
+        logger.info(f"Screenshot {number:03d} [{group.name}]: {description}{tags_str}")
         return info
 
     def _ensure_group(self) -> ScreenshotGroup:
@@ -478,3 +508,32 @@ class ScreenshotCapture:
         if group not in self._groups:
             return []
         return self._groups[group].screenshots.copy()
+
+    def get_screenshots_by_tags(
+        self, tags: list[str], match_all: bool = False
+    ) -> list[ScreenshotInfo]:
+        """Get screenshots matching specified doc_tags.
+
+        Args:
+            tags: Tags to match.
+            match_all: If True, screenshot must have ALL tags. If False (default),
+                       screenshot must have ANY of the tags.
+
+        Returns:
+            List of matching ScreenshotInfo objects.
+        """
+        results = []
+        for screenshot in self._all_screenshots:
+            if not screenshot.doc_tags:
+                continue
+            if match_all:
+                if all(tag in screenshot.doc_tags for tag in tags):
+                    results.append(screenshot)
+            else:
+                if any(tag in screenshot.doc_tags for tag in tags):
+                    results.append(screenshot)
+        return results
+
+    def get_doc_screenshots(self) -> list[ScreenshotInfo]:
+        """Get all screenshots that have doc_tags (for documentation generation)."""
+        return [s for s in self._all_screenshots if s.doc_tags]

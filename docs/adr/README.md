@@ -17,8 +17,8 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-005](ADR-005-mouse-keyboard-controls.md) | Mouse and Keyboard Controls | Accepted |
 | [ADR-006](ADR-006-iconography.md) | Iconography | Accepted |
 | [ADR-007](ADR-007-dependency-management.md) | Optional Dependency Management | Accepted |
-| [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Proposed |
-| [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Proposed |
+| [ADR-008](ADR-008-ci-cd-pipeline.md) | CI/CD Pipeline Strategy | Accepted |
+| [ADR-009](ADR-009-living-documentation.md) | Living Documentation Strategy | Accepted |
 | [ADR-010](ADR-010-testing-framework.md) | Slicer Testing Framework Architecture | Accepted |
 | [ADR-011](ADR-011-optimization-framework.md) | Smart Optimization Framework (Optuna) | Accepted |
 | [ADR-012](ADR-012-results-review-module.md) | Results Review Module | Accepted |
@@ -29,6 +29,7 @@ An Architecture Decision Record captures an important architectural decision mad
 | [ADR-017](ADR-017-dicom-seg-data-format.md) | DICOM SEG Data Format Standard | Accepted |
 | [ADR-018](ADR-018-cross-segmentation-explorer-integration.md) | CrossSegmentationExplorer Integration | Accepted |
 | [ADR-019](ADR-019-custom-dicom-labelmap-plugin.md) | Custom DICOM Label Map Segmentation Plugin | Accepted |
+| [ADR-020](ADR-020-auto-generated-docs.md) | Auto-Generated Documentation System | Accepted |
 
 ## Template
 

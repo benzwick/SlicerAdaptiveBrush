@@ -344,14 +344,15 @@ Key decisions are documented in `docs/adr/`:
 - **ADR-005**: Mouse and keyboard controls
 - **ADR-006**: Iconography
 - **ADR-007**: Dependency management
-- **ADR-008**: CI/CD pipeline
-- **ADR-009**: Living documentation
+- **ADR-008**: CI/CD pipeline - *implemented*
+- **ADR-009**: Living documentation - *implemented*
 - **ADR-010**: Slicer testing framework architecture
 - **ADR-011**: Smart optimization framework (Optuna integration) - *implemented*
 - **ADR-012**: Results review module - *implemented*
 - **ADR-013**: Segmentation recipes - *implemented*
 - **ADR-014**: Enhanced testing with recipe replay
 - **ADR-015**: Parameter wizard - *implemented*
+- **ADR-020**: Auto-generated documentation system - *implemented*
 
 ## Parameter Optimization (Optuna)
 
@@ -487,6 +488,10 @@ reviews/
 **Fix Skills:**
 - **/fix-bad-practices**: Systematically fix exception handling and other bad patterns
 
+**Documentation Skills:**
+- **/generate-docs**: Generate documentation from code and test screenshots
+- **/review-docs**: Validate documentation completeness and report coverage gaps
+
 ### Claude Code Agents
 
 **Testing Agents:**
@@ -503,6 +508,10 @@ reviews/
 - **code-quality-reviewer**: Deep code analysis for quality issues
 - **documentation-auditor**: Cross-references docs with implementation
 - **medical-compliance-reviewer**: Medical imaging software best practices
+
+**Documentation Agents:**
+- **documentation-generator**: Generates docs from code, screenshots, and docstrings
+- **docs-validator**: Validates documentation completeness and accuracy
 
 ### Writing Test Cases
 

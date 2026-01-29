@@ -105,44 +105,54 @@ class TestContext:
         }
         logger.debug(f"Screenshot context: {self._screenshot_context}")
 
-    def screenshot(self, description: str = "") -> ScreenshotInfo:
+    def screenshot(
+        self, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture a screenshot of the current Slicer state (auto-numbered).
 
         Args:
             description: Human-readable description of what the screenshot shows.
+            doc_tags: Tags for documentation filtering (e.g., ["algorithm", "watershed"]).
+                      Screenshots with doc_tags are included in auto-generated documentation.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        info = self._screenshot_capture.screenshot(description)
+        info = self._screenshot_capture.screenshot(description, doc_tags=doc_tags)
         # Store just the filename - manifest has group/test context
         self._screenshots.append(info.filename)
         return info
 
-    def screenshot_slice_view(self, view: str, description: str = "") -> ScreenshotInfo:
+    def screenshot_slice_view(
+        self, view: str, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture a screenshot of a specific slice view (auto-numbered).
 
         Args:
             view: View name ("Red", "Yellow", "Green").
             description: Human-readable description.
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        info = self._screenshot_capture.capture_slice_view(view, description)
+        info = self._screenshot_capture.capture_slice_view(view, description, doc_tags=doc_tags)
         self._screenshots.append(info.filename)
         return info
 
-    def screenshot_3d_view(self, description: str = "") -> ScreenshotInfo:
+    def screenshot_3d_view(
+        self, description: str = "", doc_tags: list[str] | None = None
+    ) -> ScreenshotInfo:
         """Capture a screenshot of the 3D view (auto-numbered).
 
         Args:
             description: Human-readable description.
+            doc_tags: Tags for documentation filtering.
 
         Returns:
             ScreenshotInfo with path and metadata.
         """
-        info = self._screenshot_capture.capture_3d_view(description)
+        info = self._screenshot_capture.capture_3d_view(description, doc_tags=doc_tags)
         self._screenshots.append(info.filename)
         return info
 

@@ -210,13 +210,33 @@
   - [x] ADR-014: Enhanced Testing and Recipe Replay
   - [x] Update ROADMAP.md with v0.14.0 section
 
-## Version 0.15.0 - Living Documentation
+## Version 0.18.0 - Auto-Generated Documentation ✓
 
-- [ ] Test scripts generate screenshots automatically
-- [ ] Documentation written to match test coverage
-- [ ] Auto-generated website (GitHub Pages)
-- [ ] Documentation updates dynamically with code changes
-- [ ] User guide with auto-captured screenshots
+- [x] ADR-020: Auto-Generated Documentation System
+- [x] Documentation test suite (test_docs_*.py)
+  - [x] Algorithm documentation tests
+  - [x] UI reference tests
+  - [x] Workflow tutorial tests
+  - [x] Reviewer module documentation tests
+- [x] Screenshot pipeline
+  - [x] doc_tags support in ScreenshotCapture
+  - [x] Screenshot extraction script
+  - [x] Screenshot organization by category
+- [x] Documentation generation scripts
+  - [x] Algorithm page generator
+  - [x] UI reference generator
+  - [x] API documentation generator
+- [x] GitHub Actions workflow (docs.yml)
+  - [x] Screenshot generation with Xvfb
+  - [x] Sphinx documentation build
+  - [x] GitHub Pages deployment
+- [x] Documentation validation script
+- [x] Claude Code skills
+  - [x] /generate-docs
+  - [x] /review-docs
+- [x] Claude Code agents
+  - [x] documentation-generator
+  - [x] docs-validator
 
 ## Version 0.16.0 - Quick Select Parameters Wizard ✓
 
