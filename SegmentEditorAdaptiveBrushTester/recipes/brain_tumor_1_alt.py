@@ -19,6 +19,9 @@ def run(effect):
     # Use preset for contrast-enhanced tumor in T1+Gd
     effect.applyPreset("mri_t1gd_tumor")
 
+    # Explicitly set watershed algorithm (preset doesn't specify algorithm)
+    effect.algorithm = "watershed"
+
     # Brush sized for this ~3cm tumor
     effect.brushRadiusMm = 20.0
 

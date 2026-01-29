@@ -145,20 +145,14 @@ class RecipeTestRunner:
         start_time = time.time()
 
         try:
-            # Load gold standard first (before clearing scene)
-            gold_seg_node, gold_metadata = self._gold_manager.load_gold(gold_name)
-            gold_segment_id = gold_metadata.get("segment_id", "Segment_1")
-            result.voxels_gold = gold_metadata.get("voxel_count", 0)
-
-            # Screenshot before
+            # Run recipe first to load sample data
             if test_run_folder:
                 self._screenshot_capture.set_base_folder(test_run_folder.screenshots_folder)
                 self._screenshot_capture.set_group(recipe.name)
                 self._screenshot_capture.screenshot(f"[1_before] Before: {recipe.name}")
 
-            # Run recipe (don't clear scene - we need gold standard)
             runner = RecipeRunner(recipe)
-            run_result = runner.run(clear_scene=False)
+            run_result = runner.run(clear_scene=True)
 
             if not run_result.success:
                 result.error = run_result.error or "Recipe execution failed"
@@ -169,6 +163,49 @@ class RecipeTestRunner:
 
             # Get volume node for metrics
             volume_node = run_result.volume_node
+
+            # Load gold standard AFTER recipe runs (so we have matching volume geometry)
+            # Pass verify=False since we're loading fresh and the volume is from recipe
+            gold_seg_node, gold_metadata = self._gold_manager.load_gold(
+                gold_name, volume_node=None, verify=False
+            )
+            result.voxels_gold = gold_metadata.get("statistics", {}).get("voxel_count", 0)
+
+            # Get actual segment ID from loaded segmentation
+            # (segment IDs may change during save/load cycle)
+            segmentation = gold_seg_node.GetSegmentation()
+            num_segments = segmentation.GetNumberOfSegments()
+            if num_segments == 0:
+                result.error = "Gold standard has no segments"
+                return result
+
+            # Log all segment info for debugging
+            expected_name = gold_metadata.get("segment_id", "")
+            logger.info(f"Looking for segment '{expected_name}' in gold standard")
+            for i in range(num_segments):
+                seg_id = segmentation.GetNthSegmentID(i)
+                segment = segmentation.GetSegment(seg_id)
+                logger.info(f"  Segment {i}: id='{seg_id}', name='{segment.GetName()}'")
+
+            # Try to find segment by name first, then fall back to first segment
+            gold_segment_id = None
+            for i in range(num_segments):
+                seg_id = segmentation.GetNthSegmentID(i)
+                segment = segmentation.GetSegment(seg_id)
+                if segment.GetName() == expected_name or seg_id == expected_name:
+                    gold_segment_id = seg_id
+                    break
+            if gold_segment_id is None:
+                # Fall back to first segment
+                gold_segment_id = segmentation.GetNthSegmentID(0)
+                logger.warning(
+                    f"Could not find segment '{expected_name}' in gold standard, "
+                    f"using '{gold_segment_id}' instead"
+                )
+            logger.info(f"Using gold segment: {gold_segment_id}")
+
+            # Set reference geometry to match the recipe's volume
+            gold_seg_node.SetReferenceImageGeometryParameterFromVolumeNode(volume_node)
 
             # Compute metrics
             metrics = SegmentationMetrics.compute(

@@ -14,7 +14,7 @@
       112
     ]
   },
-  "segment_id": "Tumor",
+  "segment_id": "Segment_1",
   "description": "Manually refined tumor segmentation. Initial segmentation created using watershed algorithm with 5 clicks, then manually refined using Adaptive Brush with smaller brush sizes for detail work and eraser tool to remove over-segmented regions. This represents a higher-quality gold standard than pure algorithmic output.",
   "algorithm": "manual_refinement",
   "base_algorithm": "watershed",

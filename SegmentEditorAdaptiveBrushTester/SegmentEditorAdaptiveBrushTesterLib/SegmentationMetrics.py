@@ -85,14 +85,36 @@ class SegmentationMetrics:
         import SimpleITK as sitk
         import slicer
 
-        # Extract arrays
+        # Extract arrays with error handling
         test_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
             test_seg_node, test_segment_id, volume_node
-        ).astype(np.uint8)
+        )
+        if test_arr is None:
+            # Try to find the actual segment ID
+            test_seg_ids = [
+                test_seg_node.GetSegmentation().GetNthSegmentID(i)
+                for i in range(test_seg_node.GetSegmentation().GetNumberOfSegments())
+            ]
+            raise ValueError(
+                f"Could not get labelmap for test segment '{test_segment_id}'. "
+                f"Available segments: {test_seg_ids}"
+            )
+        test_arr = test_arr.astype(np.uint8)
 
         ref_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
             reference_seg_node, reference_segment_id, volume_node
-        ).astype(np.uint8)
+        )
+        if ref_arr is None:
+            # Try to find the actual segment ID
+            ref_seg_ids = [
+                reference_seg_node.GetSegmentation().GetNthSegmentID(i)
+                for i in range(reference_seg_node.GetSegmentation().GetNumberOfSegments())
+            ]
+            raise ValueError(
+                f"Could not get labelmap for reference segment '{reference_segment_id}'. "
+                f"Available segments: {ref_seg_ids}"
+            )
+        ref_arr = ref_arr.astype(np.uint8)
 
         # Ensure binary
         test_arr = (test_arr > 0).astype(np.uint8)

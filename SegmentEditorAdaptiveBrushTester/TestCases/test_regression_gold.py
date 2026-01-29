@@ -33,6 +33,12 @@ class TestRegressionGold(TestCase):
 
     def setup(self, ctx: TestContext) -> None:
         """Initialize test runner."""
+        import slicer
+
+        # Clear scene to ensure clean state
+        slicer.mrmlScene.Clear(0)
+        slicer.app.processEvents()
+
         ctx.log("Discovering recipes with gold standards...")
         runner = RecipeTestRunner()
         recipes = runner.discover_recipes()
