@@ -91,8 +91,9 @@ class VisualizationController:
             True if loaded successfully.
         """
         try:
-            import ctk
+            import pydicom
             import slicer
+            from DICOMLib import DICOMUtils
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
@@ -103,32 +104,38 @@ class VisualizationController:
             if self.gold_seg_node:
                 slicer.mrmlScene.RemoveNode(self.gold_seg_node)
 
-            # Import DICOM files from directory into database
-            indexer = ctk.ctkDICOMIndexer()
+            # Find the DICOM file to get SeriesInstanceUID
             if dicom_seg_path.is_dir():
                 dicom_files = list(dicom_seg_path.glob("*.dcm"))
                 if not dicom_files:
                     logger.error(f"No DICOM files in: {dicom_seg_path}")
                     return False
-                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path))
-                load_path = str(dicom_files[0])
+                dcm_file = dicom_files[0]
+                import_path = str(dicom_seg_path)
             else:
-                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path.parent))
-                load_path = str(dicom_seg_path)
+                dcm_file = dicom_seg_path
+                import_path = str(dicom_seg_path.parent)
 
-            # Load the segmentation
-            loaded_nodes = slicer.util.loadNodeFromFile(load_path, "DICOMSegmentationFile")
+            # Read SeriesInstanceUID from the DICOM file
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+            series_uid = str(ds.SeriesInstanceUID)
 
-            if loaded_nodes:
-                self.gold_seg_node = (
-                    loaded_nodes if hasattr(loaded_nodes, "GetID") else loaded_nodes[0]
-                )
-                self._apply_color(self.gold_seg_node, self.GOLD_COLOR)
-                self._set_display_mode(self.gold_seg_node, self.view_mode)
-                self.gold_seg_node.SetName("Gold Standard")
-                logger.info(f"Loaded gold standard from DICOM cache: {dicom_seg_path}")
-                return True
+            # Import to DICOM database (waits for import to finish)
+            DICOMUtils.importDicom(import_path, slicer.dicomDatabase)
 
+            # Load via DICOMUtils using the series UID
+            loaded_node_ids = DICOMUtils.loadSeriesByUID([series_uid])
+
+            if loaded_node_ids:
+                self.gold_seg_node = slicer.mrmlScene.GetNodeByID(loaded_node_ids[0])
+                if self.gold_seg_node:
+                    self._apply_color(self.gold_seg_node, self.GOLD_COLOR)
+                    self._set_display_mode(self.gold_seg_node, self.view_mode)
+                    self.gold_seg_node.SetName("Gold Standard")
+                    logger.info(f"Loaded gold standard from DICOM cache: {dicom_seg_path}")
+                    return True
+
+            logger.error(f"Failed to load DICOM series: {series_uid}")
             return False
 
         except Exception as e:
@@ -147,8 +154,9 @@ class VisualizationController:
             True if loaded successfully.
         """
         try:
-            import ctk
+            import pydicom
             import slicer
+            from DICOMLib import DICOMUtils
 
             dicom_seg_path = Path(dicom_seg_path)
             if not dicom_seg_path.exists():
@@ -159,32 +167,38 @@ class VisualizationController:
             if self.test_seg_node:
                 slicer.mrmlScene.RemoveNode(self.test_seg_node)
 
-            # Import DICOM files from directory into database
-            indexer = ctk.ctkDICOMIndexer()
+            # Find the DICOM file to get SeriesInstanceUID
             if dicom_seg_path.is_dir():
                 dicom_files = list(dicom_seg_path.glob("*.dcm"))
                 if not dicom_files:
                     logger.error(f"No DICOM files in: {dicom_seg_path}")
                     return False
-                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path))
-                load_path = str(dicom_files[0])
+                dcm_file = dicom_files[0]
+                import_path = str(dicom_seg_path)
             else:
-                indexer.addDirectory(slicer.dicomDatabase, str(dicom_seg_path.parent))
-                load_path = str(dicom_seg_path)
+                dcm_file = dicom_seg_path
+                import_path = str(dicom_seg_path.parent)
 
-            # Load the segmentation
-            loaded_nodes = slicer.util.loadNodeFromFile(load_path, "DICOMSegmentationFile")
+            # Read SeriesInstanceUID from the DICOM file
+            ds = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
+            series_uid = str(ds.SeriesInstanceUID)
 
-            if loaded_nodes:
-                self.test_seg_node = (
-                    loaded_nodes if hasattr(loaded_nodes, "GetID") else loaded_nodes[0]
-                )
-                self._apply_color(self.test_seg_node, self.TEST_COLOR)
-                self._set_display_mode(self.test_seg_node, self.view_mode)
-                self.test_seg_node.SetName("Test Segmentation")
-                logger.info(f"Loaded test segmentation from DICOM: {dicom_seg_path}")
-                return True
+            # Import to DICOM database (waits for import to finish)
+            DICOMUtils.importDicom(import_path, slicer.dicomDatabase)
 
+            # Load via DICOMUtils using the series UID
+            loaded_node_ids = DICOMUtils.loadSeriesByUID([series_uid])
+
+            if loaded_node_ids:
+                self.test_seg_node = slicer.mrmlScene.GetNodeByID(loaded_node_ids[0])
+                if self.test_seg_node:
+                    self._apply_color(self.test_seg_node, self.TEST_COLOR)
+                    self._set_display_mode(self.test_seg_node, self.view_mode)
+                    self.test_seg_node.SetName("Test Segmentation")
+                    logger.info(f"Loaded test segmentation from DICOM: {dicom_seg_path}")
+                    return True
+
+            logger.error(f"Failed to load DICOM series: {series_uid}")
             return False
 
         except Exception as e:

@@ -2183,15 +2183,14 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
 
         # Import DICOM files
         logger.info(f"Importing DICOM from: {dicom_path}")
-        import ctk
+        from DICOMLib import DICOMUtils
 
-        indexer = ctk.ctkDICOMIndexer()
         volume_series_uid = None
 
         # Import volume and get series UID
         volume_path = dicom_path / "volume"
         if volume_path.exists():
-            indexer.addDirectory(slicer.dicomDatabase, str(volume_path))
+            DICOMUtils.importDicom(str(volume_path), slicer.dicomDatabase)
             logger.info("Imported volume DICOM")
 
             # Find the volume series UID
@@ -2201,7 +2200,7 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
                 try:
                     dcm = pydicom.dcmread(str(dcm_file), stop_before_pixels=True)
                     if dcm.Modality != "SEG":
-                        volume_series_uid = dcm.SeriesInstanceUID
+                        volume_series_uid = str(dcm.SeriesInstanceUID)
                         break
                 except Exception:
                     continue
@@ -2212,15 +2211,13 @@ class SegmentEditorAdaptiveBrushReviewerWidget(ScriptedLoadableModuleWidget):
         if seg_path.exists():
             for trial_dir in sorted(seg_path.iterdir()):
                 if trial_dir.is_dir():
-                    indexer.addDirectory(slicer.dicomDatabase, str(trial_dir))
+                    DICOMUtils.importDicom(str(trial_dir), slicer.dicomDatabase)
                     seg_count += 1
             logger.info(f"Imported {seg_count} trial segmentations")
 
         # Load the volume
         volume_loaded = False
         if volume_series_uid:
-            from DICOMLib import DICOMUtils
-
             try:
                 # loadSeriesByUID returns node IDs (strings), not node objects
                 loaded_node_ids = DICOMUtils.loadSeriesByUID([volume_series_uid])
