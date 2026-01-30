@@ -87,6 +87,10 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         self._generated_nurbs: object | None = None
         self._hex_mesh_actor: vtk.vtkActor | None = None
 
+        # Progress tracking
+        self._progress_bar: qt.QProgressBar | None = None
+        self._status_label: qt.QLabel | None = None
+
     def setup(self):
         """Set up the widget UI."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -95,6 +99,7 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         self.logic = SegmentEditorAdaptiveBrushNurbsLogic()
 
         # Create UI sections
+        self._create_progress_section()
         self._create_source_selection_section()
         self._create_structure_detection_section()
         self._create_fitting_parameters_section()
@@ -121,6 +126,94 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
     def _remove_observers(self):
         """Remove scene observers."""
         pass  # TODO: Remove observers
+
+    def _create_progress_section(self):
+        """Create the progress feedback section."""
+        progress_widget = qt.QWidget()
+        layout = qt.QVBoxLayout(progress_widget)
+        layout.setContentsMargins(0, 0, 0, 5)
+
+        # Status label
+        self._status_label = qt.QLabel("Ready")
+        self._status_label.setStyleSheet("color: gray")
+        layout.addWidget(self._status_label)
+
+        # Progress bar
+        self._progress_bar = qt.QProgressBar()
+        self._progress_bar.setMinimum(0)
+        self._progress_bar.setMaximum(100)
+        self._progress_bar.setValue(0)
+        self._progress_bar.setTextVisible(True)
+        self._progress_bar.hide()  # Hidden by default
+        layout.addWidget(self._progress_bar)
+
+        self.layout.addWidget(progress_widget)
+
+    def _show_progress(self, message: str, value: int = 0, max_value: int = 100):
+        """Show progress bar with a status message.
+
+        Args:
+            message: Status message to display.
+            value: Current progress value.
+            max_value: Maximum progress value.
+        """
+        if self._status_label is not None:
+            self._status_label.setText(message)
+            self._status_label.setStyleSheet("color: #2196F3")  # Blue
+
+        if self._progress_bar is not None:
+            self._progress_bar.setMaximum(max_value)
+            self._progress_bar.setValue(value)
+            self._progress_bar.show()
+
+        # Process events to update UI
+        slicer.app.processEvents()
+
+    def _update_progress(self, value: int, message: str | None = None):
+        """Update progress bar value and optionally the message.
+
+        Args:
+            value: Current progress value.
+            message: Optional new status message.
+        """
+        if self._progress_bar is not None:
+            self._progress_bar.setValue(value)
+
+        if message is not None and self._status_label is not None:
+            self._status_label.setText(message)
+
+        # Process events to update UI
+        slicer.app.processEvents()
+
+    def _hide_progress(self, message: str = "Ready"):
+        """Hide progress bar and show completion message.
+
+        Args:
+            message: Final status message.
+        """
+        if self._progress_bar is not None:
+            self._progress_bar.hide()
+            self._progress_bar.setValue(0)
+
+        if self._status_label is not None:
+            self._status_label.setText(message)
+            self._status_label.setStyleSheet("color: green")
+
+        # Process events to update UI
+        slicer.app.processEvents()
+
+    def _show_error(self, message: str):
+        """Show error status.
+
+        Args:
+            message: Error message to display.
+        """
+        if self._progress_bar is not None:
+            self._progress_bar.hide()
+
+        if self._status_label is not None:
+            self._status_label.setText(message)
+            self._status_label.setStyleSheet("color: red")
 
     def _create_source_selection_section(self):
         """Create the source segmentation selection section."""
@@ -400,12 +493,18 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             return
 
         try:
+            self._show_progress("Detecting structure type...", 0, 100)
+
             from SegmentEditorAdaptiveBrushNurbsLib import StructureDetector
+
+            self._update_progress(30, "Analyzing topology...")
 
             detector = StructureDetector()
             structure_type = detector.detect(
                 self._current_segmentation_node, self._current_segment_id
             )
+
+            self._update_progress(100, "Detection complete")
 
             # Update radio buttons
             if structure_type == "simple":
@@ -419,10 +518,13 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             self.detectionResultLabel.setStyleSheet("color: green")
             logger.info(f"Structure detected as: {structure_type}")
 
+            self._hide_progress(f"Detected: {structure_type}")
+
         except Exception as e:
             logger.exception("Structure detection failed")
             self.detectionResultLabel.setText("Detection: Failed")
             self.detectionResultLabel.setStyleSheet("color: red")
+            self._show_error("Structure detection failed")
             slicer.util.errorDisplay(f"Structure detection failed:\n{e}")
 
     def _on_auto_resolution_changed(self, state: int):
@@ -450,9 +552,12 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             return
 
         try:
+            self._show_progress("Generating preview...", 0)
             self._generate_nurbs(preview=True)
+            self._hide_progress("Preview complete")
         except Exception as e:
             logger.exception("Preview generation failed")
+            self._show_error("Preview failed")
             slicer.util.errorDisplay(f"Preview failed:\n{e}")
 
     def _on_generate(self):
@@ -461,10 +566,13 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             return
 
         try:
+            self._show_progress("Generating NURBS...", 0)
             self._generate_nurbs(preview=False)
             self.exportButton.setEnabled(True)
+            self._hide_progress("NURBS generation complete")
         except Exception as e:
             logger.exception("NURBS generation failed")
+            self._show_error("NURBS generation failed")
             slicer.util.errorDisplay(f"NURBS generation failed:\n{e}")
 
     def _on_export(self):
@@ -479,10 +587,13 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             return
 
         try:
+            self._show_progress("Exporting NURBS...", 0)
             self._export_nurbs(Path(output_dir))
+            self._hide_progress("Export complete")
             slicer.util.infoDisplay(f"Export complete!\nFiles saved to: {output_dir}")
         except Exception as e:
             logger.exception("Export failed")
+            self._show_error("Export failed")
             slicer.util.errorDisplay(f"Export failed:\n{e}")
 
     # Helper methods
@@ -584,6 +695,7 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         assert self._current_segment_id is not None
 
         # Detect structure type if auto-detect is enabled
+        self._update_progress(10, "Detecting structure type...")
         if self.autoDetectCheck.isChecked():
             detector = StructureDetector()
             structure_type = detector.detect(
@@ -603,37 +715,46 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         )
 
         # Generate hexahedral control mesh
+        self._update_progress(20, f"Generating {structure_type} hex mesh...")
         hex_generator = HexMeshGenerator()
 
         # Build NURBS volume
         builder = NurbsVolumeBuilder()
 
         if structure_type == "simple":
+            self._update_progress(30, "Creating bounding box mesh...")
             hex_mesh = hex_generator.generate_simple(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
+            self._update_progress(50, "Building NURBS volume...")
             self._generated_nurbs = builder.build(hex_mesh, degree=degree)
             total_control_points = hex_mesh.num_control_points
         elif structure_type == "tubular":
+            self._update_progress(30, "Extracting centerline...")
             hex_mesh = hex_generator.generate_tubular(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
+            self._update_progress(50, "Building NURBS volume...")
             self._generated_nurbs = builder.build(hex_mesh, degree=degree)
             total_control_points = hex_mesh.num_control_points
         else:  # branching
+            self._update_progress(30, "Extracting branch network...")
             hex_meshes = hex_generator.generate_branching(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
+            self._update_progress(50, "Building multi-patch NURBS...")
             self._generated_nurbs = builder.build_multi_patch(hex_meshes, degree=degree)
             total_control_points = sum(hm.num_control_points for hm in hex_meshes)
 
         # Compute quality metrics
+        self._update_progress(70, "Computing quality metrics...")
+
         # For multi-patch volumes, compute metrics for each patch and aggregate
         from SegmentEditorAdaptiveBrushNurbsLib.NurbsVolumeBuilder import (
             MultiPatchNurbsVolume,
@@ -684,8 +805,11 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
             "containment_percent": containment_percent,
         }
 
+        self._update_progress(90, "Updating display...")
         self._update_quality_display(quality_metrics)
         self._update_visualization()
+
+        self._update_progress(100, "Complete")
 
         logger.info(
             f"NURBS generated: {quality_metrics['control_points']} control points, "
@@ -716,28 +840,46 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         # Cast to proper type for mypy
         nurbs_volume: NurbsVolume = self._generated_nurbs  # type: ignore[assignment]
 
+        # Count export formats
+        formats_to_export = sum(
+            [
+                self.exportMfemCheck.isChecked(),
+                self.exportStlCheck.isChecked(),
+                self.exportVtkCheck.isChecked(),
+            ]
+        )
+        progress_per_format = 100 // max(formats_to_export, 1)
+        current_progress = 0
+
         # Export MFEM
         if self.exportMfemCheck.isChecked():
+            self._update_progress(current_progress, "Exporting MFEM mesh...")
             mfem_path = output_dir / f"{base_name}.mesh"
             mfem_exporter = MfemExporter()
             mfem_exporter.export(nurbs_volume, mfem_path)
             logger.info(f"Exported MFEM mesh: {mfem_path}")
+            current_progress += progress_per_format
 
         # Export STL/OBJ
         if self.exportStlCheck.isChecked():
+            self._update_progress(current_progress, "Exporting STL/OBJ...")
             stl_path = output_dir / f"{base_name}.stl"
             obj_path = output_dir / f"{base_name}.obj"
             mesh_exporter = MeshExporter()
             mesh_exporter.export_stl(nurbs_volume, stl_path)
             mesh_exporter.export_obj(nurbs_volume, obj_path)
             logger.info(f"Exported STL/OBJ: {stl_path}, {obj_path}")
+            current_progress += progress_per_format
 
         # Export VTK
         if self.exportVtkCheck.isChecked():
+            self._update_progress(current_progress, "Exporting VTK...")
             vtk_path = output_dir / f"{base_name}.vtk"
             vtk_exporter = MeshExporter()
             vtk_exporter.export_vtk(nurbs_volume, vtk_path)
             logger.info(f"Exported VTK: {vtk_path}")
+
+        self._update_progress(100, "Export complete")
 
 
 class SegmentEditorAdaptiveBrushNurbsLogic(ScriptedLoadableModuleLogic):
