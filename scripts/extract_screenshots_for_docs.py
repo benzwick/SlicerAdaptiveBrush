@@ -78,6 +78,7 @@ def organize_by_tags(screenshots: list[dict]) -> dict[str, list[dict]]:
             categories["ui"].append(screenshot)
         elif first_tag.startswith("workflow") or first_tag in [
             "getting_started",
+            "quickstart",
             "tutorial",
             "tumor",
         ]:

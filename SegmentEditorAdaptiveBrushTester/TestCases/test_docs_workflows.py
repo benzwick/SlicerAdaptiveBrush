@@ -44,7 +44,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 1: Start with empty Slicer",
-            doc_tags=["getting_started", "empty_scene"],
+            doc_tags=["quickstart", "empty_scene"],
         )
 
     def run(self, ctx: TestContext) -> None:
@@ -60,7 +60,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 2: Load sample data (MRHead)",
-            doc_tags=["getting_started", "load_data"],
+            doc_tags=["quickstart", "load_data"],
         )
 
         # Step 3: Switch to Segment Editor
@@ -70,7 +70,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 3: Open Segment Editor module",
-            doc_tags=["getting_started", "segment_editor"],
+            doc_tags=["quickstart", "segment_editor"],
         )
 
         # Step 4: Create segmentation
@@ -89,7 +89,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 4: Create new segmentation and segment",
-            doc_tags=["getting_started", "create_segment"],
+            doc_tags=["quickstart", "create_segment"],
         )
 
         # Step 5: Select Adaptive Brush
@@ -103,7 +103,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 5: Select Adaptive Brush effect",
-            doc_tags=["getting_started", "select_effect"],
+            doc_tags=["quickstart", "select_effect"],
         )
 
         # Step 6: Configure brush
@@ -120,7 +120,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 6: Configure brush radius and algorithm",
-            doc_tags=["getting_started", "configure"],
+            doc_tags=["quickstart", "configure"],
         )
 
         # Step 7: Position cursor (show brush preview)
@@ -141,14 +141,14 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Step 7: Position cursor over target tissue",
-            doc_tags=["getting_started", "position_cursor"],
+            doc_tags=["quickstart", "position_cursor"],
         )
 
         # Note about painting
         ctx.log("Step 8: Click to paint (demonstration note)")
         ctx.screenshot(
             "Step 8: Click to paint - adaptive segmentation follows tissue boundaries",
-            doc_tags=["getting_started", "paint"],
+            doc_tags=["quickstart", "paint"],
         )
 
     def _get_slice_center_xy(self, slice_widget):
@@ -185,7 +185,7 @@ class TestDocsWorkflowGettingStarted(TestCase):
 
         ctx.screenshot(
             "Getting Started workflow complete",
-            doc_tags=["getting_started", "complete"],
+            doc_tags=["quickstart", "complete"],
         )
 
     def teardown(self, ctx: TestContext) -> None:

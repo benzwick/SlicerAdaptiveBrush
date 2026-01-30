@@ -119,7 +119,22 @@ class TestDocsGettingStarted(TestCase):
         logger.info("Running Getting Started tutorial")
 
         # =========================================
-        # Step 1: Load Sample Data
+        # Step 1: Open Sample Data Module
+        # =========================================
+        # Show the Sample Data module where users download sample datasets
+        slicer.util.selectModule("SampleData")
+        slicer.app.processEvents()
+
+        self._record_step(
+            ctx,
+            "Open Sample Data",
+            "Go to **File → Download Sample Data** or select the Sample Data module. "
+            "This provides built-in datasets for practice.",
+            "Sample Data module showing available datasets",
+        )
+
+        # =========================================
+        # Step 2: Load Volume
         # =========================================
         import SampleData
 
@@ -133,9 +148,9 @@ class TestDocsGettingStarted(TestCase):
 
         self._record_step(
             ctx,
-            "Load Volume",
-            "Load your volume data. This tutorial uses the MRBrainTumor1 sample dataset "
-            "which contains a brain MRI with a visible tumor.",
+            "Volume Loaded",
+            "After clicking on a dataset (e.g., MRBrainTumor1), the volume loads "
+            "and displays in the slice views. This brain MRI contains a visible tumor.",
             "MRBrainTumor1 sample data loaded in conventional layout",
         )
 
@@ -219,71 +234,131 @@ class TestDocsGettingStarted(TestCase):
         self._record_step(
             ctx,
             "Configure Settings",
-            "Adjust the brush radius using the slider or Shift + scroll wheel. "
-            "Select an algorithm - Watershed is a good general-purpose choice.",
-            "Brush radius and algorithm configured",
+            "**Brush Radius**: Controls the maximum area affected by each click. "
+            "Use a radius slightly smaller than your target structure. "
+            "Adjust with the slider or **Shift + scroll wheel**.\n\n"
+            "**Threshold Zone**: The inner circle where intensities are sampled to "
+            "determine what to segment. A smaller zone (e.g., 30%) segments only "
+            "tissue similar to the exact click point. A larger zone (e.g., 70%) "
+            "includes more variation. Adjust with **Ctrl + Shift + scroll wheel**.\n\n"
+            "**Algorithm**: Watershed is a good general-purpose choice for most cases.",
+            "Brush settings configured - radius 15mm, Watershed algorithm",
         )
 
         # =========================================
-        # Step 6: Navigate to Region
+        # Step 6: Navigate to Tumor Region
         # =========================================
-        # Navigate to a slice showing the tumor
+        # Navigate to a slice showing the tumor (MRBrainTumor1 has tumor around slice 50)
         red_widget = slicer.app.layoutManager().sliceWidget("Red")
         red_logic = red_widget.sliceLogic()
-        red_logic.SetSliceOffset(0)  # Center of volume
+        # Navigate to tumor region - offset ~25mm shows tumor in MRBrainTumor1
+        red_logic.SetSliceOffset(25)
+        slicer.app.processEvents()
+
+        # Show brush preview over the tumor area
+        view_widget = red_widget
+        size = view_widget.sliceView().renderWindow().GetSize()
+        # Position slightly off-center where tumor typically is
+        tumor_xy = (int(size[0] * 0.45), int(size[1] * 0.5))
+        scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
+        view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         self._record_step(
             ctx,
             "Navigate to Region",
             "Use the slice sliders or scroll wheel to navigate to the region "
-            "you want to segment. Position the cursor over the target structure.",
-            "Navigated to slice showing tumor region",
+            "you want to segment. The brush preview shows where painting will occur.",
+            "Navigated to slice showing tumor with brush preview",
         )
 
         # =========================================
         # Step 7: Paint Segmentation
         # =========================================
-        # Show brush preview at center
-        view_widget = red_widget
-
-        # Get center of slice view
-        size = view_widget.sliceView().renderWindow().GetSize()
-        center_xy = (size[0] // 2, size[1] // 2)
-
-        # Update brush preview
-        scripted_effect._updateBrushPreview(center_xy, view_widget, eraseMode=False)
+        # Convert XY to RAS for paintAt
+        tumor_ras = self._xy_to_ras(tumor_xy, view_widget)
+        scripted_effect.paintAt(tumor_ras[0], tumor_ras[1], tumor_ras[2])
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         self._record_step(
             ctx,
             "Paint",
-            "Click and drag on the slice view to paint. The adaptive brush will "
-            "automatically detect edges and segment the region based on intensity similarity.",
-            "Brush positioned over tumor ready to paint",
+            "Click on the slice view to paint. The adaptive brush automatically "
+            "detects edges and segments the region based on intensity similarity. "
+            "The red overlay shows the segmented area.",
+            "First paint stroke showing adaptive segmentation result",
         )
 
         # =========================================
-        # Step 8: Controls Reference
+        # Step 8: Continue Painting
         # =========================================
+        # Add another stroke to show how to build up segmentation
+        tumor_xy2 = (int(size[0] * 0.42), int(size[1] * 0.48))
+        tumor_ras2 = self._xy_to_ras(tumor_xy2, view_widget)
+        scripted_effect.paintAt(tumor_ras2[0], tumor_ras2[1], tumor_ras2[2])
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
         self._record_step(
             ctx,
-            "Controls",
-            "**Keyboard shortcuts:**\n"
-            "- **Left-click drag**: Paint (add to segment)\n"
-            "- **Ctrl + Left-click drag**: Erase (remove from segment)\n"
-            "- **Shift + Scroll wheel**: Adjust brush radius\n"
-            "- **Ctrl + Shift + Scroll wheel**: Adjust threshold zone",
-            "Adaptive Brush with controls reference",
+            "Refine Segmentation",
+            "**Building up**: Click multiple times to extend the segmentation. "
+            "Each click adds the adaptively-detected region.\n\n"
+            "**Erase mode**: Hold **Ctrl** while clicking to remove areas you "
+            "over-segmented. The brush will adaptively detect what to remove.\n\n"
+            "**Sampling settings** (in Advanced): Control how intensities are sampled:\n"
+            "- *Mean ± Std*: Uses mean intensity with standard deviation range\n"
+            "- *Percentile*: Uses intensity percentiles (more robust to outliers)\n"
+            "- *Gaussian weighting*: Weights center pixels more heavily\n\n"
+            "**Edge sensitivity**: Higher values stop at weaker edges; "
+            "lower values allow more aggressive segmentation.",
+            "Multiple strokes building up the segmentation",
         )
+
+        # =========================================
+        # Step 9: View in 3D
+        # =========================================
+        # Switch to layout with 3D view and show segmentation
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+        slicer.app.processEvents()
+
+        # Show 3D representation of segmentation
+        self.segmentation_node.CreateClosedSurfaceRepresentation()
+        slicer.app.processEvents()
+
+        # Reset 3D view to show the segmentation
+        threeDWidget = slicer.app.layoutManager().threeDWidget(0)
+        threeDWidget.threeDView().resetFocalPoint()
+        threeDWidget.threeDView().resetCamera()
+        slicer.app.processEvents()
+
+        self._record_step(
+            ctx,
+            "View in 3D",
+            "Switch to a layout with 3D view to see your segmentation as a 3D surface. "
+            "The segmented region appears as a colored surface that can be rotated and examined.",
+            "Segmentation shown in 3D view alongside slice views",
+        )
+
+    def _xy_to_ras(self, xy: tuple[int, int], slice_widget) -> tuple[float, float, float]:
+        """Convert XY screen coordinates to RAS world coordinates."""
+        slice_logic = slice_widget.sliceLogic()
+        slice_node = slice_logic.GetSliceNode()
+        xy_to_ras = slice_node.GetXYToRAS()
+
+        ras_point = [0.0, 0.0, 0.0, 1.0]
+        xy_point = [float(xy[0]), float(xy[1]), 0.0, 1.0]
+        xy_to_ras.MultiplyPoint(xy_point, ras_point)
+
+        return (ras_point[0], ras_point[1], ras_point[2])
 
     def verify(self, ctx: TestContext) -> None:
         """Verify tutorial completed and generate documentation."""
         logger.info("Verifying Getting Started tutorial")
 
         # Check we captured all steps
-        ctx.assert_equal(len(self.steps), 8, "Should have captured 8 tutorial steps")
+        ctx.assert_equal(len(self.steps), 9, "Should have captured 9 tutorial steps")
 
         # Generate the documentation
         self._generate_markdown()
