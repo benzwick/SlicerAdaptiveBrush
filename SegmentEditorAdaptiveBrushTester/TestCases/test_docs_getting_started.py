@@ -252,14 +252,13 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 6: Navigate to Tumor Region
         # =========================================
-        # Navigate to tumor center slice (z=25.70 from gold standard)
-        red_widget = slicer.app.layoutManager().sliceWidget("Red")
-        red_logic = red_widget.sliceLogic()
-        red_logic.SetSliceOffset(self.tumor_center_ras[2])  # Navigate to tumor z-coordinate
+        # Center all slice views on tumor centroid and zoom in 2x
+        self._center_and_zoom_all_views(self.tumor_center_ras, zoom_factor=2.0)
         slicer.app.processEvents()
 
-        # Show brush preview at the actual tumor center
-        view_widget = red_widget
+        # Show brush preview at the tumor center in Yellow (sagittal) view
+        yellow_widget = slicer.app.layoutManager().sliceWidget("Yellow")
+        view_widget = yellow_widget
         tumor_xy = self._ras_to_xy(self.tumor_center_ras, view_widget)
         if tumor_xy:
             scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
@@ -366,6 +365,36 @@ class TestDocsGettingStarted(TestCase):
         ras_to_xy.MultiplyPoint(ras_point, xy_point)
 
         return (int(xy_point[0]), int(xy_point[1]))
+
+    def _center_and_zoom_all_views(
+        self, ras: tuple[float, float, float], zoom_factor: float = 2.0
+    ) -> None:
+        """Center all slice views on RAS coordinates and zoom in.
+
+        Args:
+            ras: (R, A, S) coordinates to center on.
+            zoom_factor: Zoom factor (2.0 = 2x zoom in).
+        """
+        layout_manager = slicer.app.layoutManager()
+
+        for view_name in ["Red", "Yellow", "Green"]:
+            slice_widget = layout_manager.sliceWidget(view_name)
+            if slice_widget is None:
+                continue
+
+            slice_logic = slice_widget.sliceLogic()
+            slice_node = slice_logic.GetSliceNode()
+
+            # Center on RAS coordinates
+            slice_node.JumpSliceByCentering(ras[0], ras[1], ras[2])
+
+            # Zoom in by reducing field of view
+            fov = slice_node.GetFieldOfView()
+            slice_node.SetFieldOfView(fov[0] / zoom_factor, fov[1] / zoom_factor, fov[2])
+
+            slice_widget.sliceView().forceRender()
+
+        slicer.app.processEvents()
 
     def verify(self, ctx: TestContext) -> None:
         """Verify tutorial completed and generate documentation."""
