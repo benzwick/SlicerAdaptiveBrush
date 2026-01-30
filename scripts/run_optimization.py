@@ -312,45 +312,112 @@ def run_clicks(effect, click_locations: list[dict], segment_id: str, segmentatio
         return 0
 
 
-def compute_dice(
-    test_seg_node, test_segment_id: str, gold_seg_node, gold_segment_id: str, volume_node
-) -> float:
-    """Compute Dice coefficient between test and gold segmentations.
+def compute_dice_single(test_arr, gold_arr) -> float:
+    """Compute Dice coefficient between two binary arrays.
 
     Args:
-        test_seg_node: Test segmentation node.
-        test_segment_id: Test segment ID.
-        gold_seg_node: Gold standard segmentation node.
-        gold_segment_id: Gold segment ID.
-        volume_node: Volume node providing geometry.
+        test_arr: Test binary array.
+        gold_arr: Gold binary array.
 
     Returns:
         Dice coefficient (0-1).
     """
     import numpy as np
+
+    test_binary = test_arr > 0
+    gold_binary = gold_arr > 0
+
+    intersection = int(np.sum(test_binary & gold_binary))
+    union = int(np.sum(test_binary)) + int(np.sum(gold_binary))
+
+    if union == 0:
+        return 1.0  # Both empty
+
+    return float(2.0 * intersection / union)
+
+
+def compute_dice_all_segments(
+    test_seg_node, test_segment_id: str, gold_seg_node, volume_node
+) -> dict[str, float]:
+    """Compute Dice coefficient for each segment in gold standard.
+
+    Args:
+        test_seg_node: Test segmentation node.
+        test_segment_id: Test segment ID.
+        gold_seg_node: Gold standard segmentation node.
+        volume_node: Volume node providing geometry.
+
+    Returns:
+        Dict mapping segment name to Dice coefficient.
+    """
+    import numpy as np
     import slicer
+
+    results = {}
 
     try:
         test_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
             test_seg_node, test_segment_id, volume_node
         )
-        gold_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
-            gold_seg_node, gold_segment_id, volume_node
-        )
 
-        test_binary = test_arr > 0
-        gold_binary = gold_arr > 0
+        if test_arr is None or not np.any(test_arr > 0):
+            return results
 
-        intersection = int(np.sum(test_binary & gold_binary))
-        union = int(np.sum(test_binary)) + int(np.sum(gold_binary))
+        # Get all segment IDs from gold standard
+        gold_segmentation = gold_seg_node.GetSegmentation()
+        num_segments = gold_segmentation.GetNumberOfSegments()
 
-        if union == 0:
-            return 1.0  # Both empty
+        for i in range(num_segments):
+            seg_id = gold_segmentation.GetNthSegmentID(i)
+            seg_name = gold_segmentation.GetSegment(seg_id).GetName()
 
-        return float(2.0 * intersection / union)
+            gold_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
+                gold_seg_node, seg_id, volume_node
+            )
+
+            if gold_arr is None or not np.any(gold_arr > 0):
+                continue
+
+            dice = compute_dice_single(test_arr, gold_arr)
+            results[seg_name] = dice
+
     except Exception as e:
-        logger.error(f"Error computing Dice: {e}")
+        logger.error(f"Error computing Dice for all segments: {e}")
+
+    return results
+
+
+def compute_dice(
+    test_seg_node, test_segment_id: str, gold_seg_node, gold_segment_id: str, volume_node
+) -> float:
+    """Compute Dice coefficient between test and gold segmentations.
+
+    For multi-segment gold standards, computes Dice against each segment
+    independently and returns the maximum (best matching segment).
+
+    Args:
+        test_seg_node: Test segmentation node.
+        test_segment_id: Test segment ID.
+        gold_seg_node: Gold standard segmentation node.
+        gold_segment_id: Gold segment ID (hint; all segments checked for multi-seg).
+        volume_node: Volume node providing geometry.
+
+    Returns:
+        Dice coefficient (0-1), maximum across all gold segments.
+    """
+    # Get Dice for all segments
+    all_dice = compute_dice_all_segments(test_seg_node, test_segment_id, gold_seg_node, volume_node)
+
+    if not all_dice:
         return 0.0
+
+    best_dice = max(all_dice.values())
+    best_segment = max(all_dice, key=all_dice.get)  # type: ignore[arg-type]
+
+    if best_dice > 0:
+        logger.debug(f"Best matching segment: {best_segment} (Dice={best_dice:.4f})")
+
+    return best_dice
 
 
 def load_gold_standard(gold_name: str, volume_node=None, dicom_source: str | None = None):
@@ -751,13 +818,21 @@ def run_optimization(
                 screenshot_capture.save_manifest()
                 raise optuna.TrialPruned()
 
-        # Final Dice
-        final_dice = compute_dice(
-            segmentation_node, segment_id, gold_seg_node, gold_segment_id, volume_node
+        # Final Dice - compute for all segments
+        segment_dice = compute_dice_all_segments(
+            segmentation_node, segment_id, gold_seg_node, volume_node
         )
+        final_dice = max(segment_dice.values()) if segment_dice else 0.0
+        best_segment = max(segment_dice, key=segment_dice.get) if segment_dice else "none"  # type: ignore[arg-type]
 
         elapsed = time.time() - trial_start
         logger.info(f"  Final Dice: {final_dice:.4f} ({elapsed * 1000:.0f}ms)")
+        logger.info(f"  Best segment: {best_segment}")
+
+        # Log top 3 segments for this trial
+        sorted_segments = sorted(segment_dice.items(), key=lambda x: -x[1])[:3]
+        for seg_name, dice in sorted_segments:
+            logger.debug(f"    {seg_name}: {dice:.4f}")
 
         # Save trial segmentation as DICOM SEG (no fallback)
         algorithm = params.get("algorithm", "unknown")
@@ -798,6 +873,8 @@ def run_optimization(
         trial.set_user_attr("click_locations", trial_clicks)
         trial.set_user_attr("dicom_series_uid", seg_series_uid)
         trial.set_user_attr("dicom_seg_path", str(seg_path.relative_to(optimizer.output_dir)))
+        trial.set_user_attr("segment_dice", segment_dice)
+        trial.set_user_attr("best_segment", best_segment)
 
         return final_dice
 
@@ -825,10 +902,98 @@ def run_optimization(
     # Generate lab notebook
     generate_lab_notebook(optimizer.output_dir, results, config, gold_metadata)
 
+    # Save per-segment analysis JSON for programmatic access
+    save_segment_analysis(optimizer.output_dir, results)
+
     # Copy Slicer log for review
     copy_slicer_log(optimizer.output_dir)
 
     return dict(results.to_dict())  # type: ignore[arg-type]
+
+
+def save_segment_analysis(output_dir: Path, results) -> None:
+    """Save per-segment analysis to JSON for programmatic access.
+
+    Args:
+        output_dir: Output directory.
+        results: OptimizationResults.
+    """
+    # Aggregate per-segment Dice from all trials
+    segment_best: dict[str, dict] = {}  # segment -> {dice, trial, algorithm, params}
+    algorithm_segment_dice: dict[str, dict[str, list[float]]] = {}  # algo -> segment -> dice list
+    all_segment_dice: dict[
+        str, list[tuple[float, int, str]]
+    ] = {}  # segment -> [(dice, trial, algo)]
+
+    for t in results.trials:
+        if t.pruned:
+            continue
+        segment_dice = t.user_attrs.get("segment_dice", {})
+        algorithm = t.params.get("algorithm", "unknown")
+
+        if algorithm not in algorithm_segment_dice:
+            algorithm_segment_dice[algorithm] = {}
+
+        for seg_name, dice in segment_dice.items():
+            # Track all results per segment
+            if seg_name not in all_segment_dice:
+                all_segment_dice[seg_name] = []
+            all_segment_dice[seg_name].append((dice, t.trial_number, algorithm))
+
+            # Track best per segment
+            if seg_name not in segment_best or dice > segment_best[seg_name]["dice"]:
+                segment_best[seg_name] = {
+                    "dice": dice,
+                    "trial": t.trial_number,
+                    "algorithm": algorithm,
+                    "params": t.params,
+                }
+
+            # Track per-algorithm performance
+            if seg_name not in algorithm_segment_dice[algorithm]:
+                algorithm_segment_dice[algorithm][seg_name] = []
+            algorithm_segment_dice[algorithm][seg_name].append(dice)
+
+    # Compute statistics
+    segment_stats: dict[str, dict] = {}
+    for seg_name, results_list in all_segment_dice.items():
+        dice_values = [r[0] for r in results_list]
+        segment_stats[seg_name] = {
+            "best": segment_best.get(seg_name, {}),
+            "mean_dice": sum(dice_values) / len(dice_values) if dice_values else 0,
+            "max_dice": max(dice_values) if dice_values else 0,
+            "min_dice": min(dice_values) if dice_values else 0,
+            "n_trials": len(dice_values),
+        }
+
+    # Algorithm performance per segment
+    algorithm_stats: dict[str, dict[str, dict]] = {}
+    for algo, seg_dict in algorithm_segment_dice.items():
+        algorithm_stats[algo] = {}
+        for seg_name, dice_list in seg_dict.items():
+            algorithm_stats[algo][seg_name] = {
+                "mean_dice": sum(dice_list) / len(dice_list) if dice_list else 0,
+                "max_dice": max(dice_list) if dice_list else 0,
+                "min_dice": min(dice_list) if dice_list else 0,
+                "n_trials": len(dice_list),
+            }
+
+    # Save to JSON
+    analysis = {
+        "segment_best": segment_best,
+        "segment_stats": segment_stats,
+        "algorithm_stats": algorithm_stats,
+        "segments_by_difficulty": sorted(
+            [(name, stats["max_dice"]) for name, stats in segment_stats.items()],
+            key=lambda x: x[1],
+        ),
+    }
+
+    analysis_path = output_dir / "segment_analysis.json"
+    with open(analysis_path, "w") as f:
+        json.dump(analysis, f, indent=2)
+
+    logger.info(f"Segment analysis saved to: {analysis_path}")
 
 
 def generate_lab_notebook(output_dir: Path, results, config, gold_metadata: dict) -> None:
@@ -890,6 +1055,66 @@ def generate_lab_notebook(output_dir: Path, results, config, gold_metadata: dict
         for t in sorted_trials:
             params_str = ", ".join(f"{k}={v}" for k, v in t.params.items())
             f.write(f"| {t.trial_number} | {t.value:.4f} | {params_str} |\n")
+
+        # Per-segment analysis
+        f.write("\n## Per-Segment Analysis\n\n")
+
+        # Aggregate per-segment Dice from all trials
+        segment_best: dict[str, tuple[float, int, str]] = {}  # segment -> (dice, trial, algorithm)
+        algorithm_segment_dice: dict[
+            str, dict[str, list[float]]
+        ] = {}  # algo -> segment -> dice list
+
+        for t in results.trials:
+            if t.pruned:
+                continue
+            segment_dice = t.user_attrs.get("segment_dice", {})
+            algorithm = t.params.get("algorithm", "unknown")
+
+            if algorithm not in algorithm_segment_dice:
+                algorithm_segment_dice[algorithm] = {}
+
+            for seg_name, dice in segment_dice.items():
+                # Track best per segment
+                if seg_name not in segment_best or dice > segment_best[seg_name][0]:
+                    segment_best[seg_name] = (dice, t.trial_number, algorithm)
+
+                # Track per-algorithm performance
+                if seg_name not in algorithm_segment_dice[algorithm]:
+                    algorithm_segment_dice[algorithm][seg_name] = []
+                algorithm_segment_dice[algorithm][seg_name].append(dice)
+
+        if segment_best:
+            f.write("### Best Algorithm Per Segment\n\n")
+            f.write("| Segment | Best Dice | Trial | Algorithm |\n")
+            f.write("|---------|-----------|-------|-----------|\n")
+            for seg_name, (dice, trial, algo) in sorted(
+                segment_best.items(), key=lambda x: -x[1][0]
+            ):
+                f.write(f"| {seg_name} | {dice:.4f} | {trial} | {algo} |\n")
+
+            f.write("\n### Segments by Difficulty (worst to best)\n\n")
+            f.write("| Segment | Best Dice | Best Algorithm |\n")
+            f.write("|---------|-----------|----------------|\n")
+            for seg_name, (dice, _, algo) in sorted(segment_best.items(), key=lambda x: x[1][0])[
+                :20
+            ]:
+                f.write(f"| {seg_name} | {dice:.4f} | {algo} |\n")
+
+        if algorithm_segment_dice:
+            f.write("\n### Algorithm Performance by Segment\n\n")
+            for algo, seg_dict in sorted(algorithm_segment_dice.items()):
+                f.write(f"#### {algo}\n\n")
+                f.write("| Segment | Mean Dice | Max Dice | Trials |\n")
+                f.write("|---------|-----------|----------|--------|\n")
+                segment_stats = []
+                for seg_name, dice_list in seg_dict.items():
+                    mean_dice = sum(dice_list) / len(dice_list)
+                    max_dice = max(dice_list)
+                    segment_stats.append((seg_name, mean_dice, max_dice, len(dice_list)))
+                for seg_name, mean_d, max_d, n in sorted(segment_stats, key=lambda x: -x[1])[:15]:
+                    f.write(f"| {seg_name} | {mean_d:.4f} | {max_d:.4f} | {n} |\n")
+                f.write("\n")
 
         f.write("\n## Trial History\n\n")
         f.write("| Trial | Dice | Pruned | Duration (ms) |\n")

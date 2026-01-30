@@ -190,32 +190,68 @@ def clear_segment(segmentation_node, segment_id: str) -> str:
     return str(new_segment_id)
 
 
+def compute_dice_single(test_arr, gold_arr) -> float:
+    """Compute Dice coefficient between two binary arrays."""
+    test_binary = test_arr > 0
+    gold_binary = gold_arr > 0
+
+    intersection = int(np.sum(test_binary & gold_binary))
+    union = int(np.sum(test_binary)) + int(np.sum(gold_binary))
+
+    if union == 0:
+        return 1.0
+    return float(2.0 * intersection / union)
+
+
 def compute_dice(
     test_seg_node, test_segment_id, gold_seg_node, gold_segment_id, volume_node
 ) -> float:
-    """Compute Dice coefficient."""
+    """Compute Dice coefficient.
+
+    For multi-segment gold standards, computes Dice against each segment
+    independently and returns the maximum (best matching segment).
+    """
     import slicer
 
     try:
         test_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
             test_seg_node, test_segment_id, volume_node
         )
-        gold_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
-            gold_seg_node, gold_segment_id, volume_node
-        )
 
-        if test_arr is None or gold_arr is None:
+        if test_arr is None or not np.any(test_arr > 0):
             return 0.0
 
-        test_binary = test_arr > 0
-        gold_binary = gold_arr > 0
+        # Get all segment IDs from gold standard
+        gold_segmentation = gold_seg_node.GetSegmentation()
+        num_segments = gold_segmentation.GetNumberOfSegments()
 
-        intersection = int(np.sum(test_binary & gold_binary))
-        union = int(np.sum(test_binary)) + int(np.sum(gold_binary))
+        if num_segments == 1:
+            # Single segment - use directly
+            gold_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
+                gold_seg_node, gold_segment_id, volume_node
+            )
+            if gold_arr is None:
+                return 0.0
+            return compute_dice_single(test_arr, gold_arr)
 
-        if union == 0:
-            return 1.0
-        return float(2.0 * intersection / union)
+        # Multi-segment - compute Dice for each and return best match
+        best_dice = 0.0
+
+        for i in range(num_segments):
+            seg_id = gold_segmentation.GetNthSegmentID(i)
+            gold_arr = slicer.util.arrayFromSegmentBinaryLabelmap(
+                gold_seg_node, seg_id, volume_node
+            )
+
+            if gold_arr is None or not np.any(gold_arr > 0):
+                continue
+
+            dice = compute_dice_single(test_arr, gold_arr)
+            if dice > best_dice:
+                best_dice = dice
+
+        return best_dice
+
     except Exception as e:
         logger.error(f"Dice error: {e}")
         return 0.0
