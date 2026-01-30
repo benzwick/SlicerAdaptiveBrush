@@ -9,7 +9,7 @@ set(EXTENSION_CATEGORY "Segmentation")
 set(EXTENSION_CONTRIBUTORS "Ben Zwick")
 set(EXTENSION_DESCRIPTION "Adaptive brush segment editor effect that segments based on image intensity similarity, stopping at edges and boundaries.")
 set(EXTENSION_ICONURL "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/SlicerAdaptiveBrush.png")
-set(EXTENSION_SCREENSHOTURLS "")
+set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/Screenshots/main-ui.png")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------
