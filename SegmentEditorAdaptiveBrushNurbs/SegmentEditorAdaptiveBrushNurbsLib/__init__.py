@@ -4,6 +4,7 @@ Provides volumetric NURBS generation from painted segmentations.
 
 Core Classes:
     StructureDetector: Detect structure type (simple/tubular/branching)
+    SkeletonExtractor: Extract centerlines from tubular segments (VMTK)
     HexMeshGenerator: Generate hexahedral control meshes
     NurbsVolumeBuilder: Build NURBS volumes from control meshes
     ContainmentValidator: Ensure segment is contained within NURBS
@@ -18,12 +19,17 @@ from .ContainmentValidator import ContainmentValidator
 from .HexMeshGenerator import HexMesh, HexMeshGenerator
 from .NurbsVolumeBuilder import NurbsVolumeBuilder
 from .QualityMetrics import QualityMetrics
+from .SkeletonExtractor import BranchPoint, Centerline, SkeletonExtractor
 from .StructureDetector import StructureDetector
 from .Visualization import NurbsVisualization
 
 __all__ = [
     # Structure detection
     "StructureDetector",
+    # Skeleton extraction
+    "SkeletonExtractor",
+    "Centerline",
+    "BranchPoint",
     # Mesh generation
     "HexMesh",
     "HexMeshGenerator",

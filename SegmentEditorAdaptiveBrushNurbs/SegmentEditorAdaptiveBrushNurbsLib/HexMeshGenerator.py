@@ -22,6 +22,8 @@ import numpy as np
 if TYPE_CHECKING:
     from vtkMRMLSegmentationNode import vtkMRMLSegmentationNode
 
+    from .SkeletonExtractor import Centerline
+
 logger = logging.getLogger(__name__)
 
 
@@ -162,6 +164,9 @@ class HexMeshGenerator:
         segmentation_node: vtkMRMLSegmentationNode,
         segment_id: str,
         resolution: int | None = None,
+        axial_resolution: int | None = None,
+        start_point: tuple[float, float, float] | np.ndarray | None = None,
+        end_point: tuple[float, float, float] | np.ndarray | None = None,
     ) -> HexMesh:
         """Generate hex mesh for a tubular structure.
 
@@ -175,6 +180,9 @@ class HexMeshGenerator:
             segmentation_node: MRML segmentation node.
             segment_id: ID of segment to mesh.
             resolution: Points around circumference (default 8).
+            axial_resolution: Points along the centerline axis (default 10).
+            start_point: Optional start point for centerline (RAS coordinates).
+            end_point: Optional end point for centerline (RAS coordinates).
 
         Returns:
             HexMesh adapted to tubular shape.
@@ -185,8 +193,13 @@ class HexMeshGenerator:
         """
         if resolution is None:
             resolution = self.DEFAULT_RESOLUTION_TUBULAR_CIRC
+        if axial_resolution is None:
+            axial_resolution = self.DEFAULT_RESOLUTION_TUBULAR_AXIAL
 
-        logger.info(f"Generating tubular hex mesh: resolution={resolution}")
+        logger.info(
+            f"Generating tubular hex mesh: circ_resolution={resolution}, "
+            f"axial_resolution={axial_resolution}"
+        )
 
         # Check for VMTK availability
         if not self._check_vmtk_available():
@@ -202,24 +215,34 @@ class HexMeshGenerator:
             raise ValueError(f"Segment '{segment_id}' is empty or not found")
 
         # Extract centerline using VMTK
-        centerline_points, radii = self._extract_centerline_vmtk(segmentation_node, segment_id)
-
-        # Generate cylindrical control mesh by sweeping
-        control_points = self._sweep_circular_template(centerline_points, radii, resolution)
-
-        # Project to segment boundary
-        control_points = self._project_tubular_to_surface(
-            control_points, labelmap_array, resolution
+        centerline = self._extract_centerline_vmtk(
+            segmentation_node, segment_id, start_point, end_point
         )
 
-        # Determine axial resolution from centerline
-        axial_resolution = len(centerline_points)
+        # Resample centerline to desired axial resolution
+        centerline = centerline.resample(axial_resolution)
+
+        # Generate cylindrical control mesh by sweeping
+        control_points = self._sweep_circular_template(
+            centerline.points, centerline.radii, centerline.tangents, resolution
+        )
+
+        # Project outer layer to segment boundary
+        control_points = self._project_tubular_to_surface(
+            control_points, labelmap_array, ijk_to_ras, resolution
+        )
+
+        # Create hex mesh
+        # For tubular: u = circumferential, v = radial (2 layers), w = axial
+        n_circ = resolution
+        n_radial = 2  # Inner and outer layers
+        n_axial = axial_resolution
 
         hex_mesh = HexMesh(
             control_points=control_points,
-            num_u=resolution,
-            num_v=resolution,
-            num_w=axial_resolution,
+            num_u=n_circ,
+            num_v=n_radial,
+            num_w=n_axial,
             ijk_to_ras=ijk_to_ras,
         )
 
@@ -528,41 +551,55 @@ class HexMeshGenerator:
         self,
         segmentation_node: vtkMRMLSegmentationNode,
         segment_id: str,
-    ) -> tuple[np.ndarray, np.ndarray]:
+        start_point: tuple[float, float, float] | np.ndarray | None = None,
+        end_point: tuple[float, float, float] | np.ndarray | None = None,
+    ) -> Centerline:
         """Extract centerline using SlicerVMTK.
 
         Args:
             segmentation_node: MRML segmentation node.
             segment_id: ID of segment to analyze.
+            start_point: Optional start point for centerline (RAS coordinates).
+            end_point: Optional end point for centerline (RAS coordinates).
 
         Returns:
-            Tuple of (centerline_points, radii):
-            - centerline_points: Points along centerline (n, 3)
-            - radii: Inscribed sphere radius at each point (n,)
+            Centerline object with points, radii, and tangents.
         """
-        # TODO: Implement VMTK centerline extraction
-        # This requires:
-        # 1. Creating endpoint fiducials
-        # 2. Running ExtractCenterline module
-        # 3. Parsing the resulting curve
+        from .SkeletonExtractor import SkeletonExtractor
 
-        raise NotImplementedError("VMTK centerline extraction not yet implemented")
+        extractor = SkeletonExtractor()
+
+        centerline = extractor.extract_centerline(
+            segmentation_node=segmentation_node,
+            segment_id=segment_id,
+            start_point=start_point,
+            end_point=end_point,
+            auto_detect_endpoints=True,
+        )
+
+        return centerline
 
     def _sweep_circular_template(
         self,
         centerline_points: np.ndarray,
         radii: np.ndarray,
+        tangents: np.ndarray | None,
         resolution: int,
     ) -> np.ndarray:
         """Sweep circular template along centerline.
 
+        Creates a cylindrical hex mesh by sweeping a circular cross-section
+        along the centerline. The cross-section is oriented perpendicular
+        to the centerline tangent at each point.
+
         Args:
-            centerline_points: Points along centerline (n, 3).
-            radii: Radius at each point (n,).
+            centerline_points: Points along centerline in RAS (n, 3).
+            radii: Inscribed sphere radius at each point (n,).
+            tangents: Tangent vectors at each point (n, 3). If None, computed.
             resolution: Points around circumference.
 
         Returns:
-            Control points for cylindrical mesh.
+            Control points array, shape (n_circ, n_radial, n_axial, 3).
         """
         n_axial = len(centerline_points)
         n_circ = resolution
@@ -570,25 +607,19 @@ class HexMeshGenerator:
 
         control_points = np.zeros((n_circ, n_radial, n_axial, 3))
 
-        for k, (center, radius) in enumerate(zip(centerline_points, radii)):
-            # Compute local frame at this point
-            if k == 0:
-                tangent = centerline_points[1] - centerline_points[0]
-            elif k == n_axial - 1:
-                tangent = centerline_points[-1] - centerline_points[-2]
-            else:
-                tangent = centerline_points[k + 1] - centerline_points[k - 1]
+        # Compute tangents if not provided
+        if tangents is None:
+            tangents = self._compute_tangents_from_points(centerline_points)
 
-            tangent = tangent / np.linalg.norm(tangent)
+        # Use parallel transport to maintain consistent orientation
+        # This prevents twisting of the cross-section along the path
+        normals, binormals = self._compute_parallel_transport_frames(centerline_points, tangents)
 
-            # Find perpendicular vectors
-            up = np.array([0, 0, 1])
-            if abs(np.dot(tangent, up)) > 0.9:
-                up = np.array([1, 0, 0])
-
-            normal = np.cross(tangent, up)
-            normal = normal / np.linalg.norm(normal)
-            binormal = np.cross(tangent, normal)
+        for k in range(n_axial):
+            center = centerline_points[k]
+            radius = radii[k]
+            normal = normals[k]
+            binormal = binormals[k]
 
             # Create circular cross-section
             for i, theta in enumerate(np.linspace(0, 2 * np.pi, n_circ, endpoint=False)):
@@ -597,27 +628,212 @@ class HexMeshGenerator:
                 # Outer point (on surface)
                 control_points[i, 1, k, :] = center + radius * direction
 
-                # Inner point (toward center)
+                # Inner point (toward center, at 50% radius)
                 control_points[i, 0, k, :] = center + 0.5 * radius * direction
 
         return control_points
+
+    def _compute_tangents_from_points(self, points: np.ndarray) -> np.ndarray:
+        """Compute tangent vectors from centerline points.
+
+        Args:
+            points: Centerline points (n, 3).
+
+        Returns:
+            Tangent vectors (n, 3), normalized, dtype float64.
+        """
+        n = len(points)
+        tangents = np.zeros((n, 3), dtype=np.float64)
+
+        for i in range(n):
+            if i == 0:
+                tangent = (
+                    (points[1] - points[0]).astype(np.float64)
+                    if n > 1
+                    else np.array([0.0, 0.0, 1.0])
+                )
+            elif i == n - 1:
+                tangent = (points[-1] - points[-2]).astype(np.float64)
+            else:
+                tangent = (points[i + 1] - points[i - 1]).astype(np.float64)
+
+            norm = np.linalg.norm(tangent)
+            if norm > 1e-10:
+                tangent = tangent / norm
+            else:
+                tangent = np.array([0.0, 0.0, 1.0])
+
+            tangents[i] = tangent
+
+        return tangents
+
+    def _compute_parallel_transport_frames(
+        self,
+        points: np.ndarray,
+        tangents: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Compute parallel transport frames along centerline.
+
+        Parallel transport maintains a consistent orientation of the
+        cross-section frame as it moves along the curve, preventing
+        unwanted twisting.
+
+        Args:
+            points: Centerline points (n, 3).
+            tangents: Tangent vectors (n, 3).
+
+        Returns:
+            Tuple of (normals, binormals), each shape (n, 3), dtype float64.
+        """
+        n = len(points)
+        normals = np.zeros((n, 3), dtype=np.float64)
+        binormals = np.zeros((n, 3), dtype=np.float64)
+
+        # Initialize first frame
+        t0 = tangents[0]
+
+        # Find a vector not parallel to t0
+        up = np.array([0.0, 0.0, 1.0])
+        if abs(np.dot(t0, up)) > 0.9:
+            up = np.array([1.0, 0.0, 0.0])
+
+        # Initial normal and binormal
+        n0 = np.cross(t0, up)
+        n0 = n0 / np.linalg.norm(n0)
+        b0 = np.cross(t0, n0)
+
+        normals[0] = n0
+        binormals[0] = b0
+
+        # Parallel transport along curve
+        for i in range(1, n):
+            t_prev = tangents[i - 1]
+            t_curr = tangents[i]
+
+            # Rotation axis (cross product of consecutive tangents)
+            axis = np.cross(t_prev, t_curr)
+            axis_norm = np.linalg.norm(axis)
+
+            if axis_norm < 1e-10:
+                # Tangents are parallel, no rotation needed
+                normals[i] = normals[i - 1]
+                binormals[i] = binormals[i - 1]
+            else:
+                # Compute rotation angle
+                axis = axis / axis_norm
+                cos_angle = np.clip(np.dot(t_prev, t_curr), -1.0, 1.0)
+                angle = np.arccos(cos_angle)
+
+                # Rodrigues' rotation formula
+                normals[i] = self._rotate_vector(normals[i - 1], axis, angle)
+                binormals[i] = self._rotate_vector(binormals[i - 1], axis, angle)
+
+            # Ensure orthonormality
+            normals[i] = normals[i] - np.dot(normals[i], t_curr) * t_curr
+            norm = np.linalg.norm(normals[i])
+            if norm > 1e-10:
+                normals[i] /= norm
+            binormals[i] = np.cross(t_curr, normals[i])
+
+        return normals, binormals
+
+    def _rotate_vector(
+        self,
+        vec: np.ndarray,
+        axis: np.ndarray,
+        angle: float,
+    ) -> np.ndarray:
+        """Rotate vector around axis by angle using Rodrigues' formula.
+
+        Args:
+            vec: Vector to rotate (3,).
+            axis: Rotation axis (3,), must be normalized.
+            angle: Rotation angle in radians.
+
+        Returns:
+            Rotated vector (3,).
+        """
+        cos_a = np.cos(angle)
+        sin_a = np.sin(angle)
+        return vec * cos_a + np.cross(axis, vec) * sin_a + axis * np.dot(axis, vec) * (1 - cos_a)
 
     def _project_tubular_to_surface(
         self,
         control_points: np.ndarray,
         labelmap_array: np.ndarray,
+        ijk_to_ras: np.ndarray,
         resolution: int,
     ) -> np.ndarray:
-        """Project tubular control points to segment surface.
+        """Project outer tubular control points to segment surface.
+
+        Projects the outer layer of control points to the actual segment
+        boundary using a distance transform.
 
         Args:
-            control_points: Initial control points.
-            labelmap_array: Binary segment array.
+            control_points: Control points in RAS (n_circ, n_radial, n_axial, 3).
+            labelmap_array: Binary segment array in IJK.
+            ijk_to_ras: Transform from IJK to RAS (4x4 matrix).
             resolution: Circumferential resolution.
 
         Returns:
-            Modified control points projected to surface.
+            Modified control points with outer layer projected to surface.
         """
-        # TODO: Implement projection for tubular mesh
-        # For now, return unchanged
+        import SimpleITK as sitk
+
+        # Compute RAS to IJK transform
+        ras_to_ijk = np.linalg.inv(ijk_to_ras)
+
+        # Compute distance transform from segment boundary
+        sitk_image = sitk.GetImageFromArray(labelmap_array.astype(np.uint8))
+        distance_filter = sitk.SignedMaurerDistanceMapImageFilter()
+        distance_filter.SetUseImageSpacing(False)
+        distance_image = distance_filter.Execute(sitk_image)
+        distance_array = sitk.GetArrayFromImage(distance_image)
+
+        # Compute gradient of distance field for projection direction
+        gradient_filter = sitk.GradientImageFilter()
+        gradient_filter.SetUseImageSpacing(False)
+        gradient_image = gradient_filter.Execute(distance_image)
+        gradient_array = sitk.GetArrayFromImage(gradient_image)
+
+        n_circ, n_radial, n_axial, _ = control_points.shape
+
+        # Project only the outer layer (radial index 1) to the surface
+        for i in range(n_circ):
+            for k in range(n_axial):
+                # Get outer point in RAS
+                ras_point = control_points[i, 1, k, :]
+
+                # Convert to IJK (homogeneous coordinates)
+                ras_h = np.array([ras_point[0], ras_point[1], ras_point[2], 1.0])
+                ijk_h = ras_to_ijk @ ras_h
+                ijk_point = ijk_h[:3]
+
+                # Project to surface
+                projected_ijk = self._project_point_to_surface(
+                    ijk_point, distance_array, gradient_array, labelmap_array.shape
+                )
+
+                # Convert back to RAS
+                ijk_h = np.array([projected_ijk[0], projected_ijk[1], projected_ijk[2], 1.0])
+                ras_h = ijk_to_ras @ ijk_h
+                projected_ras = ras_h[:3]
+
+                # Update control point
+                control_points[i, 1, k, :] = projected_ras
+
+                # Also adjust inner point to maintain proper radial relationship
+                # Inner point should be at 50% of the distance from centerline to surface
+                center_ras = control_points[i, 0, k, :]
+                outer_ras = projected_ras
+
+                # Recompute inner point at 50% from a virtual center
+                # We approximate the center as the inner point's original direction
+                direction = outer_ras - center_ras
+                direction_norm = np.linalg.norm(direction)
+                if direction_norm > 1e-6:
+                    # Adjust inner point to be 50% of outer radius
+                    # Note: center_ras was set at 50% of estimated radius, so we keep it
+                    pass
+
         return control_points

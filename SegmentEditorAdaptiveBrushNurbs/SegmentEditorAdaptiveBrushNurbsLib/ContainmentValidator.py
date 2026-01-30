@@ -231,7 +231,7 @@ class ContainmentValidator:
         max_bounds += self.tolerance
 
         # Check if point is within bounds
-        is_inside = np.all(point >= min_bounds) and np.all(point <= max_bounds)
+        is_inside = bool(np.all(point >= min_bounds) and np.all(point <= max_bounds))
 
         # Compute distance to bounding box
         if is_inside:
@@ -240,7 +240,7 @@ class ContainmentValidator:
             # Distance to nearest face
             dist_to_min = np.maximum(min_bounds - point, 0)
             dist_to_max = np.maximum(point - max_bounds, 0)
-            distance = np.sqrt(np.sum(dist_to_min**2 + dist_to_max**2))
+            distance = float(np.sqrt(np.sum(dist_to_min**2 + dist_to_max**2)))
 
         return is_inside, distance
 

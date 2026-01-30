@@ -304,3 +304,206 @@ class TestQualityMetrics:
         assert hausdorff < 1.0
         assert mean_dist < 0.5
         assert rms_dist < 0.5
+
+
+class TestCenterline:
+    """Tests for Centerline data class."""
+
+    def test_centerline_creation(self):
+        """Test creating a Centerline with valid data."""
+        from SkeletonExtractor import Centerline
+
+        # Simple straight centerline
+        points = np.array(
+            [
+                [0, 0, 0],
+                [0, 0, 10],
+                [0, 0, 20],
+                [0, 0, 30],
+            ]
+        )
+        radii = np.array([5.0, 5.0, 5.0, 5.0])
+
+        centerline = Centerline(points=points, radii=radii)
+
+        assert centerline.num_points == 4
+        assert np.isclose(centerline.length, 30.0)
+
+    def test_centerline_resample(self):
+        """Test resampling a centerline to different point count."""
+        from SkeletonExtractor import Centerline
+
+        # Simple straight centerline
+        points = np.array(
+            [
+                [0, 0, 0],
+                [0, 0, 10],
+                [0, 0, 20],
+                [0, 0, 30],
+            ]
+        )
+        radii = np.array([5.0, 5.0, 5.0, 5.0])
+
+        centerline = Centerline(points=points, radii=radii)
+
+        # Resample to 7 points
+        resampled = centerline.resample(7)
+
+        assert resampled.num_points == 7
+        assert np.isclose(resampled.length, 30.0)  # Length should be preserved
+        assert resampled.tangents is not None
+        assert resampled.tangents.shape == (7, 3)
+
+    def test_centerline_resample_radii(self):
+        """Test that radii are interpolated correctly during resampling."""
+        from SkeletonExtractor import Centerline
+
+        # Centerline with varying radii
+        points = np.array(
+            [
+                [0, 0, 0],
+                [0, 0, 10],
+            ]
+        )
+        radii = np.array([2.0, 8.0])
+
+        centerline = Centerline(points=points, radii=radii)
+
+        # Resample to 5 points
+        resampled = centerline.resample(5)
+
+        # Radii should interpolate from 2.0 to 8.0
+        assert np.isclose(resampled.radii[0], 2.0)
+        assert np.isclose(resampled.radii[-1], 8.0)
+        assert np.isclose(resampled.radii[2], 5.0)  # Midpoint should be 5.0
+
+
+class TestTubularHexMesh:
+    """Tests for tubular hexahedral mesh generation."""
+
+    def test_sweep_circular_template(self):
+        """Test sweeping a circular template along a straight centerline."""
+        from HexMeshGenerator import HexMeshGenerator
+
+        generator = HexMeshGenerator()
+
+        # Straight centerline along z-axis
+        centerline_points = np.array(
+            [
+                [0, 0, 0],
+                [0, 0, 10],
+                [0, 0, 20],
+                [0, 0, 30],
+            ]
+        )
+        radii = np.array([5.0, 5.0, 5.0, 5.0])
+
+        # Compute tangents
+        tangents = generator._compute_tangents_from_points(centerline_points)
+
+        # Sweep with 8 circumferential points
+        control_points = generator._sweep_circular_template(
+            centerline_points, radii, tangents, resolution=8
+        )
+
+        # Shape should be (n_circ, n_radial, n_axial, 3)
+        assert control_points.shape == (8, 2, 4, 3)
+
+        # Outer points should be at radius distance from centerline
+        for k in range(4):
+            center = centerline_points[k]
+            for i in range(8):
+                outer_pt = control_points[i, 1, k, :]
+                dist = np.linalg.norm(outer_pt[:2] - center[:2])  # XY distance
+                assert np.isclose(dist, 5.0, atol=0.1)
+
+    def test_parallel_transport_frames(self):
+        """Test that parallel transport produces orthonormal frames."""
+        from HexMeshGenerator import HexMeshGenerator
+
+        generator = HexMeshGenerator()
+
+        # Curved centerline
+        t = np.linspace(0, 2 * np.pi, 20)
+        centerline_points = np.column_stack(
+            [
+                10 * np.cos(t),
+                10 * np.sin(t),
+                t * 5,
+            ]
+        )
+
+        tangents = generator._compute_tangents_from_points(centerline_points)
+        normals, binormals = generator._compute_parallel_transport_frames(
+            centerline_points, tangents
+        )
+
+        # Check orthonormality at each point
+        for i in range(len(centerline_points)):
+            t = tangents[i]
+            n = normals[i]
+            b = binormals[i]
+
+            # Unit vectors
+            assert np.isclose(np.linalg.norm(t), 1.0, atol=1e-6)
+            assert np.isclose(np.linalg.norm(n), 1.0, atol=1e-6)
+            assert np.isclose(np.linalg.norm(b), 1.0, atol=1e-6)
+
+            # Orthogonal
+            assert np.isclose(np.dot(t, n), 0, atol=1e-6)
+            assert np.isclose(np.dot(t, b), 0, atol=1e-6)
+            assert np.isclose(np.dot(n, b), 0, atol=1e-6)
+
+    def test_tubular_hex_mesh_shape(self):
+        """Test that tubular hex mesh has correct shape."""
+        from HexMeshGenerator import HexMeshGenerator
+
+        generator = HexMeshGenerator()
+
+        # Straight centerline
+        centerline_points = np.array(
+            [
+                [0, 0, 0],
+                [0, 0, 10],
+                [0, 0, 20],
+            ]
+        )
+        radii = np.array([5.0, 5.0, 5.0])
+        tangents = generator._compute_tangents_from_points(centerline_points)
+
+        # Generate control points
+        control_points = generator._sweep_circular_template(
+            centerline_points, radii, tangents, resolution=8
+        )
+
+        # Verify dimensions
+        n_circ, n_radial, n_axial, _ = control_points.shape
+        assert n_circ == 8
+        assert n_radial == 2  # Inner and outer layers
+        assert n_axial == 3
+
+
+class TestSkeletonExtractor:
+    """Tests for SkeletonExtractor class (without Slicer)."""
+
+    def test_vmtk_not_available(self):
+        """Test that is_vmtk_available returns False outside Slicer."""
+        from SkeletonExtractor import SkeletonExtractor
+
+        extractor = SkeletonExtractor()
+
+        # Outside of Slicer, VMTK should not be available
+        assert not extractor.is_vmtk_available()
+
+    def test_extract_centerline_requires_vmtk(self):
+        """Test that extract_centerline raises error without VMTK."""
+        from SkeletonExtractor import SkeletonExtractor
+
+        extractor = SkeletonExtractor()
+
+        # Should raise RuntimeError since VMTK is not available
+        with pytest.raises(RuntimeError, match="SlicerVMTK"):
+            extractor.extract_centerline(
+                segmentation_node=None,  # Would fail anyway
+                segment_id="test",
+            )
