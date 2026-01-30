@@ -90,6 +90,18 @@ class TestDocsGettingStarted(TestCase):
         except Exception:
             pass
 
+        # Set consistent module panel width for all screenshots
+        try:
+            import qt
+
+            # Find the module panel (PanelDockWidget)
+            panel_dock = main_window.findChild(qt.QDockWidget, "PanelDockWidget")
+            if panel_dock:
+                # Set fixed width for consistent screenshots (450px fits most content)
+                panel_dock.setFixedWidth(450)
+        except Exception:
+            pass
+
         slicer.app.processEvents()
 
     def _record_step(
