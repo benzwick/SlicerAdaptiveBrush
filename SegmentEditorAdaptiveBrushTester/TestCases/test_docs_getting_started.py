@@ -358,7 +358,7 @@ class TestDocsGettingStarted(TestCase):
         logger.info("Verifying Getting Started tutorial")
 
         # Check we captured all steps
-        ctx.assert_equal(len(self.steps), 9, "Should have captured 9 tutorial steps")
+        ctx.assert_equal(len(self.steps), 10, "Should have captured 10 tutorial steps")
 
         # Generate the documentation
         self._generate_markdown()
