@@ -67,3 +67,6 @@ reviews/
 .dicom_cache/
 volume_dicom/
 dicom/
+
+# IDC downloaded data for optimization
+idc_data/
