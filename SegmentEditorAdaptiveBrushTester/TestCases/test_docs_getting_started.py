@@ -237,33 +237,31 @@ class TestDocsGettingStarted(TestCase):
         # Tumor center coordinate for optimal single-click segmentation
         self.tumor_center_ras = (-4.597, 28.535, 29.333)
 
-        # 1. Apply MRI T1+Gd enhancing tumor preset (configures thresholds)
-        scripted_effect.applyPreset("mri_t1gd_tumor")
+        # 1. Select MRI T1+Gd Tumor preset from dropdown (triggers preset application)
+        preset_idx = scripted_effect.presetCombo.findData("mri_t1gd_tumor")
+        if preset_idx >= 0:
+            scripted_effect.presetCombo.setCurrentIndex(preset_idx)
         slicer.app.processEvents()
 
-        # 2. Select Watershed algorithm
-        combo = scripted_effect.algorithmCombo
-        idx = combo.findData("watershed")
-        if idx >= 0:
-            combo.setCurrentIndex(idx)
+        # 2. Select Watershed algorithm from dropdown
+        algo_idx = scripted_effect.algorithmCombo.findData("watershed")
+        if algo_idx >= 0:
+            scripted_effect.algorithmCombo.setCurrentIndex(algo_idx)
         slicer.app.processEvents()
 
-        # 3. Set 25mm brush radius (from gold standard optimization)
-        scripted_effect.radiusSlider.value = 25.0
-        slicer.app.processEvents()
+        # Note: Brush radius stays at default, will be adjusted when painting
 
         self._record_step(
             ctx,
             "Configure Settings",
-            "**Preset**: Apply 'MRI T1+Gd Tumor' preset for contrast-enhanced tumors. "
+            "**Preset**: Select 'MRI T1+Gd Tumor' preset for contrast-enhanced tumors. "
             "Presets configure intensity thresholds automatically.\n\n"
             "**Algorithm**: Select Watershed - a good general-purpose choice for tumors.\n\n"
-            "**Brush Radius**: Set to match your target structure (~25mm for this tumor). "
-            "Adjust with **Shift + scroll wheel**.\n\n"
+            "**Brush Radius**: Adjust with **Shift + scroll wheel** to match your target.\n\n"
             "**Threshold Zone**: Inner circle where intensities are sampled. Smaller zone "
             "(30%) = stricter matching; larger zone (70%) = more variation. "
             "Adjust with **Ctrl + Shift + scroll wheel**.",
-            "Brush settings configured - MRI T1+Gd preset, Watershed, 25mm radius",
+            "Brush settings configured - MRI T1+Gd preset, Watershed algorithm",
         )
 
         # =========================================
@@ -293,28 +291,39 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 8: Paint Segmentation
         # =========================================
-        # Use 10mm radius for initial diagonal strokes
+        # Set 10mm radius for initial diagonal strokes
         scripted_effect.radiusSlider.value = 10.0
         slicer.app.processEvents()
 
-        # Update brush preview to show 10mm brush size
-        tumor_xy = self._ras_to_xy(self.tumor_center_ras, view_widget)
-        if tumor_xy:
-            scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
-        view_widget.sliceView().forceRender()
-        slicer.app.processEvents()
-
-        # Paint diagonally: up-right (+A, +S) from center
+        # Paint in all 4 diagonal directions from tumor center
         r, a, s = self.tumor_center_ras
         offset = 8.0  # 8mm diagonal offset
-        up_right_ras = (r, a + offset, s + offset)
-        scripted_effect.paintAt(*up_right_ras)
+
+        # Paint up-right (+A, +S)
+        scripted_effect.paintAt(r, a + offset, s + offset)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
-        # Paint diagonally: down-left (-A, -S) from center
-        down_left_ras = (r, a - offset, s - offset)
-        scripted_effect.paintAt(*down_left_ras)
+        # Paint down-left (-A, -S)
+        scripted_effect.paintAt(r, a - offset, s - offset)
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
+        # Paint up-left (-A, +S)
+        scripted_effect.paintAt(r, a - offset, s + offset)
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
+        # Paint down-right (+A, -S) - this is the last paint location
+        last_paint_ras = (r, a + offset, s - offset)
+        scripted_effect.paintAt(*last_paint_ras)
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
+        # Show brush preview at the last paint location
+        last_xy = self._ras_to_xy(last_paint_ras, view_widget)
+        if last_xy:
+            scripted_effect._updateBrushPreview(last_xy, view_widget, eraseMode=False)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -330,18 +339,17 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 9: Continue Painting
         # =========================================
-        # Restore 25mm radius for larger coverage
+        # Set 25mm radius for larger coverage
         scripted_effect.radiusSlider.value = 25.0
-        slicer.app.processEvents()
-
-        # Update brush preview to show 25mm brush size
-        if tumor_xy:
-            scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
-        view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         # Paint at tumor center to fill in
         scripted_effect.paintAt(*self.tumor_center_ras)
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
+        # Hide brush preview for clean result screenshot
+        scripted_effect._clearBrushPreview()
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -357,8 +365,8 @@ class TestDocsGettingStarted(TestCase):
             "- *Percentile*: Uses intensity percentiles (more robust to outliers)\n"
             "- *Gaussian weighting*: Weights center pixels more heavily\n\n"
             "**Edge sensitivity**: Higher values stop at weaker edges; "
-            "lower values allow more aggressive segmentation.",
-            "Multiple strokes building up the segmentation",
+            "lower values allow more permissive segmentation.",
+            "Final segmentation result after multiple strokes",
         )
 
         # =========================================
@@ -375,19 +383,24 @@ class TestDocsGettingStarted(TestCase):
             display_node.SetVisibility2D(True)
         slicer.app.processEvents()
 
-        # Reset 3D view and zoom to fit the segmentation
+        # Center 3D camera on tumor and zoom to fill view
         threeDWidget = slicer.app.layoutManager().threeDWidget(0)
         threeDView = threeDWidget.threeDView()
-
-        # Center camera on the segmentation
-        threeDView.resetFocalPoint()
-        slicer.app.processEvents()
-
-        # Zoom to fit visible objects (the segmentation)
         renderer = threeDView.renderWindow().GetRenderers().GetFirstRenderer()
-        renderer.ResetCamera()
-        # Zoom in further to fill view with tumor
-        renderer.GetActiveCamera().Zoom(3.0)
+        camera = renderer.GetActiveCamera()
+
+        # Set camera focal point to tumor center
+        r, a, s = self.tumor_center_ras
+        camera.SetFocalPoint(r, a, s)
+
+        # Position camera to look at tumor from front-right-top
+        # Distance from tumor determines zoom level
+        distance = 60.0  # mm from tumor center
+        camera.SetPosition(r + distance * 0.7, a + distance * 0.5, s + distance * 0.5)
+        camera.SetViewUp(0, 0, 1)  # Z-up
+
+        # Reset clipping range for proper rendering
+        renderer.ResetCameraClippingRange()
         slicer.app.processEvents()
 
         # Force render to ensure 3D surface appears
