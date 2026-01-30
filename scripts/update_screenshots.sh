@@ -42,8 +42,20 @@ mkdir -p Screenshots
 if [ -f "$SOURCE_RUN/screenshots/001.png" ]; then
     cp "$SOURCE_RUN/screenshots/001.png" Screenshots/main-ui.png
     echo "Copied: Screenshots/main-ui.png"
+
+    # Compress to meet git pre-commit hook limit (1000 KB)
+    if ! command -v pngquant &> /dev/null; then
+        echo "Error: pngquant not found"
+        echo "Install with: sudo apt install pngquant"
+        exit 1
+    fi
+    ORIG_SIZE=$(du -k Screenshots/main-ui.png | cut -f1)
+    pngquant --force --quality=65-80 --output Screenshots/main-ui.png Screenshots/main-ui.png
+    NEW_SIZE=$(du -k Screenshots/main-ui.png | cut -f1)
+    echo "Compressed: ${ORIG_SIZE}KB -> ${NEW_SIZE}KB"
 else
-    echo "Warning: No screenshot found at $SOURCE_RUN/screenshots/001.png"
+    echo "Error: No screenshot found at $SOURCE_RUN/screenshots/001.png"
+    exit 1
 fi
 
 # List available screenshots
