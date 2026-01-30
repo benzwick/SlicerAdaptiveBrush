@@ -48,7 +48,7 @@ from .TestCase import TestCase
 from .TestContext import TestContext
 from .TestRegistry import TestRegistry, register_test
 from .TestRunFolder import TestRunFolder
-from .TestRunner import TestRunner
+from .TestRunner import TestRunner, TestSuiteResult
 
 __all__ = [
     # Core testing
@@ -56,6 +56,7 @@ __all__ = [
     "TestContext",
     "TestRegistry",
     "TestRunner",
+    "TestSuiteResult",
     "register_test",
     # Screenshot capture
     "ScreenshotCapture",
