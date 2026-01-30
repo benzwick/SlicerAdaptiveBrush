@@ -2094,7 +2094,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Block signals to prevent multiple cache invalidations
         widgets_to_block = [
-            self.algorithmComboBox,
+            self.algorithmCombo,
             self.sensitivitySlider,
             self.zoneSlider,
             self.samplingMethodCombo,
@@ -2113,9 +2113,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             if "algorithm" in preset:
                 algorithm = preset["algorithm"]
                 self.setAlgorithm(algorithm)
-                idx = self.algorithmComboBox.findData(algorithm)
+                idx = self.algorithmCombo.findData(algorithm)
                 if idx >= 0:
-                    self.algorithmComboBox.setCurrentIndex(idx)
+                    self.algorithmCombo.setCurrentIndex(idx)
 
             # Apply basic parameters
             if "edge_sensitivity" in preset:
