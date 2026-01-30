@@ -1,6 +1,6 @@
 # SlicerAdaptiveBrush
 
-[![CI](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/ci.yml)
+[![Tests](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/tests.yml/badge.svg)](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/tests.yml)
 [![Documentation](https://github.com/benzwick/SlicerAdaptiveBrush/actions/workflows/docs.yml/badge.svg)](https://benzwick.github.io/SlicerAdaptiveBrush/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![3D Slicer](https://img.shields.io/badge/3D_Slicer-5.10%2B-green.svg)](https://www.slicer.org/)
