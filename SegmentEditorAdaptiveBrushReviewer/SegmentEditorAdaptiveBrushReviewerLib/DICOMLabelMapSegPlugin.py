@@ -180,7 +180,7 @@ class DICOMLabelMapSegPlugin:
             logger.info(f"Loading LABELMAP SEG: {seg_file}")
 
             # Read using highdicom
-            seg = hd.seg.Segmentation.from_dcm(pydicom.dcmread(seg_file))
+            seg = hd.seg.Segmentation.from_dcm(pydicom.dcmread(seg_file))  # type: ignore[attr-defined]
 
             # Get pixel array (already in labelmap format)
             # highdicom returns (frames, rows, cols) for LABELMAP
