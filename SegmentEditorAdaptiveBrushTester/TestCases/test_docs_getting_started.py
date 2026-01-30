@@ -349,7 +349,7 @@ class TestDocsGettingStarted(TestCase):
         slicer.app.processEvents()
 
         # Hide brush preview for clean result screenshot
-        scripted_effect._clearBrushPreview()
+        scripted_effect._hideBrushPreview()
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
