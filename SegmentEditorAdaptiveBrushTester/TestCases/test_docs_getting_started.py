@@ -157,7 +157,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 2: Open Segment Editor
+        # Step 3: Open Segment Editor
         # =========================================
         slicer.util.selectModule("SegmentEditor")
         slicer.app.processEvents()
@@ -171,7 +171,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 3: Create Segmentation
+        # Step 4: Create Segmentation
         # =========================================
         self.segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
         self.segmentation_node.CreateDefaultDisplayNodes()
@@ -200,7 +200,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 4: Select Adaptive Brush
+        # Step 5: Select Adaptive Brush
         # =========================================
         self.segment_editor_widget.setActiveEffectByName("Adaptive Brush")
         self.effect = self.segment_editor_widget.activeEffect()
@@ -218,7 +218,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 5: Configure Brush Settings
+        # Step 6: Configure Brush Settings
         # =========================================
         scripted_effect = self.effect.self()
 
@@ -255,7 +255,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 6: Navigate to Tumor Region
+        # Step 7: Navigate to Tumor Region
         # =========================================
         # Center all slice views on tumor centroid and zoom in 2x
         self._center_and_zoom_all_views(self.tumor_center_ras, zoom_factor=2.0)
@@ -279,7 +279,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 7: Paint Segmentation
+        # Step 8: Paint Segmentation
         # =========================================
         # Paint at tumor center (from gold standard)
         scripted_effect.paintAt(*self.tumor_center_ras)
@@ -296,7 +296,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 8: Continue Painting
+        # Step 9: Continue Painting
         # =========================================
         # Add another stroke from the recipe to extend segmentation
         # Using click point 2 from brain_tumor_1 recipe: (-5.31, 25.12, 35.97)
@@ -310,8 +310,8 @@ class TestDocsGettingStarted(TestCase):
             "Refine Segmentation",
             "**Building up**: Click multiple times to extend the segmentation. "
             "Each click adds the adaptively-detected region.\n\n"
-            "**Erase mode**: Hold **Ctrl** while clicking to remove areas you "
-            "over-segmented. The brush will adaptively detect what to remove.\n\n"
+            "**Erase mode**: Hold **Ctrl** (or **Middle+Left-click**) to remove areas "
+            "you over-segmented. The brush will adaptively detect what to remove.\n\n"
             "**Sampling settings** (in Advanced): Control how intensities are sampled:\n"
             "- *Mean ± Std*: Uses mean intensity with standard deviation range\n"
             "- *Percentile*: Uses intensity percentiles (more robust to outliers)\n"
@@ -322,7 +322,7 @@ class TestDocsGettingStarted(TestCase):
         )
 
         # =========================================
-        # Step 9: View in 3D
+        # Step 10: View in 3D
         # =========================================
         # Create 3D surface representation of the segmentation
         self.segmentation_node.CreateClosedSurfaceRepresentation()
