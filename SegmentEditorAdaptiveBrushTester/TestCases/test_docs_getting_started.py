@@ -143,8 +143,8 @@ class TestDocsGettingStarted(TestCase):
         self.volume_node = SampleData.downloadSample("MRBrainTumor1")
         slicer.app.processEvents()
 
-        # Set up view
-        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutConventionalView)
+        # Set up view - use FourUp layout consistently throughout tutorial
+        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
         slicer.util.resetSliceViews()
         slicer.app.processEvents()
 
@@ -153,7 +153,7 @@ class TestDocsGettingStarted(TestCase):
             "Volume Loaded",
             "After clicking on a dataset (e.g., MRBrainTumor1), the volume loads "
             "and displays in the slice views. This brain MRI contains a visible tumor.",
-            "MRBrainTumor1 sample data loaded in conventional layout",
+            "MRBrainTumor1 sample data loaded in four-up layout",
         )
 
         # =========================================
@@ -320,11 +320,7 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 9: View in 3D
         # =========================================
-        # Switch to layout with 3D view and show segmentation
-        slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
-        slicer.app.processEvents()
-
-        # Show 3D representation of segmentation
+        # Create 3D surface representation of the segmentation
         self.segmentation_node.CreateClosedSurfaceRepresentation()
         slicer.app.processEvents()
 
@@ -337,7 +333,7 @@ class TestDocsGettingStarted(TestCase):
         self._record_step(
             ctx,
             "View in 3D",
-            "Switch to a layout with 3D view to see your segmentation as a 3D surface. "
+            "The 3D view (bottom-right) shows your segmentation as a surface. "
             "The segmented region appears as a colored surface that can be rotated and examined.",
             "Segmentation shown in 3D view alongside slice views",
         )
