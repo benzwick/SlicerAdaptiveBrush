@@ -84,12 +84,12 @@ def load_segmentation(seg_dir: Path, reference_volume: sitk.Image) -> tuple[np.n
     orientation = [float(x) for x in plane_orient.ImageOrientationPatient]
 
     # Extract all frame positions to determine z-range and ordering
-    frame_positions = []
+    frame_positions_list: list[list[float]] = []
     for frame_fg in seg_dcm.PerFrameFunctionalGroupsSequence:
         pos = frame_fg.PlanePositionSequence[0].ImagePositionPatient
-        frame_positions.append([float(pos[0]), float(pos[1]), float(pos[2])])
+        frame_positions_list.append([float(pos[0]), float(pos[1]), float(pos[2])])
 
-    frame_positions = np.array(frame_positions)
+    frame_positions = np.array(frame_positions_list)
 
     # Compute slice direction from orientation vectors
     row_dir = np.array(orientation[:3])
@@ -122,7 +122,7 @@ def load_segmentation(seg_dir: Path, reference_volume: sitk.Image) -> tuple[np.n
     seg_image = sitk.GetImageFromArray(seg_3d)
 
     # Set geometry
-    seg_origin = sorted_positions[0].tolist()
+    seg_origin: list[float] = list(sorted_positions[0])
     seg_spacing = [seg_spacing_xy[1], seg_spacing_xy[0], slice_spacing]  # col, row, slice
 
     # Direction: row_dir is along columns (x), col_dir is along rows (y), slice_dir is z
