@@ -222,8 +222,8 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         scripted_effect = self.effect.self()
 
-        # Tumor center from gold standard: (-4.69, 29.50, 25.70)
-        self.tumor_center_ras = (-4.69, 29.50, 25.70)
+        # Tumor center coordinate for optimal single-click segmentation
+        self.tumor_center_ras = (-4.597, 28.535, 29.333)
 
         # 1. Apply MRI T1+Gd enhancing tumor preset (configures thresholds)
         scripted_effect.applyPreset("mri_t1gd_tumor")
@@ -281,8 +281,21 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 8: Paint Segmentation
         # =========================================
-        # Paint at tumor center (from gold standard)
-        scripted_effect.paintAt(*self.tumor_center_ras)
+        # First use 10mm radius for initial diagonal strokes
+        scripted_effect.radiusSlider.value = 10.0
+        slicer.app.processEvents()
+
+        # Paint diagonally: up-right (+A, +S) from center
+        r, a, s = self.tumor_center_ras
+        offset = 8.0  # 8mm diagonal offset
+        up_right_ras = (r, a + offset, s + offset)
+        scripted_effect.paintAt(*up_right_ras)
+        view_widget.sliceView().forceRender()
+        slicer.app.processEvents()
+
+        # Paint diagonally: down-left (-A, -S) from center
+        down_left_ras = (r, a - offset, s - offset)
+        scripted_effect.paintAt(*down_left_ras)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -292,16 +305,18 @@ class TestDocsGettingStarted(TestCase):
             "Click on the slice view to paint. The adaptive brush automatically "
             "detects edges and segments the region based on intensity similarity. "
             "The red overlay shows the segmented area.",
-            "First paint stroke showing adaptive segmentation result",
+            "First paint strokes showing adaptive segmentation result",
         )
 
         # =========================================
         # Step 9: Continue Painting
         # =========================================
-        # Add another stroke from the recipe to extend segmentation
-        # Using click point 2 from brain_tumor_1 recipe: (-5.31, 25.12, 35.97)
-        second_click_ras = (-5.31, 25.12, 35.97)
-        scripted_effect.paintAt(*second_click_ras)
+        # Restore 25mm radius for larger coverage
+        scripted_effect.radiusSlider.value = 25.0
+        slicer.app.processEvents()
+
+        # Paint at tumor center to fill in
+        scripted_effect.paintAt(*self.tumor_center_ras)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -335,14 +350,19 @@ class TestDocsGettingStarted(TestCase):
             display_node.SetVisibility2D(True)
         slicer.app.processEvents()
 
-        # Reset 3D view and zoom to show the segmentation
+        # Reset 3D view and zoom to fit the segmentation
         threeDWidget = slicer.app.layoutManager().threeDWidget(0)
         threeDView = threeDWidget.threeDView()
+
+        # Center camera on the segmentation
         threeDView.resetFocalPoint()
-        threeDView.resetCamera()
-        # Zoom in to see the segmentation better
-        threeDView.zoomFactor = 2.0
-        threeDView.zoomIn()
+        slicer.app.processEvents()
+
+        # Zoom to fit visible objects (the segmentation)
+        renderer = threeDView.renderWindow().GetRenderers().GetFirstRenderer()
+        renderer.ResetCamera()
+        # Zoom in further to fill view with tumor
+        renderer.GetActiveCamera().Zoom(3.0)
         slicer.app.processEvents()
 
         # Force render to ensure 3D surface appears
