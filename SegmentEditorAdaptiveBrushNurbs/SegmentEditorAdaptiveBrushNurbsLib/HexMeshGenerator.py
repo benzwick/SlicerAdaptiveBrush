@@ -255,8 +255,9 @@ class HexMeshGenerator:
         segmentation_node: vtkMRMLSegmentationNode,
         segment_id: str,
         resolution: int | None = None,
-    ) -> HexMesh:
-        """Generate hex mesh for a branching structure.
+        axial_resolution: int | None = None,
+    ) -> list[HexMesh]:
+        """Generate hex meshes for a branching structure.
 
         Uses multi-patch approach with bifurcation templates:
         1. Extract centerline network using VMTK
@@ -269,9 +270,10 @@ class HexMeshGenerator:
             segmentation_node: MRML segmentation node.
             segment_id: ID of segment to mesh.
             resolution: Points around circumference (default 8).
+            axial_resolution: Points along each branch axis (default 10).
 
         Returns:
-            Multi-patch HexMesh for branching structure.
+            List of HexMesh objects (one per branch + junction patches).
 
         Raises:
             ValueError: If segment is empty or not found.
@@ -279,8 +281,13 @@ class HexMeshGenerator:
         """
         if resolution is None:
             resolution = self.DEFAULT_RESOLUTION_TUBULAR_CIRC
+        if axial_resolution is None:
+            axial_resolution = self.DEFAULT_RESOLUTION_TUBULAR_AXIAL
 
-        logger.info(f"Generating branching hex mesh: resolution={resolution}")
+        logger.info(
+            f"Generating branching hex mesh: circ_resolution={resolution}, "
+            f"axial_resolution={axial_resolution}"
+        )
 
         # Check for VMTK availability
         if not self._check_vmtk_available():
@@ -289,10 +296,123 @@ class HexMeshGenerator:
                 "Please install it from the Extension Manager."
             )
 
-        # For now, fall back to simple generation
-        # Full implementation requires VMTK branch detection
-        logger.warning("Branching structure meshing not yet implemented, using simple approach")
-        return self.generate_simple(segmentation_node, segment_id, resolution)
+        # Get segment data
+        labelmap_array, ijk_to_ras = self._get_segment_with_transform(segmentation_node, segment_id)
+
+        if labelmap_array is None or np.sum(labelmap_array) == 0:
+            raise ValueError(f"Segment '{segment_id}' is empty or not found")
+
+        # Extract centerlines and branch points
+        from .SkeletonExtractor import SkeletonExtractor
+
+        extractor = SkeletonExtractor()
+        centerlines, branch_points = extractor.detect_branches(segmentation_node, segment_id)
+
+        if len(centerlines) == 0:
+            raise ValueError("No centerlines could be extracted from segment")
+
+        # Generate hex meshes for each branch
+        hex_meshes = []
+
+        for i, centerline in enumerate(centerlines):
+            # Resample centerline to desired axial resolution
+            centerline = centerline.resample(axial_resolution)
+
+            # Generate cylindrical control mesh by sweeping
+            control_points = self._sweep_circular_template(
+                centerline.points, centerline.radii, centerline.tangents, resolution
+            )
+
+            # Project outer layer to segment boundary
+            control_points = self._project_tubular_to_surface(
+                control_points, labelmap_array, ijk_to_ras, resolution
+            )
+
+            # Create hex mesh for this branch
+            n_circ = resolution
+            n_radial = 2
+            n_axial = axial_resolution
+
+            hex_mesh = HexMesh(
+                control_points=control_points,
+                num_u=n_circ,
+                num_v=n_radial,
+                num_w=n_axial,
+                ijk_to_ras=ijk_to_ras,
+            )
+
+            hex_meshes.append(hex_mesh)
+            logger.debug(f"Generated branch {i}: {hex_mesh.num_control_points} control points")
+
+        # Generate junction patches at branch points
+        if len(branch_points) > 0:
+            from .BranchTemplates import BranchTemplates
+
+            templates = BranchTemplates(resolution=resolution)
+
+            for bp in branch_points:
+                if bp.child_directions is None or len(bp.child_directions) < 2:
+                    continue
+
+                # Create bifurcation template
+                if len(bp.child_directions) == 2:
+                    # Bifurcation
+                    # Determine parent direction (opposite to average child direction)
+                    avg_child = np.mean(bp.child_directions, axis=0)
+                    parent_dir = -avg_child / np.linalg.norm(avg_child)
+
+                    bif_template = templates.create_bifurcation(
+                        center=bp.position,
+                        parent_dir=parent_dir,
+                        child1_dir=bp.child_directions[0],
+                        child2_dir=bp.child_directions[1],
+                        parent_radius=bp.radius,
+                        child1_radius=bp.radius * 0.7,
+                        child2_radius=bp.radius * 0.7,
+                        resolution=resolution,
+                    )
+
+                    # Add junction patches to mesh list
+                    for patch in bif_template.patches:
+                        junction_mesh = HexMesh(
+                            control_points=patch.control_points,
+                            num_u=resolution,
+                            num_v=resolution,
+                            num_w=resolution,
+                            ijk_to_ras=ijk_to_ras,
+                        )
+                        hex_meshes.append(junction_mesh)
+
+                elif len(bp.child_directions) == 3:
+                    # Trifurcation
+                    avg_child = np.mean(bp.child_directions, axis=0)
+                    parent_dir = -avg_child / np.linalg.norm(avg_child)
+
+                    trif_template = templates.create_trifurcation(
+                        center=bp.position,
+                        parent_dir=parent_dir,
+                        child_dirs=bp.child_directions,
+                        parent_radius=bp.radius,
+                        child_radii=[bp.radius * 0.6] * 3,
+                        resolution=resolution,
+                    )
+
+                    for patch in trif_template.patches:
+                        junction_mesh = HexMesh(
+                            control_points=patch.control_points,
+                            num_u=resolution,
+                            num_v=resolution,
+                            num_w=resolution,
+                            ijk_to_ras=ijk_to_ras,
+                        )
+                        hex_meshes.append(junction_mesh)
+
+        logger.info(
+            f"Generated branching structure: {len(hex_meshes)} patches, "
+            f"{len(branch_points)} bifurcations"
+        )
+
+        return hex_meshes
 
     # Helper methods
 

@@ -282,7 +282,7 @@ class MfemExporter:
 
     def _write_multi_patch_weights(self, f, multi_patch: MultiPatchNurbsVolume) -> None:
         """Write weights for all patches."""
-        total_weights = multi_patch.total_control_points
+        total_weights = multi_patch.num_control_points
 
         f.write(f"\nweights\n{total_weights}\n")
 

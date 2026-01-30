@@ -61,6 +61,39 @@ class NurbsVolume:
         return self.degrees[0]
 
 
+@dataclass
+class MultiPatchNurbsVolume:
+    """Multi-patch volumetric NURBS representation for branching structures.
+
+    Contains multiple NurbsVolume patches connected at branch junctions.
+    Used for complex structures like arterial trees.
+
+    Attributes:
+        patches: List of NurbsVolume objects (one per branch/junction).
+        patch_names: Optional names for each patch (e.g., "parent", "child1").
+    """
+
+    patches: list[NurbsVolume]
+    patch_names: list[str] | None = None
+
+    @property
+    def num_patches(self) -> int:
+        """Number of NURBS patches."""
+        return len(self.patches)
+
+    @property
+    def num_control_points(self) -> int:
+        """Total number of control points across all patches."""
+        return sum(p.num_control_points for p in self.patches)
+
+    @property
+    def degree(self) -> int:
+        """Get the (assumed uniform) degree from first patch."""
+        if self.patches:
+            return self.patches[0].degree
+        return 3  # Default
+
+
 class NurbsVolumeBuilder:
     """Build volumetric NURBS from hexahedral control meshes.
 
@@ -158,6 +191,54 @@ class NurbsVolumeBuilder:
         logger.info(f"Built NURBS volume with {nurbs_volume.num_control_points} control points")
 
         return nurbs_volume
+
+    def build_multi_patch(
+        self,
+        hex_meshes: list[HexMesh],
+        degree: int = 3,
+        patch_names: list[str] | None = None,
+    ) -> MultiPatchNurbsVolume:
+        """Build a multi-patch NURBS volume from multiple hex meshes.
+
+        Used for branching structures where each branch and junction
+        is represented as a separate NURBS patch.
+
+        Args:
+            hex_meshes: List of hexahedral control meshes.
+            degree: NURBS polynomial degree (default 3 = cubic).
+            patch_names: Optional names for each patch.
+
+        Returns:
+            MultiPatchNurbsVolume with connected patches.
+
+        Raises:
+            ValueError: If hex_meshes is empty.
+        """
+        if not hex_meshes:
+            raise ValueError("At least one hex mesh is required")
+
+        logger.info(
+            f"Building multi-patch NURBS volume: {len(hex_meshes)} patches, degree={degree}"
+        )
+
+        patches = []
+        for i, hex_mesh in enumerate(hex_meshes):
+            patch_name = patch_names[i] if patch_names and i < len(patch_names) else f"patch_{i}"
+            logger.debug(f"Building patch {patch_name}")
+            patch = self.build(hex_mesh, degree=degree)
+            patches.append(patch)
+
+        multi_patch = MultiPatchNurbsVolume(
+            patches=patches,
+            patch_names=patch_names,
+        )
+
+        logger.info(
+            f"Built multi-patch NURBS volume: {multi_patch.num_patches} patches, "
+            f"{multi_patch.num_control_points} total control points"
+        )
+
+        return multi_patch
 
     def _compute_clamped_knot_vector(self, n: int, degree: int) -> np.ndarray:
         """Compute a clamped uniform knot vector.
@@ -435,67 +516,3 @@ class NurbsVolumeBuilder:
         # TODO: Implement full containment check
         # For now, return 100% (assumes correct generation)
         return 100.0
-
-
-class MultiPatchNurbsVolume:
-    """Multi-patch volumetric NURBS for branching structures.
-
-    Manages multiple NurbsVolume patches with connectivity information
-    for G1 continuity at patch boundaries.
-
-    Attributes:
-        patches: List of NurbsVolume patches.
-        connectivity: Patch boundary connectivity information.
-    """
-
-    def __init__(self):
-        """Initialize multi-patch NURBS volume."""
-        self.patches: list[NurbsVolume] = []
-        self.connectivity: list[dict] = []
-
-    def add_patch(self, patch: NurbsVolume) -> int:
-        """Add a patch to the multi-patch volume.
-
-        Args:
-            patch: NurbsVolume patch to add.
-
-        Returns:
-            Index of the added patch.
-        """
-        idx = len(self.patches)
-        self.patches.append(patch)
-        return idx
-
-    def connect_patches(
-        self,
-        patch1_idx: int,
-        patch1_face: str,
-        patch2_idx: int,
-        patch2_face: str,
-    ) -> None:
-        """Connect two patches at shared boundary.
-
-        Args:
-            patch1_idx: Index of first patch.
-            patch1_face: Face of first patch ("u0", "u1", "v0", "v1", "w0", "w1").
-            patch2_idx: Index of second patch.
-            patch2_face: Face of second patch.
-        """
-        self.connectivity.append(
-            {
-                "patch1": patch1_idx,
-                "face1": patch1_face,
-                "patch2": patch2_idx,
-                "face2": patch2_face,
-            }
-        )
-
-    @property
-    def num_patches(self) -> int:
-        """Total number of patches."""
-        return len(self.patches)
-
-    @property
-    def total_control_points(self) -> int:
-        """Total number of control points across all patches."""
-        return sum(p.num_control_points for p in self.patches)

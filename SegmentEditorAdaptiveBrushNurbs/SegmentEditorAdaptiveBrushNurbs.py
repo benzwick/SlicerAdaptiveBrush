@@ -605,42 +605,83 @@ class SegmentEditorAdaptiveBrushNurbsWidget(ScriptedLoadableModuleWidget):
         # Generate hexahedral control mesh
         hex_generator = HexMeshGenerator()
 
+        # Build NURBS volume
+        builder = NurbsVolumeBuilder()
+
         if structure_type == "simple":
             hex_mesh = hex_generator.generate_simple(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
+            self._generated_nurbs = builder.build(hex_mesh, degree=degree)
+            total_control_points = hex_mesh.num_control_points
         elif structure_type == "tubular":
             hex_mesh = hex_generator.generate_tubular(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
+            self._generated_nurbs = builder.build(hex_mesh, degree=degree)
+            total_control_points = hex_mesh.num_control_points
         else:  # branching
-            hex_mesh = hex_generator.generate_branching(
+            hex_meshes = hex_generator.generate_branching(
                 self._current_segmentation_node,
                 self._current_segment_id,
                 resolution=resolution,
             )
-
-        # Build NURBS volume
-        builder = NurbsVolumeBuilder()
-        self._generated_nurbs = builder.build(hex_mesh, degree=degree)
+            self._generated_nurbs = builder.build_multi_patch(hex_meshes, degree=degree)
+            total_control_points = sum(hm.num_control_points for hm in hex_meshes)
 
         # Compute quality metrics
+        # For multi-patch volumes, compute metrics for each patch and aggregate
+        from SegmentEditorAdaptiveBrushNurbsLib.NurbsVolumeBuilder import (
+            MultiPatchNurbsVolume,
+            NurbsVolume,
+        )
+
+        if isinstance(self._generated_nurbs, MultiPatchNurbsVolume):
+            # Aggregate metrics across all patches
+            max_deviations = []
+            containments = []
+            for patch in self._generated_nurbs.patches:
+                max_deviations.append(
+                    builder.compute_max_deviation(
+                        patch,
+                        self._current_segmentation_node,
+                        self._current_segment_id,
+                    )
+                )
+                containments.append(
+                    builder.compute_containment(
+                        patch,
+                        self._current_segmentation_node,
+                        self._current_segment_id,
+                    )
+                )
+            max_deviation = max(max_deviations) if max_deviations else 0.0
+            containment_percent = min(containments) if containments else 100.0
+        elif isinstance(self._generated_nurbs, NurbsVolume):
+            # Single patch volume
+            max_deviation = builder.compute_max_deviation(
+                self._generated_nurbs,
+                self._current_segmentation_node,
+                self._current_segment_id,
+            )
+            containment_percent = builder.compute_containment(
+                self._generated_nurbs,
+                self._current_segmentation_node,
+                self._current_segment_id,
+            )
+        else:
+            # Unknown type, use defaults
+            max_deviation = 0.0
+            containment_percent = 100.0
+
         quality_metrics = {
-            "control_points": hex_mesh.num_control_points,
-            "max_deviation": builder.compute_max_deviation(
-                self._generated_nurbs,
-                self._current_segmentation_node,
-                self._current_segment_id,
-            ),
-            "containment_percent": builder.compute_containment(
-                self._generated_nurbs,
-                self._current_segmentation_node,
-                self._current_segment_id,
-            ),
+            "control_points": total_control_points,
+            "max_deviation": max_deviation,
+            "containment_percent": containment_percent,
         }
 
         self._update_quality_display(quality_metrics)
@@ -746,25 +787,25 @@ class SegmentEditorAdaptiveBrushNurbsLogic(ScriptedLoadableModuleLogic):
             detector = StructureDetector()
             structure_type = detector.detect(segmentation_node, segment_id)
 
-        # Generate hexahedral control mesh
+        # Generate hexahedral control mesh and build NURBS volume
         hex_generator = HexMeshGenerator()
+        builder = NurbsVolumeBuilder()
 
         if structure_type == "simple":
             hex_mesh = hex_generator.generate_simple(
                 segmentation_node, segment_id, resolution=resolution
             )
+            return builder.build(hex_mesh, degree=degree)
         elif structure_type == "tubular":
             hex_mesh = hex_generator.generate_tubular(
                 segmentation_node, segment_id, resolution=resolution
             )
+            return builder.build(hex_mesh, degree=degree)
         else:  # branching
-            hex_mesh = hex_generator.generate_branching(
+            hex_meshes = hex_generator.generate_branching(
                 segmentation_node, segment_id, resolution=resolution
             )
-
-        # Build NURBS volume
-        builder = NurbsVolumeBuilder()
-        return builder.build(hex_mesh, degree=degree)
+            return builder.build_multi_patch(hex_meshes, degree=degree)
 
 
 class SegmentEditorAdaptiveBrushNurbsTest:

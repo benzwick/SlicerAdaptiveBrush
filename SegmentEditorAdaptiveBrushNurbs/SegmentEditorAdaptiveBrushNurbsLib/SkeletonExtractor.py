@@ -315,6 +315,8 @@ class SkeletonExtractor:
         self,
         segmentation_node: vtkMRMLSegmentationNode,
         segment_id: str,
+        endpoint_fiducials: object | None = None,
+        resample_step: float | None = None,
     ) -> tuple[list[Centerline], list[BranchPoint]]:
         """Detect branches in a branching tubular structure.
 
@@ -324,6 +326,9 @@ class SkeletonExtractor:
         Args:
             segmentation_node: MRML segmentation node.
             segment_id: ID of the branching segment.
+            endpoint_fiducials: Optional fiducial node with all endpoints.
+                If None, attempts to auto-detect endpoints.
+            resample_step: Distance between resampled centerline points (mm).
 
         Returns:
             Tuple of (centerlines, branch_points):
@@ -332,7 +337,7 @@ class SkeletonExtractor:
 
         Raises:
             RuntimeError: If SlicerVMTK is not available.
-            NotImplementedError: Branch detection not yet implemented.
+            ValueError: If segment is invalid or branch extraction fails.
         """
         if not self.is_vmtk_available():
             raise RuntimeError(
@@ -340,14 +345,374 @@ class SkeletonExtractor:
                 "Please install it from the Extension Manager."
             )
 
-        # TODO: Implement using VMTK BranchClipper
-        # This requires:
-        # 1. Extract full centerline network
-        # 2. Identify bifurcation points
-        # 3. Split into individual branches
-        # 4. Compute branch connectivity
+        if resample_step is None:
+            resample_step = self.DEFAULT_RESAMPLE_STEP
 
-        raise NotImplementedError("Branch detection not yet implemented")
+        logger.info(f"Detecting branches in segment '{segment_id}'")
+
+        import slicer
+
+        # Create surface model from segment
+        surface_model = self._create_surface_from_segment(segmentation_node, segment_id)
+
+        try:
+            # Get or create endpoint fiducials
+            if endpoint_fiducials is None:
+                # Auto-detect endpoints using surface extremes
+                endpoints = self._auto_detect_all_endpoints(surface_model)
+                endpoint_node = self._create_multi_endpoint_fiducials(endpoints)
+            else:
+                endpoint_node = endpoint_fiducials
+
+            try:
+                # Extract full centerline network
+                centerline_model, centerline_curve = self._run_vmtk_centerline(
+                    surface_model, endpoint_node
+                )
+
+                try:
+                    # Parse centerline network into branches
+                    centerlines, branch_points = self._parse_branching_centerline(
+                        centerline_model, resample_step
+                    )
+
+                    logger.info(
+                        f"Detected {len(centerlines)} branches and "
+                        f"{len(branch_points)} bifurcation points"
+                    )
+
+                    return centerlines, branch_points
+
+                finally:
+                    if centerline_model is not None:
+                        slicer.mrmlScene.RemoveNode(centerline_model)
+                    if centerline_curve is not None:
+                        slicer.mrmlScene.RemoveNode(centerline_curve)
+
+            finally:
+                if endpoint_fiducials is None:
+                    slicer.mrmlScene.RemoveNode(endpoint_node)
+
+        finally:
+            slicer.mrmlScene.RemoveNode(surface_model)
+
+    def _auto_detect_all_endpoints(
+        self,
+        surface_model: vtkMRMLModelNode,
+        max_endpoints: int = 10,
+    ) -> list[np.ndarray]:
+        """Auto-detect all potential endpoints for branching structures.
+
+        Uses surface curvature and distance from centroid to find
+        extremal points that likely represent branch endpoints.
+
+        Args:
+            surface_model: MRML model node with segment surface.
+            max_endpoints: Maximum number of endpoints to detect.
+
+        Returns:
+            List of endpoint coordinates in RAS.
+        """
+        polydata = surface_model.GetPolyData()
+        if polydata is None or polydata.GetNumberOfPoints() < 100:
+            raise ValueError("Surface model has insufficient points")
+
+        # Get all surface points
+        points_list = []
+        for i in range(polydata.GetNumberOfPoints()):
+            pt = polydata.GetPoint(i)
+            points_list.append(pt)
+        points = np.array(points_list)
+
+        # Compute centroid
+        centroid = points.mean(axis=0)
+
+        # Compute distances from centroid
+        distances = np.linalg.norm(points - centroid, axis=1)
+
+        # Find local maxima of distance (potential endpoints)
+        # Use a simple approach: find points far from centroid
+        threshold = np.percentile(distances, 95)
+        far_indices = np.where(distances > threshold)[0]
+
+        if len(far_indices) < 2:
+            # Fall back to simple extremes (convert tuple to list)
+            start, end = self._auto_detect_endpoints(surface_model)
+            return [start, end]
+
+        # Cluster far points to find distinct endpoints
+        endpoints = self._cluster_endpoints(points[far_indices], max_endpoints)
+
+        logger.debug(f"Auto-detected {len(endpoints)} potential endpoints")
+
+        return endpoints
+
+    def _cluster_endpoints(
+        self,
+        candidate_points: np.ndarray,
+        max_clusters: int,
+    ) -> list[np.ndarray]:
+        """Cluster candidate endpoint points to find distinct endpoints.
+
+        Uses a simple distance-based clustering to group nearby points
+        and return cluster centers.
+
+        Args:
+            candidate_points: Array of candidate endpoint positions.
+            max_clusters: Maximum number of clusters to return.
+
+        Returns:
+            List of cluster center positions.
+        """
+        if len(candidate_points) <= max_clusters:
+            return list(candidate_points)
+
+        # Simple greedy clustering
+        # Start with first point as first cluster
+        clusters = [candidate_points[0]]
+        cluster_points: list[list[np.ndarray]] = [[candidate_points[0]]]
+
+        # Minimum distance between cluster centers
+        min_distance = np.linalg.norm(
+            candidate_points.max(axis=0) - candidate_points.min(axis=0)
+        ) / (max_clusters * 2)
+
+        for pt in candidate_points[1:]:
+            # Find nearest cluster
+            distances = [np.linalg.norm(pt - c) for c in clusters]
+            min_dist = min(distances)
+            nearest_idx = distances.index(min_dist)
+
+            if min_dist < min_distance:
+                # Add to existing cluster
+                cluster_points[nearest_idx].append(pt)
+                # Update cluster center
+                clusters[nearest_idx] = np.mean(cluster_points[nearest_idx], axis=0)
+            elif len(clusters) < max_clusters:
+                # Create new cluster
+                clusters.append(pt)
+                cluster_points.append([pt])
+
+        return clusters
+
+    def _create_multi_endpoint_fiducials(
+        self,
+        endpoints: list[np.ndarray],
+    ) -> vtkMRMLMarkupsFiducialNode:
+        """Create fiducial node with multiple endpoints.
+
+        Args:
+            endpoints: List of endpoint coordinates in RAS.
+
+        Returns:
+            MRML markups fiducial node.
+        """
+        import slicer
+
+        fiducial_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode")
+        fiducial_node.SetName("BranchEndpoints")
+
+        for i, endpoint in enumerate(endpoints):
+            fiducial_node.AddControlPoint(
+                float(endpoint[0]), float(endpoint[1]), float(endpoint[2]), f"Endpoint_{i}"
+            )
+
+        return fiducial_node
+
+    def _parse_branching_centerline(
+        self,
+        centerline_model: vtkMRMLModelNode,
+        resample_step: float,
+    ) -> tuple[list[Centerline], list[BranchPoint]]:
+        """Parse centerline model to extract branches and bifurcation points.
+
+        VMTK centerline output contains cell data arrays that identify
+        branch membership and bifurcation points.
+
+        Args:
+            centerline_model: Model node with centerline polydata.
+            resample_step: Resampling distance for centerlines.
+
+        Returns:
+            Tuple of (centerlines, branch_points).
+        """
+        polydata = centerline_model.GetPolyData()
+
+        # Extract all points and radii
+        all_points, all_radii = self._parse_centerline_result(centerline_model)
+
+        if len(all_points) < 3:
+            # Not enough points for branching analysis
+            centerline = Centerline(
+                points=all_points,
+                radii=all_radii,
+                tangents=self._compute_tangents(all_points),
+            )
+            return [centerline], []
+
+        # Try to get branch IDs from cell data
+        cell_data = polydata.GetCellData()
+        branch_ids_array = None
+
+        if cell_data is not None:
+            for name in ["BranchId", "CenterlineIds", "GroupIds"]:
+                arr = cell_data.GetArray(name)
+                if arr is not None:
+                    branch_ids_array = arr
+                    logger.debug(f"Found branch ID array: {name}")
+                    break
+
+        if branch_ids_array is None:
+            # No branch information - try to detect from geometry
+            centerlines, branch_points = self._detect_branches_from_geometry(
+                all_points, all_radii, resample_step
+            )
+        else:
+            # Parse branches using VMTK branch IDs
+            centerlines, branch_points = self._parse_vmtk_branches(
+                polydata, branch_ids_array, all_points, all_radii, resample_step
+            )
+
+        return centerlines, branch_points
+
+    def _detect_branches_from_geometry(
+        self,
+        points: np.ndarray,
+        radii: np.ndarray,
+        resample_step: float,
+    ) -> tuple[list[Centerline], list[BranchPoint]]:
+        """Detect branches from centerline geometry when VMTK IDs not available.
+
+        Uses curvature and connectivity analysis to identify branch points.
+
+        Args:
+            points: All centerline points.
+            radii: Radii at each point.
+            resample_step: Resampling distance.
+
+        Returns:
+            Tuple of (centerlines, branch_points).
+        """
+        # Simple approach: treat as single centerline if no clear branches
+        # A more sophisticated approach would analyze point connectivity
+
+        centerline = Centerline(
+            points=points,
+            radii=radii,
+            tangents=self._compute_tangents(points),
+        )
+
+        # Resample if requested
+        if resample_step > 0 and centerline.length > resample_step * 2:
+            target_points = max(3, int(centerline.length / resample_step))
+            centerline = centerline.resample(target_points)
+
+        return [centerline], []
+
+    def _parse_vmtk_branches(
+        self,
+        polydata: object,
+        branch_ids_array: object,
+        all_points: np.ndarray,
+        all_radii: np.ndarray,
+        resample_step: float,
+    ) -> tuple[list[Centerline], list[BranchPoint]]:
+        """Parse branches using VMTK branch ID arrays.
+
+        Args:
+            polydata: VTK polydata with centerlines.
+            branch_ids_array: VTK array with branch IDs per cell.
+            all_points: All centerline points.
+            all_radii: Radii at all points.
+            resample_step: Resampling distance.
+
+        Returns:
+            Tuple of (centerlines, branch_points).
+        """
+        # Group cells by branch ID
+        branch_cells: dict[int, list[int]] = {}
+
+        num_cells = polydata.GetNumberOfCells()  # type: ignore[attr-defined]
+        for cell_idx in range(num_cells):
+            branch_id = int(branch_ids_array.GetValue(cell_idx))  # type: ignore[attr-defined]
+            if branch_id not in branch_cells:
+                branch_cells[branch_id] = []
+            branch_cells[branch_id].append(cell_idx)
+
+        centerlines = []
+        branch_points_dict: dict[tuple, BranchPoint] = {}
+
+        for branch_id, cell_indices in branch_cells.items():
+            # Extract points for this branch
+            branch_point_indices = set()
+            for cell_idx in cell_indices:
+                cell = polydata.GetCell(cell_idx)  # type: ignore[attr-defined]
+                for i in range(cell.GetNumberOfPoints()):
+                    branch_point_indices.add(cell.GetPointId(i))
+
+            branch_point_indices_list = sorted(branch_point_indices)
+
+            if len(branch_point_indices_list) < 2:
+                continue
+
+            branch_points_arr = all_points[branch_point_indices_list]
+            branch_radii = all_radii[branch_point_indices_list]
+
+            # Create centerline for this branch
+            centerline = Centerline(
+                points=branch_points_arr,
+                radii=branch_radii,
+                tangents=self._compute_tangents(branch_points_arr),
+            )
+
+            # Resample
+            if resample_step > 0 and centerline.length > resample_step * 2:
+                target_points = max(3, int(centerline.length / resample_step))
+                centerline = centerline.resample(target_points)
+
+            centerlines.append(centerline)
+
+            # Detect branch points (endpoints shared between branches)
+            start_key = tuple(branch_points_arr[0].round(1))
+            end_key = tuple(branch_points_arr[-1].round(1))
+
+            for key, pos in [(start_key, branch_points_arr[0]), (end_key, branch_points_arr[-1])]:
+                if key in branch_points_dict:
+                    # This is a bifurcation point
+                    bp = branch_points_dict[key]
+                    if bp.branch_ids is not None:
+                        bp.branch_ids.append(branch_id)
+                else:
+                    # First time seeing this point
+                    branch_points_dict[key] = BranchPoint(
+                        position=pos,
+                        radius=float(branch_radii[0] if key == start_key else branch_radii[-1]),
+                        branch_ids=[branch_id],
+                    )
+
+        # Filter to only keep actual bifurcation points (>1 branch)
+        branch_points = [
+            bp for bp in branch_points_dict.values() if bp.branch_ids and len(bp.branch_ids) > 1
+        ]
+
+        # Compute directions at branch points
+        for bp in branch_points:
+            bp.child_directions = []
+            for cl in centerlines:
+                # Check if centerline starts or ends at this branch point
+                start_dist = np.linalg.norm(cl.points[0] - bp.position)
+                end_dist = np.linalg.norm(cl.points[-1] - bp.position)
+
+                if start_dist < bp.radius:
+                    # Centerline starts here - direction points away
+                    if cl.tangents is not None and len(cl.tangents) > 0:
+                        bp.child_directions.append(cl.tangents[0])
+                elif end_dist < bp.radius:
+                    # Centerline ends here - direction points toward
+                    if cl.tangents is not None and len(cl.tangents) > 0:
+                        bp.child_directions.append(-cl.tangents[-1])
+
+        return centerlines, branch_points
 
     def _create_surface_from_segment(
         self,

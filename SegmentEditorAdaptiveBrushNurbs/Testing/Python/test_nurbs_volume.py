@@ -507,3 +507,163 @@ class TestSkeletonExtractor:
                 segmentation_node=None,  # Would fail anyway
                 segment_id="test",
             )
+
+    def test_detect_branches_requires_vmtk(self):
+        """Test that detect_branches raises error without VMTK."""
+        from SkeletonExtractor import SkeletonExtractor
+
+        extractor = SkeletonExtractor()
+
+        # Should raise RuntimeError since VMTK is not available
+        with pytest.raises(RuntimeError, match="SlicerVMTK"):
+            extractor.detect_branches(
+                segmentation_node=None,
+                segment_id="test",
+            )
+
+
+class TestBranchTemplates:
+    """Tests for BranchTemplates class."""
+
+    def test_create_bifurcation_template(self):
+        """Test creating a bifurcation template."""
+        from BranchTemplates import BranchTemplates
+
+        templates = BranchTemplates(resolution=4)
+
+        # Create a symmetric bifurcation
+        center = np.array([0.0, 0.0, 0.0])
+        parent_dir = np.array([0.0, 0.0, -1.0])
+        child1_dir = np.array([0.5, 0.0, 0.866])  # ~60 degrees from parent
+        child2_dir = np.array([-0.5, 0.0, 0.866])
+
+        bif = templates.create_bifurcation(
+            center=center,
+            parent_dir=parent_dir,
+            child1_dir=child1_dir,
+            child2_dir=child2_dir,
+            parent_radius=5.0,
+            child1_radius=3.5,
+            child2_radius=3.5,
+        )
+
+        # Should have 3 patches
+        assert bif.num_patches == 3
+
+        # Bifurcation angle should be about 60 degrees
+        angle_deg = np.degrees(bif.bifurcation_angle)
+        assert 50 < angle_deg < 70
+
+    def test_bifurcation_type_classification(self):
+        """Test that bifurcation types are classified correctly."""
+        from BranchTemplates import BifurcationType, BranchTemplates
+
+        templates = BranchTemplates()
+
+        # Symmetric bifurcation
+        bif_sym = templates.create_bifurcation(
+            center=np.array([0.0, 0.0, 0.0]),
+            parent_dir=np.array([0.0, 0.0, -1.0]),
+            child1_dir=np.array([0.5, 0.0, 0.866]),
+            child2_dir=np.array([-0.5, 0.0, 0.866]),
+            parent_radius=5.0,
+            child1_radius=4.0,
+            child2_radius=4.0,
+        )
+        assert bif_sym.bifurcation_type == BifurcationType.SYMMETRIC
+
+        # Side branch (small radius)
+        bif_side = templates.create_bifurcation(
+            center=np.array([0.0, 0.0, 0.0]),
+            parent_dir=np.array([0.0, 0.0, -1.0]),
+            child1_dir=np.array([0.0, 0.0, 1.0]),  # Main continues
+            child2_dir=np.array([1.0, 0.0, 0.0]),  # Side branch
+            parent_radius=5.0,
+            child1_radius=4.5,
+            child2_radius=2.0,  # Small side branch
+        )
+        assert bif_side.bifurcation_type == BifurcationType.SIDE_BRANCH
+
+    def test_trifurcation_template(self):
+        """Test creating a trifurcation template."""
+        from BranchTemplates import BranchTemplates
+
+        templates = BranchTemplates(resolution=4)
+
+        center = np.array([0.0, 0.0, 0.0])
+        parent_dir = np.array([0.0, 0.0, -1.0])
+        child_dirs = [
+            np.array([1.0, 0.0, 0.5]),
+            np.array([-0.5, 0.866, 0.5]),
+            np.array([-0.5, -0.866, 0.5]),
+        ]
+
+        trif = templates.create_trifurcation(
+            center=center,
+            parent_dir=parent_dir,
+            child_dirs=child_dirs,
+            parent_radius=5.0,
+            child_radii=[3.0, 3.0, 3.0],
+        )
+
+        # Trifurcation should have 4-5 patches
+        assert trif.num_patches >= 4
+
+    def test_junction_patch_control_points(self):
+        """Test that junction patches have valid control points."""
+        from BranchTemplates import BranchTemplates
+
+        templates = BranchTemplates(resolution=4)
+
+        bif = templates.create_bifurcation(
+            center=np.array([0.0, 0.0, 0.0]),
+            parent_dir=np.array([0.0, 0.0, -1.0]),
+            child1_dir=np.array([0.5, 0.0, 0.866]),
+            child2_dir=np.array([-0.5, 0.0, 0.866]),
+            parent_radius=5.0,
+            child1_radius=3.5,
+            child2_radius=3.5,
+        )
+
+        for patch in bif.patches:
+            # Each patch should have shape (resolution, resolution, resolution, 3)
+            assert patch.control_points.shape == (4, 4, 4, 3)
+
+            # All points should be finite
+            assert np.all(np.isfinite(patch.control_points))
+
+
+class TestBranchPoint:
+    """Tests for BranchPoint dataclass."""
+
+    def test_branch_point_creation(self):
+        """Test creating a BranchPoint."""
+        from SkeletonExtractor import BranchPoint
+
+        bp = BranchPoint(
+            position=np.array([10.0, 20.0, 30.0]),
+            radius=5.0,
+            branch_ids=[0, 1, 2],
+        )
+
+        assert np.allclose(bp.position, [10.0, 20.0, 30.0])
+        assert bp.radius == 5.0
+        assert bp.branch_ids == [0, 1, 2]
+
+    def test_branch_point_with_directions(self):
+        """Test BranchPoint with direction vectors."""
+        from SkeletonExtractor import BranchPoint
+
+        bp = BranchPoint(
+            position=np.array([0.0, 0.0, 0.0]),
+            parent_direction=np.array([0.0, 0.0, -1.0]),
+            child_directions=[
+                np.array([0.5, 0.0, 0.866]),
+                np.array([-0.5, 0.0, 0.866]),
+            ],
+            radius=5.0,
+        )
+
+        assert bp.parent_direction is not None
+        assert bp.child_directions is not None
+        assert len(bp.child_directions) == 2
