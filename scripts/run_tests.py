@@ -5,8 +5,11 @@ This script is executed by Slicer via:
     Slicer --python-script scripts/run_tests.py [options] [suite]
 
 Arguments:
-    suite: Test suite to run. Options: "all", "algorithm", "ui", "workflow".
+    suite: Test suite to run. Options: "all", "ci", "algorithm", "ui", "workflow".
            Default: "all"
+           Special suites:
+           - "ci": Runs all tests except gold_standard and reviewer_integration
+                   (these require special setup not available in CI)
 
 Options:
     --exit: Exit Slicer after tests complete (for automated runs).
@@ -15,6 +18,9 @@ Options:
 Examples:
     # Run all tests and stay open for manual testing:
     Slicer --python-script scripts/run_tests.py all
+
+    # Run CI-compatible tests and exit:
+    Slicer --python-script scripts/run_tests.py --exit ci
 
     # Run algorithm tests and exit when done:
     Slicer --python-script scripts/run_tests.py --exit algorithm
@@ -90,9 +96,50 @@ def main() -> None:
     print(f"Tests discovered: {len(runner.list_tests())}", flush=True)
 
     # Run tests
-    print(f"Running suite: {suite}", flush=True)
-    result = runner.run_suite(suite)
-    print("Suite complete", flush=True)
+    # "ci" suite excludes tests that require special setup not available in CI
+    CI_EXCLUDED_CATEGORIES = {"gold_standard", "reviewer_integration"}
+
+    if suite == "ci":
+        # Get all tests except excluded categories
+        all_tests = runner.list_tests()
+        ci_tests = [t for t in all_tests if t.category not in CI_EXCLUDED_CATEGORIES]
+        excluded_count = len(all_tests) - len(ci_tests)
+        print(
+            f"Running CI suite: {len(ci_tests)} tests (excluding {excluded_count} from {CI_EXCLUDED_CATEGORIES})",
+            flush=True,
+        )
+
+        # Run each test individually
+        import time
+
+        from SegmentEditorAdaptiveBrushTesterLib import TestRunFolder, TestSuiteResult
+
+        test_run_folder = TestRunFolder.create(
+            base_path=runner._output_base,
+            run_name="ci",
+        )
+
+        start_time = time.time()
+        results = []
+        for i, info in enumerate(ci_tests):
+            print(f"[{i + 1}/{len(ci_tests)}] Running: {info.name}...", flush=True)
+            test_result = runner.run_test(info.name, test_run_folder=test_run_folder)
+            status = "PASS" if test_result.passed else "FAIL"
+            print(f"[{i + 1}/{len(ci_tests)}] {info.name}: {status}", flush=True)
+            results.append(test_result)
+
+        duration = time.time() - start_time
+        result = TestSuiteResult(
+            suite_name="ci",
+            output_folder=test_run_folder.path,
+            results=results,
+            duration_seconds=duration,
+        )
+        print("CI suite complete", flush=True)
+    else:
+        print(f"Running suite: {suite}", flush=True)
+        result = runner.run_suite(suite)
+        print("Suite complete", flush=True)
 
     # Print summary
     status = "PASSED" if result.passed else "FAILED"

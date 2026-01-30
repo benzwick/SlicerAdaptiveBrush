@@ -168,7 +168,7 @@ jobs:
           set +e  # Don't exit on error - we want to capture artifacts
           timeout 300 $SLICER_HOME/Slicer --no-splash \
             --additional-module-paths $(pwd)/SegmentEditorAdaptiveBrush $(pwd)/SegmentEditorAdaptiveBrushTester $(pwd)/SegmentEditorAdaptiveBrushReviewer \
-            --python-script scripts/run_tests.py --exit all \
+            --python-script scripts/run_tests.py --exit ci \
             2>&1 | tee test-results/slicer-output.log
           TEST_EXIT_CODE=${PIPESTATUS[0]}
           set -e
