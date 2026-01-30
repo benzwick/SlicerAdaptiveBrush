@@ -640,6 +640,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "ct_bone": {
                 "name": "CT - Bone",
                 "description": "High contrast bone (cortical and trabecular)",
+                "algorithm": "watershed",
                 "edge_sensitivity": 70,
                 "threshold_zone": 35,
                 "sampling_method": "percentile",
@@ -651,6 +652,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "ct_soft_tissue": {
                 "name": "CT - Soft Tissue/Organ",
                 "description": "Organs (liver, kidney, spleen, pancreas)",
+                "algorithm": "geodesic_distance",
                 "edge_sensitivity": 50,
                 "threshold_zone": 55,
                 "sampling_method": "mean_std",
@@ -662,6 +664,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "ct_lung": {
                 "name": "CT - Lung Parenchyma",
                 "description": "Lung tissue (preserves airways)",
+                "algorithm": "region_growing",
                 "edge_sensitivity": 55,
                 "threshold_zone": 45,
                 "sampling_method": "percentile",
@@ -684,6 +687,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "ct_vessel_contrast": {
                 "name": "CT - Vessels (CTA)",
                 "description": "Contrast-enhanced vessels",
+                "algorithm": "connected_threshold",
                 "edge_sensitivity": 65,
                 "threshold_zone": 35,
                 "sampling_method": "percentile",
@@ -778,6 +782,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "mri_t1gd_tumor": {
                 "name": "MRI T1+Gd - Enhancing Tumor",
                 "description": "Contrast-enhancing tumors",
+                "algorithm": "watershed",
                 "edge_sensitivity": 45,
                 "threshold_zone": 60,
                 "sampling_method": "mean_std",
@@ -803,6 +808,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "mri_t2_lesion": {
                 "name": "MRI T2 - Lesion/Edema",
                 "description": "Hyperintense lesions in T2",
+                "algorithm": "threshold_brush",
                 "edge_sensitivity": 50,
                 "threshold_zone": 55,
                 "sampling_method": "mean_std",
@@ -853,6 +859,7 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
             "pet_tumor": {
                 "name": "PET - Hypermetabolic Tumor",
                 "description": "FDG-avid tumors and metastases",
+                "algorithm": "connected_threshold",
                 "edge_sensitivity": 50,
                 "threshold_zone": 55,
                 "sampling_method": "percentile",
@@ -2086,8 +2093,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self._currentPreset = preset_id
 
         # Block signals to prevent multiple cache invalidations
-        # Note: Presets don't change algorithm - only common parameters
         widgets_to_block = [
+            self.algorithmComboBox,
             self.sensitivitySlider,
             self.zoneSlider,
             self.samplingMethodCombo,
@@ -2102,6 +2109,14 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             widget.blockSignals(True)
 
         try:
+            # Apply algorithm if specified in preset
+            if "algorithm" in preset:
+                algorithm = preset["algorithm"]
+                self.setAlgorithm(algorithm)
+                idx = self.algorithmComboBox.findData(algorithm)
+                if idx >= 0:
+                    self.algorithmComboBox.setCurrentIndex(idx)
+
             # Apply basic parameters
             if "edge_sensitivity" in preset:
                 self.edgeSensitivity = preset["edge_sensitivity"]
