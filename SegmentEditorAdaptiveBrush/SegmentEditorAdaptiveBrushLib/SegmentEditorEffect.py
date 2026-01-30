@@ -2664,9 +2664,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 widget = getattr(self, widget_name, None)
                 if widget is not None:
                     widget.disconnect()
-            except RuntimeError as e:
-                # Widget already deleted during Slicer shutdown - expected, non-critical
-                logging.debug(f"Widget {widget_name} disconnect skipped (deleted): {e}")
+            except (RuntimeError, ValueError) as e:
+                # Widget already deleted or no matching overload during cleanup - expected
+                logging.debug(f"Widget {widget_name} disconnect skipped: {e}")
 
         # Clean up brush outline pipelines
         self._cleanupOutlinePipelines()
