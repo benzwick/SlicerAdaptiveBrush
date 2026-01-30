@@ -70,3 +70,10 @@ dicom/
 
 # IDC downloaded data for optimization
 idc_data/
+
+# Click optimization results (can be regenerated)
+click_optimization_results/
+
+# Generated optimization data files
+idc_*.json
+optimization_output.log
