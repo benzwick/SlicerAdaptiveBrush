@@ -281,8 +281,15 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 8: Paint Segmentation
         # =========================================
-        # First use 10mm radius for initial diagonal strokes
+        # Use 10mm radius for initial diagonal strokes
         scripted_effect.radiusSlider.value = 10.0
+        slicer.app.processEvents()
+
+        # Update brush preview to show 10mm brush size
+        tumor_xy = self._ras_to_xy(self.tumor_center_ras, view_widget)
+        if tumor_xy:
+            scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
+        view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         # Paint diagonally: up-right (+A, +S) from center
@@ -313,6 +320,12 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Restore 25mm radius for larger coverage
         scripted_effect.radiusSlider.value = 25.0
+        slicer.app.processEvents()
+
+        # Update brush preview to show 25mm brush size
+        if tumor_xy:
+            scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
+        view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
         # Paint at tumor center to fill in
@@ -488,18 +501,29 @@ class TestDocsGettingStarted(TestCase):
             [
                 "## Tips for Best Results",
                 "",
+                "### Keyboard Shortcuts",
+                "| Action | Shortcut |",
+                "|--------|----------|",
+                "| Adjust brush size | Shift + scroll wheel |",
+                "| Adjust threshold zone | Ctrl + Shift + scroll wheel |",
+                "| Erase mode | Ctrl + click or Middle + Left-click |",
+                "",
                 "### Brush Size",
                 "- Start with a brush slightly smaller than your target region",
-                "- Use Shift + scroll wheel to quickly adjust size",
+                "- Use multiple smaller strokes for complex shapes",
                 "",
                 "### Edge Sensitivity",
-                "- Higher sensitivity = stricter edge detection",
-                "- Lower sensitivity = more permissive, may leak",
+                "- Higher sensitivity = stricter edge detection (stops at faint edges)",
+                "- Lower sensitivity = more permissive (may leak beyond boundaries)",
                 "",
                 "### Algorithm Selection",
-                "- **Watershed**: Good general-purpose choice",
-                "- **Geodesic Distance**: Fast, good for clear edges",
-                "- **Threshold Brush**: Fastest, simple intensity thresholding",
+                "- **Watershed**: Good general-purpose choice for most tissues",
+                "- **Geodesic Distance**: Fast, good for structures with clear edges",
+                "- **Threshold Brush**: Fastest, simple intensity-based painting",
+                "",
+                "### Presets",
+                "- Use presets to quickly configure settings for common tissue types",
+                "- Presets set appropriate thresholds based on imaging modality",
                 "",
                 "## Next Steps",
                 "",
