@@ -1092,3 +1092,96 @@ class TestMeshExporter:
 
         assert output_path.exists()
         assert output_path.stat().st_size > 0
+
+
+class TestCadExporter:
+    """Tests for CAD export functionality (IGES/STEP)."""
+
+    def test_cad_exporter_initialization(self):
+        """Test CadExporter initialization."""
+        from Exporters.CadExporter import CadExporter
+
+        exporter = CadExporter()
+        # Should initialize without error
+        assert exporter._occ_available is None  # Lazy evaluation
+
+    def test_cad_exporter_is_available(self):
+        """Test checking pythonocc availability."""
+        from Exporters.CadExporter import CadExporter
+
+        exporter = CadExporter()
+        # After calling is_available, the cached value should be set
+        result = exporter.is_available()
+        assert isinstance(result, bool)
+        assert exporter._occ_available == result
+
+    def test_knots_to_occ_format(self):
+        """Test knot vector conversion to OCC format."""
+        from Exporters.CadExporter import CadExporter
+
+        exporter = CadExporter()
+
+        # Test clamped knot vector for degree 3 with 4 control points
+        knots = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+        unique_knots, multiplicities = exporter._knots_to_occ_format(knots)
+
+        assert unique_knots == [0.0, 1.0]
+        assert multiplicities == [4, 4]
+
+    def test_knots_to_occ_format_with_interior_knots(self):
+        """Test knot vector conversion with interior knots."""
+        from Exporters.CadExporter import CadExporter
+
+        exporter = CadExporter()
+
+        # Knot vector with interior knots
+        knots = np.array([0, 0, 0, 0.25, 0.5, 0.75, 1, 1, 1])
+        unique_knots, multiplicities = exporter._knots_to_occ_format(knots)
+
+        assert len(unique_knots) == 5
+        assert unique_knots == pytest.approx([0, 0.25, 0.5, 0.75, 1])
+        assert multiplicities == [3, 1, 1, 1, 3]
+
+    def test_iges_export_requires_pythonocc(self, cubic_control_points, tmp_path):
+        """Test that IGES export raises error when pythonocc unavailable."""
+        from Exporters.CadExporter import CadExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        exporter = CadExporter()
+
+        # If pythonocc is not available, should raise RuntimeError
+        if not exporter.is_available():
+            hex_mesh = HexMesh(
+                control_points=cubic_control_points,
+                num_u=4,
+                num_v=4,
+                num_w=4,
+            )
+            builder = NurbsVolumeBuilder()
+            nurbs_vol = builder.build(hex_mesh, degree=1)
+
+            with pytest.raises(RuntimeError, match="pythonocc-core is required"):
+                exporter.export_iges(nurbs_vol, tmp_path / "test.igs")
+
+    def test_step_export_requires_pythonocc(self, cubic_control_points, tmp_path):
+        """Test that STEP export raises error when pythonocc unavailable."""
+        from Exporters.CadExporter import CadExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        exporter = CadExporter()
+
+        # If pythonocc is not available, should raise RuntimeError
+        if not exporter.is_available():
+            hex_mesh = HexMesh(
+                control_points=cubic_control_points,
+                num_u=4,
+                num_v=4,
+                num_w=4,
+            )
+            builder = NurbsVolumeBuilder()
+            nurbs_vol = builder.build(hex_mesh, degree=1)
+
+            with pytest.raises(RuntimeError, match="pythonocc-core is required"):
+                exporter.export_step(nurbs_vol, tmp_path / "test.step")
