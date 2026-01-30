@@ -96,13 +96,13 @@ class TestDocsGettingStarted(TestCase):
         """Record a tutorial step with screenshot."""
         logger.info(f"Step: {name}")
 
-        # Capture screenshot with doc_tags
         step_num = len(self.steps) + 1
-        screenshot_name = f"getting_started_step{step_num}"
+        # Convert name to slug for doc_tag (e.g., "Load Volume" -> "load_volume")
+        name_slug = name.lower().replace(" ", "_").replace("-", "_")
 
         ctx.screenshot(
             screenshot_desc,
-            doc_tags=["workflow", "getting_started", f"step{step_num}"],
+            doc_tags=["getting_started", name_slug],
         )
 
         self.steps.append(
@@ -110,7 +110,7 @@ class TestDocsGettingStarted(TestCase):
                 "number": step_num,
                 "name": name,
                 "description": description,
-                "screenshot": f"{screenshot_name}.png",
+                "screenshot": f"getting_started_{step_num:03d}_{name_slug}.png",
             }
         )
 
@@ -319,8 +319,7 @@ class TestDocsGettingStarted(TestCase):
             lines.append(step["description"])
             lines.append("")
             # Reference screenshot from _static/screenshots/workflows
-            screenshot_name = f"workflow_getting_started_step{step['number']:03d}.png"
-            lines.append(f"```{{image}} /_static/screenshots/workflows/{screenshot_name}")
+            lines.append(f"```{{image}} /_static/screenshots/workflows/{step['screenshot']}")
             lines.append(f":alt: {step['name']}")
             lines.append(":width: 100%")
             lines.append("```")

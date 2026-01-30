@@ -79,6 +79,7 @@ def organize_by_tags(screenshots: list[dict]) -> dict[str, list[dict]]:
         elif first_tag.startswith("workflow") or first_tag in [
             "getting_started",
             "tutorial",
+            "tumor",
         ]:
             categories["workflows"].append(screenshot)
         elif first_tag.startswith("reviewer"):
@@ -109,6 +110,9 @@ def copy_screenshots(
     category_dir = output_dir / category
     category_dir.mkdir(parents=True, exist_ok=True)
 
+    # Track auto-numbering per section
+    section_counts: dict[str, int] = {}
+
     copied = []
     for screenshot in screenshots:
         original_path = Path(screenshot["path"])
@@ -126,11 +130,24 @@ def copy_screenshots(
                 logger.warning(f"Screenshot not found: {screenshot['path']}")
                 continue
 
-        # Create descriptive filename from tags and description
+        # Create filename from doc_tags: [section, description]
+        # Output format: section_NNN_description.png (number auto-assigned per section)
         tags = screenshot.get("doc_tags", [])
-        base_name = "_".join(tags[:3]) if tags else "screenshot"
-        base_name = base_name.replace("/", "-").replace(" ", "_")
-        new_filename = f"{base_name}_{screenshot['number']:03d}.png"
+
+        if len(tags) >= 2:
+            section = str(tags[0]).replace("/", "-").replace(" ", "_")
+            description = str(tags[1]).replace("/", "-").replace(" ", "_")
+            # Auto-increment number within section
+            section_counts[section] = section_counts.get(section, 0) + 1
+            num = section_counts[section]
+            new_filename = f"{section}_{num:03d}_{description}.png"
+        elif len(tags) >= 1:
+            section = str(tags[0]).replace("/", "-").replace(" ", "_")
+            section_counts[section] = section_counts.get(section, 0) + 1
+            num = section_counts[section]
+            new_filename = f"{section}_{num:03d}.png"
+        else:
+            new_filename = f"screenshot_{screenshot['number']:03d}.png"
 
         dest_path = category_dir / new_filename
         shutil.copy2(original_path, dest_path)
