@@ -33,6 +33,7 @@ if _MAIN_LIB_DIR not in sys.path:
 HAS_GEOMDL = importlib.util.find_spec("geomdl") is not None
 HAS_SCIPY = importlib.util.find_spec("scipy") is not None
 HAS_SIMPLEITK = importlib.util.find_spec("SimpleITK") is not None
+HAS_VTK = importlib.util.find_spec("vtk") is not None
 
 
 def pytest_configure(config):
@@ -49,12 +50,17 @@ def pytest_configure(config):
         "markers",
         "requires_sitk: skip test if SimpleITK is not available",
     )
+    config.addinivalue_line(
+        "markers",
+        "requires_vtk: skip test if VTK is not available",
+    )
 
 
 # Skip decorators for optional dependencies
 requires_geomdl = pytest.mark.skipif(not HAS_GEOMDL, reason="geomdl not available")
 requires_scipy = pytest.mark.skipif(not HAS_SCIPY, reason="scipy not available")
 requires_sitk = pytest.mark.skipif(not HAS_SIMPLEITK, reason="SimpleITK not available")
+requires_vtk = pytest.mark.skipif(not HAS_VTK, reason="VTK not available")
 
 
 # Fixtures

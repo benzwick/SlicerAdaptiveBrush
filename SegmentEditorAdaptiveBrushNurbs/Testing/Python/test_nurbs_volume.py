@@ -9,7 +9,7 @@ Tests the core components:
 
 import numpy as np
 import pytest
-from conftest import requires_geomdl, requires_scipy
+from conftest import requires_geomdl, requires_scipy, requires_vtk
 
 
 class TestHexMesh:
@@ -883,3 +883,212 @@ class TestFittingQuality:
         assert quality.volume_ratio == 1.1
         assert quality.num_control_points == 64
         assert quality.min_jacobian == 0.8
+
+
+class TestMfemExporter:
+    """Tests for MFEM export functionality."""
+
+    def test_mfem_single_patch_export(self, cubic_control_points, tmp_path):
+        """Test exporting a single-patch NURBS to MFEM format."""
+        from Exporters.MfemExporter import MfemExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        # Create NURBS volume
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=1)
+
+        # Export to MFEM format
+        output_path = tmp_path / "test.mesh"
+        exporter = MfemExporter()
+        exporter.export(nurbs_vol, output_path)
+
+        # Verify file was created
+        assert output_path.exists()
+
+        # Read and verify content
+        content = output_path.read_text()
+        assert "MFEM NURBS mesh v1.0" in content
+        assert "dimension" in content
+        assert "3" in content
+        assert "elements" in content
+        assert "boundary" in content
+        assert "knotvectors" in content
+        assert "weights" in content
+        assert "FiniteElementSpace" in content
+
+    def test_mfem_knot_vectors_format(self, cubic_control_points, tmp_path):
+        """Test that knot vectors are correctly formatted."""
+        from Exporters.MfemExporter import MfemExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=3)
+
+        output_path = tmp_path / "test_knots.mesh"
+        exporter = MfemExporter()
+        exporter.export(nurbs_vol, output_path)
+
+        content = output_path.read_text()
+
+        # Should have 3 knot vectors (u, v, w)
+        assert content.count("knotvectors") == 1
+
+        # Parse knot vectors section
+        lines = content.split("\n")
+        knot_idx = None
+        for i, line in enumerate(lines):
+            if line.strip() == "knotvectors":
+                knot_idx = i
+                break
+
+        assert knot_idx is not None
+        # Next line is count "3"
+        assert lines[knot_idx + 1].strip() == "3"
+
+    def test_mfem_boundary_faces(self, cubic_control_points, tmp_path):
+        """Test that boundary faces are correctly defined."""
+        from Exporters.MfemExporter import MfemExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=1)
+
+        output_path = tmp_path / "test_boundary.mesh"
+        exporter = MfemExporter()
+        exporter.export(nurbs_vol, output_path)
+
+        content = output_path.read_text()
+
+        # Should have 6 boundary faces
+        lines = content.split("\n")
+        boundary_idx = None
+        for i, line in enumerate(lines):
+            if line.strip() == "boundary":
+                boundary_idx = i
+                break
+
+        assert boundary_idx is not None
+        assert lines[boundary_idx + 1].strip() == "6"
+
+    def test_mfem_multi_patch_export(self, cubic_control_points, tmp_path):
+        """Test exporting a multi-patch NURBS to MFEM format."""
+        from Exporters.MfemExporter import MfemExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        # Create two patches
+        hex_mesh1 = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        hex_mesh2 = HexMesh(
+            control_points=cubic_control_points + np.array([10, 0, 0]),
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+
+        builder = NurbsVolumeBuilder()
+        multi_patch = builder.build_multi_patch([hex_mesh1, hex_mesh2], degree=1)
+
+        output_path = tmp_path / "test_multi.mesh"
+        exporter = MfemExporter()
+        exporter.export_multi_patch(multi_patch, output_path)
+
+        assert output_path.exists()
+
+        content = output_path.read_text()
+        assert "MFEM NURBS mesh v1.0" in content
+
+        # Should have 2 elements
+        lines = content.split("\n")
+        elem_idx = None
+        for i, line in enumerate(lines):
+            if line.strip() == "elements":
+                elem_idx = i
+                break
+
+        assert elem_idx is not None
+        assert lines[elem_idx + 1].strip() == "2"
+
+
+class TestMeshExporter:
+    """Tests for triangulated mesh export functionality."""
+
+    def test_mesh_exporter_initialization(self):
+        """Test MeshExporter initialization."""
+        from Exporters.MeshExporter import MeshExporter
+
+        exporter = MeshExporter(resolution=20)
+        assert exporter.resolution == 20
+
+    @requires_vtk
+    def test_hex_grid_creation(self, cubic_control_points):
+        """Test creating hex grid from NURBS volume."""
+        from Exporters.MeshExporter import MeshExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=1)
+
+        exporter = MeshExporter()
+        grid = exporter._create_hex_grid(nurbs_vol)
+
+        # Should have 64 points (4x4x4)
+        assert grid.GetNumberOfPoints() == 64
+
+        # Should have 27 hex cells ((4-1)x(4-1)x(4-1))
+        assert grid.GetNumberOfCells() == 27
+
+    @requires_vtk
+    def test_vtk_unstructured_export(self, cubic_control_points, tmp_path):
+        """Test VTK unstructured grid export."""
+        from Exporters.MeshExporter import MeshExporter
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=1)
+
+        output_path = tmp_path / "test.vtu"
+        exporter = MeshExporter()
+        exporter.export_vtk_unstructured(nurbs_vol, output_path)
+
+        assert output_path.exists()
+        assert output_path.stat().st_size > 0
