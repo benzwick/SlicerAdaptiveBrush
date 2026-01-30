@@ -5,6 +5,9 @@ Tests the on-demand DICOM cache generation for gold standards:
 - DICOM SEG export from .seg.nrrd
 - Cache directory structure
 - CSE compatibility of generated DICOM
+
+Note: These tests require a compatible pydicom version. Slicer's bundled
+pydicom may not have all required features.
 """
 
 from __future__ import annotations
@@ -19,6 +22,23 @@ from SegmentEditorAdaptiveBrushTesterLib import TestCase, TestContext, register_
 from .fixtures.mock_segmentations import MockSegmentationFactory
 
 logger = logging.getLogger(__name__)
+
+
+def _check_pydicom_compatibility() -> tuple[bool, str]:
+    """Check if pydicom is compatible with our DICOM tests.
+
+    Returns:
+        Tuple of (is_compatible, error_message)
+    """
+    try:
+        import pydicom  # noqa: F401
+
+        # Try importing encaps module which may have API changes
+        from pydicom import encaps  # noqa: F401
+
+        return True, ""
+    except ImportError as e:
+        return False, f"pydicom import failed: {e}"
 
 
 @register_test(category="gold_standard")
@@ -37,6 +57,14 @@ class TestDicomCacheGeneration(TestCase):
     def setup(self, ctx: TestContext) -> None:
         """Set up test with sample data."""
         logger.info("Setting up DICOM cache test")
+
+        # Check pydicom compatibility
+        is_compatible, error_msg = _check_pydicom_compatibility()
+        if not is_compatible:
+            raise RuntimeError(
+                f"DICOM tests skipped: pydicom incompatible. {error_msg}\n"
+                "This may be due to Slicer's bundled pydicom version."
+            )
 
         slicer.mrmlScene.Clear(0)
 
@@ -265,6 +293,14 @@ class TestDicomCseCompatibility(TestCase):
     def setup(self, ctx: TestContext) -> None:
         """Set up test."""
         logger.info("Setting up CSE compatibility test")
+
+        # Check pydicom compatibility
+        is_compatible, error_msg = _check_pydicom_compatibility()
+        if not is_compatible:
+            raise RuntimeError(
+                f"DICOM tests skipped: pydicom incompatible. {error_msg}\n"
+                "This may be due to Slicer's bundled pydicom version."
+            )
 
         slicer.mrmlScene.Clear(0)
 
