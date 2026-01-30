@@ -94,6 +94,13 @@ class DependencyManager:
                 feature_description="Random Walker algorithm",
                 import_check="skimage.segmentation",
             ),
+            "geomdl": DependencySpec(
+                name="NURBS-Python (geomdl)",
+                pip_name="geomdl",
+                version_constraint=">=5.3",
+                feature_description="Volumetric NURBS generation for IGA/MFEM export",
+                import_check="geomdl.BSpline",
+            ),
         }
 
         # Session state - tracks user choices, failures, and in-progress installs
