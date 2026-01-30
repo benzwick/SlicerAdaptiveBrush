@@ -223,30 +223,35 @@ class TestDocsGettingStarted(TestCase):
         scripted_effect = self.effect.self()
 
         # Tumor center from gold standard: (-4.69, 29.50, 25.70)
-        # Use 20mm brush radius (appropriate for ~3cm tumor)
         self.tumor_center_ras = (-4.69, 29.50, 25.70)
-        scripted_effect.radiusSlider.value = 20.0
+
+        # 1. Apply MRI T1+Gd enhancing tumor preset (configures thresholds)
+        scripted_effect.applyPreset("mri_t1gd_tumor")
         slicer.app.processEvents()
 
-        # Select Watershed algorithm
+        # 2. Select Watershed algorithm
         combo = scripted_effect.algorithmCombo
         idx = combo.findData("watershed")
         if idx >= 0:
             combo.setCurrentIndex(idx)
         slicer.app.processEvents()
 
+        # 3. Set 25mm brush radius (from gold standard optimization)
+        scripted_effect.radiusSlider.value = 25.0
+        slicer.app.processEvents()
+
         self._record_step(
             ctx,
             "Configure Settings",
-            "**Brush Radius**: Controls the maximum area affected by each click. "
-            "Use a radius slightly smaller than your target structure. "
-            "Adjust with the slider or **Shift + scroll wheel**.\n\n"
-            "**Threshold Zone**: The inner circle where intensities are sampled to "
-            "determine what to segment. A smaller zone (e.g., 30%) segments only "
-            "tissue similar to the exact click point. A larger zone (e.g., 70%) "
-            "includes more variation. Adjust with **Ctrl + Shift + scroll wheel**.\n\n"
-            "**Algorithm**: Watershed is a good general-purpose choice for most cases.",
-            "Brush settings configured - radius 20mm, Watershed algorithm",
+            "**Preset**: Apply 'MRI T1+Gd Tumor' preset for contrast-enhanced tumors. "
+            "Presets configure intensity thresholds automatically.\n\n"
+            "**Algorithm**: Select Watershed - a good general-purpose choice for tumors.\n\n"
+            "**Brush Radius**: Set to match your target structure (~25mm for this tumor). "
+            "Adjust with **Shift + scroll wheel**.\n\n"
+            "**Threshold Zone**: Inner circle where intensities are sampled. Smaller zone "
+            "(30%) = stricter matching; larger zone (70%) = more variation. "
+            "Adjust with **Ctrl + Shift + scroll wheel**.",
+            "Brush settings configured - MRI T1+Gd preset, Watershed, 25mm radius",
         )
 
         # =========================================
@@ -323,10 +328,25 @@ class TestDocsGettingStarted(TestCase):
         self.segmentation_node.CreateClosedSurfaceRepresentation()
         slicer.app.processEvents()
 
-        # Reset 3D view to show the segmentation
+        # Ensure 3D visibility is enabled
+        display_node = self.segmentation_node.GetDisplayNode()
+        if display_node:
+            display_node.SetVisibility3D(True)
+            display_node.SetVisibility2D(True)
+        slicer.app.processEvents()
+
+        # Reset 3D view and zoom to show the segmentation
         threeDWidget = slicer.app.layoutManager().threeDWidget(0)
-        threeDWidget.threeDView().resetFocalPoint()
-        threeDWidget.threeDView().resetCamera()
+        threeDView = threeDWidget.threeDView()
+        threeDView.resetFocalPoint()
+        threeDView.resetCamera()
+        # Zoom in to see the segmentation better
+        threeDView.zoomFactor = 2.0
+        threeDView.zoomIn()
+        slicer.app.processEvents()
+
+        # Force render to ensure 3D surface appears
+        threeDView.forceRender()
         slicer.app.processEvents()
 
         self._record_step(
