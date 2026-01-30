@@ -667,3 +667,219 @@ class TestBranchPoint:
         assert bp.parent_direction is not None
         assert bp.child_directions is not None
         assert len(bp.child_directions) == 2
+
+
+class TestContainmentValidator:
+    """Tests for ContainmentValidator class."""
+
+    def test_containment_result_creation(self):
+        """Test creating a ContainmentResult."""
+        from ContainmentValidator import ContainmentResult
+
+        result = ContainmentResult(
+            is_contained=True,
+            containment_ratio=0.95,
+            outside_points=np.zeros((0, 3)),
+            max_outside_distance=0.0,
+        )
+
+        assert result.is_contained is True
+        assert result.containment_ratio == 0.95
+        assert len(result.outside_points) == 0
+
+    def test_containment_result_with_outside_points(self):
+        """Test ContainmentResult with outside points."""
+        from ContainmentValidator import ContainmentResult
+
+        outside_pts = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+
+        result = ContainmentResult(
+            is_contained=False,
+            containment_ratio=0.85,
+            outside_points=outside_pts,
+            max_outside_distance=2.5,
+        )
+
+        assert result.is_contained is False
+        assert result.containment_ratio == 0.85
+        assert len(result.outside_points) == 2
+        assert result.max_outside_distance == 2.5
+
+    def test_validator_initialization(self):
+        """Test ContainmentValidator initialization."""
+        from ContainmentValidator import ContainmentValidator
+
+        validator = ContainmentValidator(tolerance=1.0, surface_resolution=20)
+
+        assert validator.tolerance == 1.0
+        assert validator.surface_resolution == 20
+
+    def test_expansion_vectors_computation(self, cubic_control_points):
+        """Test computing expansion vectors for outside points."""
+        from ContainmentValidator import ContainmentValidator
+        from HexMeshGenerator import HexMesh
+        from NurbsVolumeBuilder import NurbsVolumeBuilder
+
+        # Create a simple hex mesh
+        hex_mesh = HexMesh(
+            control_points=cubic_control_points,
+            num_u=4,
+            num_v=4,
+            num_w=4,
+        )
+
+        # Build NURBS volume
+        builder = NurbsVolumeBuilder()
+        nurbs_vol = builder.build(hex_mesh, degree=1)
+
+        # Create validator
+        validator = ContainmentValidator()
+
+        # Points outside the bounding box
+        outside_points = np.array(
+            [
+                [15.0, 5.0, 5.0],  # Beyond x max
+                [5.0, 15.0, 5.0],  # Beyond y max
+            ]
+        )
+
+        # Compute expansion vectors
+        control_pts_3d = nurbs_vol.control_points.reshape(4, 4, 4, 3)
+        vectors = validator._compute_expansion_vectors(
+            control_pts_3d, outside_points, expansion_factor=1.1
+        )
+
+        # Should have computed some expansion vectors
+        assert len(vectors) > 0
+
+    def test_boundary_expansion_preserves_interior(self, cubic_control_points):
+        """Test that boundary expansion doesn't distort interior."""
+        from ContainmentValidator import ContainmentValidator
+
+        # Create 4x4x4 control points
+        control_pts_3d = cubic_control_points.copy()
+
+        # Create expansion at one corner
+        expansion_vectors = {
+            (3, 3, 3): np.array([1.0, 1.0, 1.0]),  # Expand corner outward
+        }
+
+        validator = ContainmentValidator()
+        expanded = validator._apply_boundary_expansion(control_pts_3d, expansion_vectors)
+
+        # The expanded corner should be moved
+        assert not np.allclose(expanded[3, 3, 3, :], control_pts_3d[3, 3, 3, :])
+
+        # Interior points not directly adjacent should be unchanged
+        # (Actually with smoothing, some neighbors might change slightly)
+        # Check that the opposite corner is unchanged
+        assert np.allclose(expanded[0, 0, 0, :], control_pts_3d[0, 0, 0, :])
+
+
+class TestQualityMetricsJacobian:
+    """Tests for QualityMetrics Jacobian computation."""
+
+    def test_jacobian_from_control_points(self, cubic_control_points):
+        """Test Jacobian computation from control points."""
+        from NurbsVolumeBuilder import NurbsVolume
+        from QualityMetrics import QualityMetrics
+
+        # Create a simple NURBS volume (without geomdl)
+        nurbs_vol = NurbsVolume(
+            control_points=cubic_control_points.reshape(-1, 3),
+            weights=np.ones(64),
+            knot_vectors=(
+                np.array([0, 0, 0, 0, 1, 1, 1, 1]),
+                np.array([0, 0, 0, 0, 1, 1, 1, 1]),
+                np.array([0, 0, 0, 0, 1, 1, 1, 1]),
+            ),
+            degrees=(3, 3, 3),
+            size=(4, 4, 4),
+            geomdl_volume=None,
+        )
+
+        metrics = QualityMetrics()
+        jacobian = metrics._compute_jacobian_from_control_points(nurbs_vol)
+
+        # For a regular grid, Jacobian should be positive (no inversions)
+        assert jacobian > 0
+
+    def test_jacobian_inverted_mesh(self):
+        """Test that inverted mesh gives negative Jacobian."""
+        from NurbsVolumeBuilder import NurbsVolume
+        from QualityMetrics import QualityMetrics
+
+        # Create a 2x2x2 mesh with one inverted cell
+        # (swap two vertices to create inversion)
+        control_points = np.zeros((2, 2, 2, 3))
+
+        # Normal hexahedron
+        control_points[0, 0, 0, :] = [0, 0, 0]
+        control_points[1, 0, 0, :] = [1, 0, 0]
+        control_points[0, 1, 0, :] = [0, 1, 0]
+        control_points[1, 1, 0, :] = [1, 1, 0]
+        control_points[0, 0, 1, :] = [0, 0, 1]
+        control_points[1, 0, 1, :] = [1, 0, 1]
+        control_points[0, 1, 1, :] = [0, 1, 1]
+        control_points[1, 1, 1, :] = [1, 1, 1]
+
+        # Invert by swapping z-layers (makes negative volume)
+        control_points[0, 0, 0, :], control_points[0, 0, 1, :] = (
+            control_points[0, 0, 1, :].copy(),
+            control_points[0, 0, 0, :].copy(),
+        )
+        control_points[1, 0, 0, :], control_points[1, 0, 1, :] = (
+            control_points[1, 0, 1, :].copy(),
+            control_points[1, 0, 0, :].copy(),
+        )
+        control_points[0, 1, 0, :], control_points[0, 1, 1, :] = (
+            control_points[0, 1, 1, :].copy(),
+            control_points[0, 1, 0, :].copy(),
+        )
+        control_points[1, 1, 0, :], control_points[1, 1, 1, :] = (
+            control_points[1, 1, 1, :].copy(),
+            control_points[1, 1, 0, :].copy(),
+        )
+
+        nurbs_vol = NurbsVolume(
+            control_points=control_points.reshape(-1, 3),
+            weights=np.ones(8),
+            knot_vectors=(
+                np.array([0, 0, 1, 1]),
+                np.array([0, 0, 1, 1]),
+                np.array([0, 0, 1, 1]),
+            ),
+            degrees=(1, 1, 1),
+            size=(2, 2, 2),
+            geomdl_volume=None,
+        )
+
+        metrics = QualityMetrics()
+        jacobian = metrics._compute_jacobian_from_control_points(nurbs_vol)
+
+        # Inverted mesh should have negative Jacobian
+        assert jacobian < 0
+
+
+class TestFittingQuality:
+    """Tests for FittingQuality dataclass."""
+
+    def test_fitting_quality_creation(self):
+        """Test creating a FittingQuality result."""
+        from QualityMetrics import FittingQuality
+
+        quality = FittingQuality(
+            hausdorff_distance=0.5,
+            mean_surface_distance=0.2,
+            rms_distance=0.3,
+            volume_ratio=1.1,
+            num_control_points=64,
+            min_jacobian=0.8,
+        )
+
+        assert quality.hausdorff_distance == 0.5
+        assert quality.mean_surface_distance == 0.2
+        assert quality.rms_distance == 0.3
+        assert quality.volume_ratio == 1.1
+        assert quality.num_control_points == 64
+        assert quality.min_jacobian == 0.8

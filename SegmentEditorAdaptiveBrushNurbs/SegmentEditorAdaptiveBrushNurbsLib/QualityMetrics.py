@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -284,21 +284,128 @@ class QualityMetrics:
     def _compute_jacobian_quality(
         self,
         nurbs_volume: NurbsVolume,
+        num_samples: int = 10,
     ) -> float:
         """Compute minimum Jacobian determinant of the NURBS mapping.
 
         A positive Jacobian everywhere indicates a valid (non-inverted)
-        parameterization.
+        parameterization. The Jacobian determinant measures local volume
+        change - negative values indicate inverted elements.
+
+        Args:
+            nurbs_volume: The NURBS volume.
+            num_samples: Number of sample points per parametric direction.
+
+        Returns:
+            Minimum Jacobian determinant (>0 for valid mesh, <0 for invalid).
+        """
+        if nurbs_volume.geomdl_volume is None:
+            # Without geomdl, use finite difference approximation on control points
+            return self._compute_jacobian_from_control_points(nurbs_volume)
+
+        # Sample Jacobian at interior points
+        min_jacobian = float("inf")
+        eps = 0.01  # Finite difference step
+
+        # Sample at regular parametric intervals (avoiding boundaries)
+        params = np.linspace(0.1, 0.9, num_samples)
+
+        for u in params:
+            for v in params:
+                for w in params:
+                    jacobian = self._compute_jacobian_at_point(
+                        nurbs_volume.geomdl_volume, u, v, w, eps
+                    )
+                    min_jacobian = min(min_jacobian, jacobian)
+
+        if min_jacobian == float("inf"):
+            return 1.0  # Fallback
+
+        return float(min_jacobian)
+
+    def _compute_jacobian_at_point(
+        self,
+        geomdl_volume: Any,
+        u: float,
+        v: float,
+        w: float,
+        eps: float,
+    ) -> float:
+        """Compute Jacobian determinant at a parametric point.
+
+        Uses finite differences to approximate partial derivatives
+        of the NURBS mapping.
+
+        Args:
+            geomdl_volume: The geomdl Volume object.
+            u, v, w: Parametric coordinates.
+            eps: Finite difference step size.
+
+        Returns:
+            Jacobian determinant at (u, v, w).
+        """
+        # Evaluate partial derivatives using central differences
+        # dX/du
+        p_u_plus = np.array(geomdl_volume.evaluate_single((min(u + eps, 1.0), v, w)))
+        p_u_minus = np.array(geomdl_volume.evaluate_single((max(u - eps, 0.0), v, w)))
+        dx_du = (p_u_plus - p_u_minus) / (2 * eps)
+
+        # dX/dv
+        p_v_plus = np.array(geomdl_volume.evaluate_single((u, min(v + eps, 1.0), w)))
+        p_v_minus = np.array(geomdl_volume.evaluate_single((u, max(v - eps, 0.0), w)))
+        dx_dv = (p_v_plus - p_v_minus) / (2 * eps)
+
+        # dX/dw
+        p_w_plus = np.array(geomdl_volume.evaluate_single((u, v, min(w + eps, 1.0))))
+        p_w_minus = np.array(geomdl_volume.evaluate_single((u, v, max(w - eps, 0.0))))
+        dx_dw = (p_w_plus - p_w_minus) / (2 * eps)
+
+        # Jacobian matrix
+        jacobian_matrix = np.column_stack([dx_du, dx_dv, dx_dw])
+
+        # Determinant
+        return float(np.linalg.det(jacobian_matrix))
+
+    def _compute_jacobian_from_control_points(
+        self,
+        nurbs_volume: NurbsVolume,
+    ) -> float:
+        """Compute approximate Jacobian quality from control points.
+
+        Used as fallback when geomdl is not available. Checks for
+        inverted hexahedral cells in the control mesh.
 
         Args:
             nurbs_volume: The NURBS volume.
 
         Returns:
-            Minimum Jacobian determinant (>0 for valid mesh).
+            Minimum Jacobian determinant estimate.
         """
-        # TODO: Implement proper Jacobian computation
-        # This requires computing partial derivatives of the NURBS mapping
-        # and evaluating the determinant at sample points
+        nu, nv, nw = nurbs_volume.size
+        control_points = nurbs_volume.control_points.reshape(nu, nv, nw, 3)
 
-        # For now, return a placeholder
-        return 1.0
+        min_jacobian = float("inf")
+
+        # Check each hexahedral cell in control mesh
+        for i in range(nu - 1):
+            for j in range(nv - 1):
+                for k in range(nw - 1):
+                    # Get 8 corner vertices of hex cell
+                    p000 = control_points[i, j, k, :]
+                    p100 = control_points[i + 1, j, k, :]
+                    p010 = control_points[i, j + 1, k, :]
+                    p001 = control_points[i, j, k + 1, :]
+
+                    # Compute edge vectors from p000
+                    e1 = p100 - p000  # du direction
+                    e2 = p010 - p000  # dv direction
+                    e3 = p001 - p000  # dw direction
+
+                    # Jacobian determinant = scalar triple product
+                    jacobian = np.dot(np.cross(e1, e2), e3)
+                    min_jacobian = min(min_jacobian, jacobian)
+
+        if min_jacobian == float("inf"):
+            return 1.0
+
+        return float(min_jacobian)

@@ -192,6 +192,44 @@ class NurbsVolumeBuilder:
 
         return nurbs_volume
 
+    def _rebuild_geomdl_volume(self, nurbs_volume: NurbsVolume) -> NurbsVolume:
+        """Rebuild the geomdl volume object for a NurbsVolume.
+
+        Used when control points have been modified and the geomdl
+        representation needs to be updated.
+
+        Args:
+            nurbs_volume: NurbsVolume with modified control points.
+
+        Returns:
+            NurbsVolume with rebuilt geomdl_volume.
+        """
+        if not self._check_geomdl_available():
+            return nurbs_volume
+
+        nu, nv, nw = nurbs_volume.size
+        control_points = nurbs_volume.control_points.reshape(nu, nv, nw, 3)
+        weights = nurbs_volume.weights.reshape(nu, nv, nw)
+        degree = nurbs_volume.degree
+
+        geomdl_volume = self._build_geomdl_volume(
+            control_points=control_points,
+            weights=weights,
+            knot_u=nurbs_volume.knot_vectors[0],
+            knot_v=nurbs_volume.knot_vectors[1],
+            knot_w=nurbs_volume.knot_vectors[2],
+            degree=degree,
+        )
+
+        return NurbsVolume(
+            control_points=nurbs_volume.control_points,
+            weights=nurbs_volume.weights,
+            knot_vectors=nurbs_volume.knot_vectors,
+            degrees=nurbs_volume.degrees,
+            size=nurbs_volume.size,
+            geomdl_volume=geomdl_volume,
+        )
+
     def build_multi_patch(
         self,
         hex_meshes: list[HexMesh],
