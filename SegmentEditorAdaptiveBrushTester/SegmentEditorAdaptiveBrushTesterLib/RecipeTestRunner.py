@@ -92,7 +92,12 @@ class RecipeTestRunner:
         Returns:
             List of (recipe_path, gold_standard_name) tuples.
         """
+        import os
+
         recipes_dir = Path(__file__).parent.parent / "recipes"
+        project_root = Path(__file__).parent.parent.parent
+        is_ci = os.environ.get("CI", "").lower() in ("true", "1", "yes")
+
         if not recipes_dir.exists():
             return []
 
@@ -105,6 +110,22 @@ class RecipeTestRunner:
             try:
                 recipe = Recipe.load(recipe_file)
                 if recipe.gold_standard:
+                    # Check if recipe requires external DICOM data
+                    if recipe.dicom_source:
+                        dicom_path = project_root / recipe.dicom_source
+                        if not dicom_path.exists():
+                            if is_ci:
+                                logger.warning(
+                                    f"Skipping recipe {recipe.name} in CI: external data "
+                                    f"not found at {recipe.dicom_source}"
+                                )
+                                continue
+                            else:
+                                logger.warning(
+                                    f"Recipe {recipe.name} requires external data at "
+                                    f"{recipe.dicom_source} (not found, will fail)"
+                                )
+
                     # Verify gold standard exists
                     if self._gold_manager.gold_exists(recipe.gold_standard):
                         results.append((recipe_file, recipe.gold_standard))
