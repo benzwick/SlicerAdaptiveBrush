@@ -116,7 +116,9 @@ echo ""
 # Step 4: Extension JSON
 echo "=== Extension Index JSON ==="
 
-JSON_FILE=$(find . -maxdepth 1 -name "*.json" -type f 2>/dev/null | grep -v package | grep -v tsconfig | head -1 || echo "")
+# Get extension name from CMakeLists.txt - single source of truth
+EXT_NAME=$(grep -oP 'project\(\K[^)]+' CMakeLists.txt 2>/dev/null || echo "")
+JSON_FILE="./$EXT_NAME.json"
 
 if [ -n "$JSON_FILE" ] && [ -f "$JSON_FILE" ]; then
     info "Found: $JSON_FILE"
