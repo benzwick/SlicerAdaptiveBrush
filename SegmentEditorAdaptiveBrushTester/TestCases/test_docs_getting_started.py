@@ -62,6 +62,8 @@ class TestDocsGettingStarted(TestCase):
         self.effect = None
         self.steps: list[dict] = []
         self.output_dir: Path | None = None
+        # Tumor center from gold standard (set in run method)
+        self.tumor_center_ras: tuple[float, float, float] | None = None
 
     def setup(self, ctx: TestContext) -> None:
         """Set up for tutorial documentation."""
@@ -220,8 +222,10 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         scripted_effect = self.effect.self()
 
-        # Set reasonable defaults for demo
-        scripted_effect.radiusSlider.value = 15.0
+        # Tumor center from gold standard: (-4.69, 29.50, 25.70)
+        # Use 20mm brush radius (appropriate for ~3cm tumor)
+        self.tumor_center_ras = (-4.69, 29.50, 25.70)
+        scripted_effect.radiusSlider.value = 20.0
         slicer.app.processEvents()
 
         # Select Watershed algorithm
@@ -242,25 +246,23 @@ class TestDocsGettingStarted(TestCase):
             "tissue similar to the exact click point. A larger zone (e.g., 70%) "
             "includes more variation. Adjust with **Ctrl + Shift + scroll wheel**.\n\n"
             "**Algorithm**: Watershed is a good general-purpose choice for most cases.",
-            "Brush settings configured - radius 15mm, Watershed algorithm",
+            "Brush settings configured - radius 20mm, Watershed algorithm",
         )
 
         # =========================================
         # Step 6: Navigate to Tumor Region
         # =========================================
-        # Navigate to a slice showing the tumor (MRBrainTumor1 has tumor around slice 50)
+        # Navigate to tumor center slice (z=25.70 from gold standard)
         red_widget = slicer.app.layoutManager().sliceWidget("Red")
         red_logic = red_widget.sliceLogic()
-        # Navigate to tumor region - offset ~25mm shows tumor in MRBrainTumor1
-        red_logic.SetSliceOffset(25)
+        red_logic.SetSliceOffset(self.tumor_center_ras[2])  # Navigate to tumor z-coordinate
         slicer.app.processEvents()
 
-        # Show brush preview over the tumor area
+        # Show brush preview at the actual tumor center
         view_widget = red_widget
-        size = view_widget.sliceView().renderWindow().GetSize()
-        # Position slightly off-center where tumor typically is
-        tumor_xy = (int(size[0] * 0.45), int(size[1] * 0.5))
-        scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
+        tumor_xy = self._ras_to_xy(self.tumor_center_ras, view_widget)
+        if tumor_xy:
+            scripted_effect._updateBrushPreview(tumor_xy, view_widget, eraseMode=False)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -275,9 +277,8 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 7: Paint Segmentation
         # =========================================
-        # Convert XY to RAS for paintAt
-        tumor_ras = self._xy_to_ras(tumor_xy, view_widget)
-        scripted_effect.paintAt(tumor_ras[0], tumor_ras[1], tumor_ras[2])
+        # Paint at tumor center (from gold standard)
+        scripted_effect.paintAt(*self.tumor_center_ras)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -293,10 +294,10 @@ class TestDocsGettingStarted(TestCase):
         # =========================================
         # Step 8: Continue Painting
         # =========================================
-        # Add another stroke to show how to build up segmentation
-        tumor_xy2 = (int(size[0] * 0.42), int(size[1] * 0.48))
-        tumor_ras2 = self._xy_to_ras(tumor_xy2, view_widget)
-        scripted_effect.paintAt(tumor_ras2[0], tumor_ras2[1], tumor_ras2[2])
+        # Add another stroke from the recipe to extend segmentation
+        # Using click point 2 from brain_tumor_1 recipe: (-5.31, 25.12, 35.97)
+        second_click_ras = (-5.31, 25.12, 35.97)
+        scripted_effect.paintAt(*second_click_ras)
         view_widget.sliceView().forceRender()
         slicer.app.processEvents()
 
@@ -352,6 +353,23 @@ class TestDocsGettingStarted(TestCase):
         xy_to_ras.MultiplyPoint(xy_point, ras_point)
 
         return (ras_point[0], ras_point[1], ras_point[2])
+
+    def _ras_to_xy(self, ras: tuple[float, float, float], slice_widget) -> tuple[int, int] | None:
+        """Convert RAS world coordinates to XY screen coordinates."""
+        import vtk
+
+        slice_logic = slice_widget.sliceLogic()
+        slice_node = slice_logic.GetSliceNode()
+
+        xy_to_ras = slice_node.GetXYToRAS()
+        ras_to_xy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(xy_to_ras, ras_to_xy)
+
+        ras_point = [ras[0], ras[1], ras[2], 1.0]
+        xy_point = [0.0, 0.0, 0.0, 1.0]
+        ras_to_xy.MultiplyPoint(ras_point, xy_point)
+
+        return (int(xy_point[0]), int(xy_point[1]))
 
     def verify(self, ctx: TestContext) -> None:
         """Verify tutorial completed and generate documentation."""
