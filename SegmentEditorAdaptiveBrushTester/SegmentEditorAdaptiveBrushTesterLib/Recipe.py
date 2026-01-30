@@ -34,7 +34,8 @@ class Recipe:
     Attributes:
         name: Recipe name (from filename).
         path: Path to the recipe file.
-        sample_data: Slicer SampleData name to load.
+        sample_data: Slicer SampleData name to load (or empty if using dicom_source).
+        dicom_source: Path to DICOM directory relative to project root (or empty if using sample_data).
         segment_name: Name for the segment to create.
         gold_standard: Name of gold standard to compare against (optional).
         run: The run(effect) function to execute.
@@ -44,6 +45,7 @@ class Recipe:
     name: str
     path: Path
     sample_data: str
+    dicom_source: str
     segment_name: str
     gold_standard: str | None
     run: Callable[[Any], None]
@@ -80,6 +82,7 @@ class Recipe:
             raise AttributeError(f"Recipe must define run(effect) function: {path}")
 
         sample_data = getattr(module, "sample_data", "")
+        dicom_source = getattr(module, "dicom_source", "")
         segment_name = getattr(module, "segment_name", "Segment")
         gold_standard = getattr(module, "gold_standard", None)
 
@@ -89,6 +92,7 @@ class Recipe:
             name=path.stem,
             path=path,
             sample_data=sample_data,
+            dicom_source=dicom_source,
             segment_name=segment_name,
             gold_standard=gold_standard,
             run=module.run,

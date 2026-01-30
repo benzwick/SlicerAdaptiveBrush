@@ -1,0 +1,127 @@
+{
+  "name": "idc_ct_lung",
+  "description": "IDC gold standard for ct_lung preset",
+  "source": "NCI Imaging Data Commons",
+  "idc_collection": "nlst",
+  "idc_patient": "104551",
+  "preset": "ct_lung",
+  "created_at": "2026-01-30T02:14:39.188025",
+  "clicks": [
+    {
+      "ras": [
+        -11.81647000000001,
+        -0.4391260000000159,
+        -120.60000206400002
+      ]
+    },
+    {
+      "ras": [
+        51.07417799999999,
+        7.080408000000006,
+        -205.60000369600002
+      ]
+    },
+    {
+      "ras": [
+        43.554643999999996,
+        -46.923518,
+        -95.60000158400001
+      ]
+    },
+    {
+      "ras": [
+        29.88276399999998,
+        66.55308600000001,
+        -140.600002448
+      ]
+    },
+    {
+      "ras": [
+        -4.2969360000000165,
+        -0.4391260000000159,
+        -293.100005376
+      ]
+    }
+  ],
+  "parameters": {
+    "brush_radius_mm": 15.0
+  },
+  "statistics": {
+    "voxel_count": 9714742,
+    "segment_names": [
+      "Spleen",
+      "Right Kidney",
+      "Left Kidney",
+      "Gallbladder",
+      "Liver",
+      "Stomach",
+      "Aorta",
+      "Inferior vena cava",
+      "Portal vein and splenic vein",
+      "Pancreas",
+      "Right Adrenal gland",
+      "Left Adrenal gland",
+      "Left Upper lobe of lung",
+      "Left Lower lobe of lung",
+      "Right Upper lobe of lung",
+      "Middle lobe of right lung",
+      "Right Lower lobe of lung",
+      "L1 vertebra",
+      "T12 vertebra",
+      "T11 vertebra",
+      "T10 vertebra",
+      "T9 vertebra",
+      "T8 vertebra",
+      "T7 vertebra",
+      "T6 vertebra",
+      "T5 vertebra",
+      "T4 vertebra",
+      "T3 vertebra",
+      "T2 vertebra",
+      "T1 vertebra",
+      "Esophagus",
+      "Trachea",
+      "Myocardium",
+      "Left atrium",
+      "Left ventricle of heart",
+      "Right atrium",
+      "Right ventricle of heart",
+      "Pulmonary artery",
+      "Colon",
+      "Left First rib",
+      "Left Second rib",
+      "Left Third rib",
+      "Left Fourth rib",
+      "Left Fifth rib",
+      "Left Sixth rib",
+      "Left Seventh rib",
+      "Left Eighth rib",
+      "Left Ninth rib",
+      "Left Tenth rib",
+      "Left Eleventh rib",
+      "Left Twelfth rib",
+      "Right First rib",
+      "Right Second rib",
+      "Right Third rib",
+      "Right Fourth rib",
+      "Right Fifth rib",
+      "Right Sixth rib",
+      "Right Seventh rib",
+      "Right Eighth rib",
+      "Right Ninth rib",
+      "Right Tenth rib",
+      "Right Eleventh rib",
+      "Right Twelfth rib",
+      "Left Humerus",
+      "Right Humerus",
+      "Left Scapula",
+      "Right Scapula",
+      "Left Clavicle",
+      "Right Clavicle",
+      "Left Deep muscle of back",
+      "Right Deep muscle of back",
+      "Left Iliopsoas muscle",
+      "Right Iliopsoas muscle"
+    ]
+  }
+}

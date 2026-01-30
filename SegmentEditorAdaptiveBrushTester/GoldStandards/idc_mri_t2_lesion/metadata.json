@@ -1,0 +1,56 @@
+{
+  "name": "idc_mri_t2_lesion",
+  "description": "IDC gold standard for mri_t2_lesion preset",
+  "source": "NCI Imaging Data Commons",
+  "idc_collection": "upenn_gbm",
+  "idc_patient": "UPENN-GBM-00220",
+  "preset": "mri_t2_lesion",
+  "created_at": "2026-01-30T02:26:47.925965",
+  "clicks": [
+    {
+      "ras": [
+        42.51746738266875,
+        -29.9796175698,
+        54.2228928
+      ]
+    },
+    {
+      "ras": [
+        40.642470288918744,
+        -29.976345079218746,
+        48.2228928
+      ]
+    },
+    {
+      "ras": [
+        49.10122839957187,
+        -17.80359017745937,
+        54.2228928
+      ]
+    },
+    {
+      "ras": [
+        42.528921099703126,
+        -23.417127741675003,
+        51.2228928
+      ]
+    },
+    {
+      "ras": [
+        44.39410072170937,
+        -29.045391513506246,
+        42.2228928
+      ]
+    }
+  ],
+  "parameters": {
+    "brush_radius_mm": 15.0
+  },
+  "statistics": {
+    "voxel_count": 1883,
+    "segment_names": [
+      "Edema",
+      "Enhancing Lesion"
+    ]
+  }
+}

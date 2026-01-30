@@ -105,6 +105,7 @@ class RecipeSpec:
 
     path: Path
     gold_standard: Path | None = None
+    dicom_source: str | None = None
     weight: float = 1.0
 
 
@@ -238,6 +239,7 @@ class OptimizationConfig:
                 gold_standard=Path(recipe_data["gold_standard"])
                 if "gold_standard" in recipe_data
                 else None,
+                dicom_source=recipe_data.get("dicom_source"),
                 weight=recipe_data.get("weight", 1.0),
             )
             config.recipes.append(recipe_spec)

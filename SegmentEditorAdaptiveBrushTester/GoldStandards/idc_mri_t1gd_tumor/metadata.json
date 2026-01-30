@@ -1,0 +1,57 @@
+{
+  "name": "idc_mri_t1gd_tumor",
+  "description": "IDC gold standard for mri_t1gd_tumor preset",
+  "source": "NCI Imaging Data Commons",
+  "idc_collection": "upenn_gbm",
+  "idc_patient": "UPENN-GBM-00454",
+  "preset": "mri_t1gd_tumor",
+  "created_at": "2026-01-30T02:26:48.538291",
+  "clicks": [
+    {
+      "ras": [
+        56.74606493717773,
+        14.628925068945307,
+        15.8669586
+      ]
+    },
+    {
+      "ras": [
+        43.12534379391601,
+        43.949616569277325,
+        20.8669586
+      ]
+    },
+    {
+      "ras": [
+        48.94721242397461,
+        22.455048336992178,
+        23.8669586
+      ]
+    },
+    {
+      "ras": [
+        48.913123980419925,
+        2.9238286104296805,
+        9.86695862
+      ]
+    },
+    {
+      "ras": [
+        43.072506706406244,
+        13.676225993105461,
+        18.8669586
+      ]
+    }
+  ],
+  "parameters": {
+    "brush_radius_mm": 15.0
+  },
+  "statistics": {
+    "voxel_count": 64933,
+    "segment_names": [
+      "Necrosis",
+      "Edema",
+      "Enhancing Lesion"
+    ]
+  }
+}

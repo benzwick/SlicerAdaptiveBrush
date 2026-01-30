@@ -1,0 +1,71 @@
+{
+  "name": "idc_ct_bone",
+  "description": "IDC gold standard for ct_bone preset",
+  "source": "NCI Imaging Data Commons",
+  "idc_collection": "spine_mets_ct_seg",
+  "idc_patient": "12855",
+  "preset": "ct_bone",
+  "created_at": "2026-01-30T02:26:37.351255",
+  "clicks": [
+    {
+      "ras": [
+        -6.00684259999997,
+        181.4326236,
+        65.7000122
+      ]
+    },
+    {
+      "ras": [
+        -12.063483399999996,
+        152.014654,
+        122.700012
+      ]
+    },
+    {
+      "ras": [
+        -6.87207699999999,
+        190.0849676,
+        35.7000122
+      ]
+    },
+    {
+      "ras": [
+        13.893548600000031,
+        164.1279356,
+        44.7000122
+      ]
+    },
+    {
+      "ras": [
+        -18.985358599999984,
+        124.3271532,
+        212.700012
+      ]
+    }
+  ],
+  "parameters": {
+    "brush_radius_mm": 15.0
+  },
+  "statistics": {
+    "voxel_count": 309128,
+    "segment_names": [
+      "T1 vertebra",
+      "T2 vertebra",
+      "T3 vertebra",
+      "T4 vertebra",
+      "T5 vertebra",
+      "T6 vertebra",
+      "T7 vertebra",
+      "T8 vertebra",
+      "T9 vertebra",
+      "T10 vertebra",
+      "T11 vertebra",
+      "T12 vertebra",
+      "L1 vertebra",
+      "L2 vertebra",
+      "L3 vertebra",
+      "L4 vertebra",
+      "L5 vertebra"
+    ]
+  }
+}

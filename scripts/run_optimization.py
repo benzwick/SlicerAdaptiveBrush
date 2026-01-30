@@ -63,26 +63,138 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def setup_slicer_scene(sample_data_name: str):
-    """Load sample data and set up Slicer scene.
+def load_dicom_volume(dicom_dir: Path):
+    """Load DICOM volume from directory.
 
     Args:
-        sample_data_name: Name of Slicer SampleData to load.
+        dicom_dir: Directory containing DICOM files.
+
+    Returns:
+        Loaded volume node.
+    """
+    import slicer
+    from DICOMLib import DICOMUtils
+
+    logger.info(f"Loading DICOM from: {dicom_dir}")
+
+    # Find volume subdirectory (CT_*, MR_*, PT_*)
+    volume_subdir = None
+    for subdir in dicom_dir.iterdir():
+        if subdir.is_dir() and subdir.name.startswith(("CT_", "MR_", "PT_")):
+            volume_subdir = subdir
+            break
+
+    if volume_subdir is None:
+        raise FileNotFoundError(f"No volume directory found in {dicom_dir}")
+
+    # Import into DICOM database
+    with DICOMUtils.TemporaryDICOMDatabase() as db:
+        DICOMUtils.importDicom(str(volume_subdir), db)
+
+        for patient in db.patients():
+            for study in db.studiesForPatient(patient):
+                for series in db.seriesForStudy(study):
+                    files = db.filesForSeries(series)
+                    plugin = slicer.modules.dicomPlugins["DICOMScalarVolumePlugin"]()
+                    loadables = plugin.examine([files])
+                    if loadables:
+                        node = plugin.load(loadables[0])
+                        if node:
+                            logger.info(f"Loaded DICOM volume: {node.GetName()}")
+                            return node
+
+    raise RuntimeError(f"Failed to load DICOM from {dicom_dir}")
+
+
+def load_dicom_seg(dicom_dir: Path):
+    """Load DICOM SEG segmentation from directory.
+
+    Args:
+        dicom_dir: Directory containing DICOM data with SEG_* subdirectory.
+
+    Returns:
+        Loaded segmentation node.
+    """
+    import slicer
+    from DICOMLib import DICOMUtils
+
+    # Find SEG subdirectory
+    seg_subdir = None
+    for subdir in dicom_dir.iterdir():
+        if subdir.is_dir() and subdir.name.startswith("SEG_"):
+            seg_subdir = subdir
+            break
+
+    if seg_subdir is None:
+        raise FileNotFoundError(f"No SEG directory found in {dicom_dir}")
+
+    logger.info(f"Loading DICOM SEG from: {seg_subdir}")
+
+    # Count segmentation nodes before loading
+    num_seg_before = slicer.mrmlScene.GetNumberOfNodesByClass("vtkMRMLSegmentationNode")
+
+    # Import into DICOM database
+    with DICOMUtils.TemporaryDICOMDatabase() as db:
+        DICOMUtils.importDicom(str(seg_subdir), db)
+
+        for patient in db.patients():
+            for study in db.studiesForPatient(patient):
+                for series in db.seriesForStudy(study):
+                    files = db.filesForSeries(series)
+                    # Try DICOM SEG plugin
+                    if "DICOMSegmentationPlugin" in slicer.modules.dicomPlugins:
+                        plugin = slicer.modules.dicomPlugins["DICOMSegmentationPlugin"]()
+                        loadables = plugin.examine([files])
+                        if loadables:
+                            success = plugin.load(loadables[0])
+                            if success:
+                                # Get the newly added segmentation node
+                                num_seg_after = slicer.mrmlScene.GetNumberOfNodesByClass(
+                                    "vtkMRMLSegmentationNode"
+                                )
+                                if num_seg_after > num_seg_before:
+                                    node = slicer.mrmlScene.GetNthNodeByClass(
+                                        num_seg_after - 1, "vtkMRMLSegmentationNode"
+                                    )
+                                    logger.info(f"Loaded DICOM SEG: {node.GetName()}")
+                                    return node
+
+    raise RuntimeError(f"Failed to load DICOM SEG from {dicom_dir}")
+
+
+def setup_slicer_scene(sample_data_name: str | None = None, dicom_source: str | None = None):
+    """Load data and set up Slicer scene.
+
+    Supports both Slicer SampleData and DICOM sources.
+
+    Args:
+        sample_data_name: Name of Slicer SampleData to load (e.g., 'MRBrainTumor1').
+        dicom_source: Path to DICOM directory relative to project root (e.g., 'idc_data/ct_lung').
 
     Returns:
         Tuple of (volume_node, segmentation_node, segment_id).
     """
-    import SampleData
     import slicer
 
-    logger.info(f"Loading sample data: {sample_data_name}")
     slicer.mrmlScene.Clear(0)
 
-    volume_node = SampleData.downloadSample(sample_data_name)
-    if volume_node is None:
-        raise RuntimeError(f"Failed to load sample data: {sample_data_name}")
+    if dicom_source:
+        # Load from DICOM
+        dicom_dir = PROJECT_ROOT / dicom_source
+        if not dicom_dir.exists():
+            raise FileNotFoundError(f"DICOM directory not found: {dicom_dir}")
+        volume_node = load_dicom_volume(dicom_dir)
+    elif sample_data_name:
+        # Load from SampleData
+        import SampleData
 
-    logger.info(f"Loaded volume: {volume_node.GetName()}")
+        logger.info(f"Loading sample data: {sample_data_name}")
+        volume_node = SampleData.downloadSample(sample_data_name)
+        if volume_node is None:
+            raise RuntimeError(f"Failed to load sample data: {sample_data_name}")
+        logger.info(f"Loaded volume: {volume_node.GetName()}")
+    else:
+        raise ValueError("Either sample_data_name or dicom_source must be provided")
 
     # Create segmentation
     segmentation_node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
@@ -241,14 +353,15 @@ def compute_dice(
         return 0.0
 
 
-def load_gold_standard(gold_name: str, volume_node=None):
+def load_gold_standard(gold_name: str, volume_node=None, dicom_source: str | None = None):
     """Load gold standard segmentation and metadata.
 
-    Loads from .seg.nrrd format and verifies checksum if volume provided.
+    Supports both NRRD and DICOM SEG formats.
 
     Args:
         gold_name: Name of the gold standard.
         volume_node: Reference volume for checksum verification (optional but recommended).
+        dicom_source: Path to DICOM directory (for DICOM SEG gold standards).
 
     Returns:
         Tuple of (gold_seg_node, gold_segment_id, click_locations, metadata).
@@ -262,12 +375,23 @@ def load_gold_standard(gold_name: str, volume_node=None):
     if not gold_path.exists():
         raise FileNotFoundError(f"Gold standard not found: {gold_path}")
 
-    # Load segmentation from .seg.nrrd
-    seg_file = gold_path / "gold.seg.nrrd"
-    if not seg_file.exists():
-        raise FileNotFoundError(f"Segmentation file not found: {seg_file}")
+    # Load metadata first to check source type
+    metadata_file = gold_path / "metadata.json"
+    with open(metadata_file) as f:
+        metadata = json.load(f)
 
-    gold_seg_node = slicer.util.loadSegmentation(str(seg_file))
+    # Check if this is a DICOM-based gold standard
+    if metadata.get("source") == "NCI Imaging Data Commons" and dicom_source:
+        # Load from DICOM SEG
+        dicom_dir = PROJECT_ROOT / dicom_source
+        logger.info(f"Loading gold standard from DICOM SEG: {dicom_dir}")
+        gold_seg_node = load_dicom_seg(dicom_dir)
+    else:
+        # Load segmentation from .seg.nrrd
+        seg_file = gold_path / "gold.seg.nrrd"
+        if not seg_file.exists():
+            raise FileNotFoundError(f"Segmentation file not found: {seg_file}")
+        gold_seg_node = slicer.util.loadSegmentation(str(seg_file))
 
     # Show gold standard as outline only in a distinct color (gold)
     display_node = gold_seg_node.GetDisplayNode()
@@ -457,8 +581,20 @@ def run_optimization(
         raise ValueError("No gold standard specified in recipe or config")
 
     # Set up scene FIRST (it clears the scene)
-    logger.info(f"Loading sample data: {recipe.sample_data}")
-    volume_node, segmentation_node, segment_id = setup_slicer_scene(recipe.sample_data)
+    # Support both SampleData and DICOM sources
+    dicom_source = recipe.dicom_source or (
+        str(recipe_spec.dicom_source)
+        if hasattr(recipe_spec, "dicom_source") and recipe_spec.dicom_source
+        else None
+    )
+    if dicom_source:
+        logger.info(f"Loading DICOM from: {dicom_source}")
+        volume_node, segmentation_node, segment_id = setup_slicer_scene(dicom_source=dicom_source)
+    else:
+        logger.info(f"Loading sample data: {recipe.sample_data}")
+        volume_node, segmentation_node, segment_id = setup_slicer_scene(
+            sample_data_name=recipe.sample_data
+        )
 
     # Initialize DICOM manager (required - no fallback)
     # Add reviewer lib to path for DicomManager
@@ -474,10 +610,10 @@ def run_optimization(
     logger.info("DICOM database initialized")
 
     # Load gold standard AFTER scene setup (so it doesn't get cleared)
-    # Pass volume_node for checksum verification
+    # Pass volume_node for checksum verification and dicom_source for DICOM SEG loading
     logger.info(f"Loading gold standard: {gold_name}")
     gold_seg_node, gold_segment_id, click_locations, gold_metadata = load_gold_standard(
-        gold_name, volume_node=volume_node
+        gold_name, volume_node=volume_node, dicom_source=dicom_source
     )
     logger.info(f"Gold standard has {len(click_locations)} clicks")
 
