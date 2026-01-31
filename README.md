@@ -10,8 +10,8 @@ An **Adaptive Brush** segment editor effect for [3D Slicer](https://www.slicer.o
 ![Adaptive Brush in action](Screenshots/main-ui.png)
 
 **[Documentation](https://benzwick.github.io/SlicerAdaptiveBrush/)** |
-[User Guide](https://benzwick.github.io/SlicerAdaptiveBrush/user-guide/) |
-[Algorithms](https://benzwick.github.io/SlicerAdaptiveBrush/algorithms/)
+[User Guide](https://benzwick.github.io/SlicerAdaptiveBrush/user_guide/getting_started.html) |
+[Algorithms](https://benzwick.github.io/SlicerAdaptiveBrush/user_guide/algorithms.html)
 
 ## What is Adaptive Brush?
 
@@ -69,7 +69,7 @@ The Adaptive Brush automatically segments regions based on image intensity simil
 | Connected Threshold | Very Fast | Quick rough segmentation |
 | Threshold Brush | Very Fast | Simple intensity thresholding |
 
-See the [Algorithms Guide](https://benzwick.github.io/SlicerAdaptiveBrush/algorithms/) for details.
+See the [Algorithms Guide](https://benzwick.github.io/SlicerAdaptiveBrush/user_guide/algorithms.html) for details.
 
 ## Troubleshooting
 
