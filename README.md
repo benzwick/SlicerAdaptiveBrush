@@ -7,7 +7,7 @@
 
 An **Adaptive Brush** segment editor effect for [3D Slicer](https://www.slicer.org/).
 
-<!-- ![Adaptive Brush in action](Screenshots/main-ui.png) -->
+![Adaptive Brush in action](Screenshots/main-ui.png)
 
 **[Documentation](https://benzwick.github.io/SlicerAdaptiveBrush/)** |
 [User Guide](https://benzwick.github.io/SlicerAdaptiveBrush/user-guide/) |
