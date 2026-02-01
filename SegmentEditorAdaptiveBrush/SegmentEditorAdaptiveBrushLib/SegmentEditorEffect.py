@@ -541,8 +541,9 @@ class ThresholdRangeBar(qt.QWidget):
         try:
             painter.setRenderHint(qt.QPainter.Antialiasing)
 
-            w = self.width()
-            h = self.height()
+            # PythonQt exposes width/height as properties, not methods
+            w = self.width
+            h = self.height
             bar_height = 20
             bar_y = (h - bar_height) // 2
 
