@@ -23,7 +23,7 @@ Segment Editor effect icons follow conventions:
 
 | Location | Size | Purpose |
 |----------|------|---------|
-| `SlicerAdaptiveBrush.png` | ~128x128 | Extension manager |
+| `AdaptiveBrush.png` | ~128x128 | Extension manager |
 | `SegmentEditorAdaptiveBrush/Resources/Icons/SegmentEditorAdaptiveBrush.png` | 21x21 | Effect toolbar |
 | `SegmentEditorAdaptiveBrushLib/SegmentEditorEffect.png` | 21x21 | Alt effect icon path |
 

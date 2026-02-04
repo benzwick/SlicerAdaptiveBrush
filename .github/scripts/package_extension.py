@@ -114,7 +114,7 @@ def copy_module_files(src_dir: Path, dest_dir: Path) -> None:
             print(f"Warning: Resource not found: {src_file}")
 
     # Copy extension-level files
-    for filename in ["CMakeLists.txt", "LICENSE", "README.md", "SlicerAdaptiveBrush.png"]:
+    for filename in ["CMakeLists.txt", "LICENSE", "README.md", "AdaptiveBrush.png"]:
         src_file = src_dir / filename
         if src_file.exists():
             shutil.copy2(src_file, dest_dir / filename)

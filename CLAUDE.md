@@ -38,7 +38,7 @@ SlicerAdaptiveBrush/
 ├── LICENSE                                # Apache 2.0
 ├── README.md                              # Project overview
 ├── CMakeLists.txt                         # Extension build config
-├── SlicerAdaptiveBrush.png                # Extension icon
+├── AdaptiveBrush.png                      # Extension icon
 ├── .claude/
 │   ├── settings.local.json
 │   └── skills/                            # Claude skill files

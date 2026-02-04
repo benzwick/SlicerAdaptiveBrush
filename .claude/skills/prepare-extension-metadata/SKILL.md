@@ -176,7 +176,7 @@ For this extension, use:
 set(EXTENSION_HOMEPAGE "https://github.com/benzwick/SlicerAdaptiveBrush#readme")
 set(EXTENSION_CONTRIBUTORS "Ben Zwick (contributor)")
 set(EXTENSION_DESCRIPTION "Adaptive brush segment editor effect that automatically segments regions based on image intensity similarity, adapting to image features rather than using a fixed geometric shape.")
-set(EXTENSION_ICONURL "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/SlicerAdaptiveBrush.png")
+set(EXTENSION_ICONURL "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/AdaptiveBrush.png")
 set(EXTENSION_SCREENSHOTURLS "https://raw.githubusercontent.com/benzwick/SlicerAdaptiveBrush/main/Screenshots/screenshot1.png")
 set(EXTENSION_DEPENDS "NA")
 ```
