@@ -23,6 +23,7 @@ ALGORITHMS = [
     ("geodesic_distance", "Geodesic Distance"),
     ("watershed", "Watershed"),
     ("random_walker", "Random Walker"),
+    ("gradient_region_growing", "Gradient Region Growing"),
     ("level_set", "Level Set"),
     ("connected_threshold", "Connected Threshold"),
     ("region_growing", "Region Growing"),
