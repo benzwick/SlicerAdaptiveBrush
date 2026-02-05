@@ -20,6 +20,7 @@ class TestDependencySpec:
             pip_name="scikit-learn",
             version_constraint=">=1.0",
             feature_description="GMM-based intensity analysis",
+            fallback_description="Falls back to simple statistics",
             import_check="sklearn.mixture",
         )
 
@@ -27,6 +28,7 @@ class TestDependencySpec:
         assert spec.pip_name == "scikit-learn"
         assert spec.version_constraint == ">=1.0"
         assert spec.feature_description == "GMM-based intensity analysis"
+        assert spec.fallback_description == "Falls back to simple statistics"
         assert spec.import_check == "sklearn.mixture"
 
 
