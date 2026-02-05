@@ -2643,6 +2643,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 from IntensityAnalyzer import IntensityAnalyzer
 
                 self.intensityAnalyzer = IntensityAnalyzer()
+                # Update UI to show GMM is now active
+                self._updateIntensityModeLabel()
             else:
                 logging.debug("activate: sklearn not available, using fallback")
         logging.debug("AdaptiveBrush activate() complete")
