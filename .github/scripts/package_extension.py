@@ -79,8 +79,45 @@ description {EXTENSION_DESCRIPTION}
 """
 
 
-def copy_module_files(src_dir: Path, dest_dir: Path) -> None:
-    """Copy module files according to CMakeLists.txt configuration."""
+def get_slicer_major_minor(revision: str) -> str:
+    """Get Slicer major.minor version for a revision number (e.g., '5.10')."""
+    version = get_slicer_version(revision)
+    parts = version.split(".")
+    if len(parts) >= 2:
+        return f"{parts[0]}.{parts[1]}"
+    return version
+
+
+def get_platform_paths(platform: str, revision: str, base_dir: Path) -> tuple[Path, Path]:
+    """Get platform-specific paths for modules and share directories.
+
+    Returns:
+        Tuple of (modules_dir, share_dir) where:
+        - modules_dir: Where qt-scripted-modules go
+        - share_dir: Where .s4ext file goes
+    """
+    slicer_version = get_slicer_major_minor(revision)
+
+    if platform == "macos":
+        # macOS structure: Slicer.app/Contents/Extensions-{rev}/{ExtName}/lib/...
+        ext_root = base_dir / "Slicer.app" / "Contents" / f"Extensions-{revision}" / EXTENSION_NAME
+        modules_dir = ext_root / "lib" / f"Slicer-{slicer_version}" / "qt-scripted-modules"
+        share_dir = ext_root / "share" / f"Slicer-{slicer_version}"
+    else:
+        # Linux/Windows structure: lib/Slicer-X.Y/qt-scripted-modules/
+        modules_dir = base_dir / "lib" / f"Slicer-{slicer_version}" / "qt-scripted-modules"
+        share_dir = base_dir / "share" / f"Slicer-{slicer_version}"
+
+    return modules_dir, share_dir
+
+
+def copy_module_files(src_dir: Path, modules_dir: Path) -> None:
+    """Copy module files according to CMakeLists.txt configuration.
+
+    Args:
+        src_dir: Source directory containing SegmentEditorAdaptiveBrush module
+        modules_dir: Destination qt-scripted-modules directory
+    """
     module_dir = src_dir / "SegmentEditorAdaptiveBrush"
     cmake_path = module_dir / "CMakeLists.txt"
 
@@ -90,7 +127,7 @@ def copy_module_files(src_dir: Path, dest_dir: Path) -> None:
     scripts, resources = parse_cmake_module_files(cmake_path)
 
     # Create destination module directory
-    dest_module_dir = dest_dir / "SegmentEditorAdaptiveBrush"
+    dest_module_dir = modules_dir / "SegmentEditorAdaptiveBrush"
     dest_module_dir.mkdir(parents=True, exist_ok=True)
 
     # Copy Python scripts
@@ -113,15 +150,6 @@ def copy_module_files(src_dir: Path, dest_dir: Path) -> None:
         else:
             print(f"Warning: Resource not found: {src_file}")
 
-    # Copy extension-level files
-    for filename in ["CMakeLists.txt", "LICENSE", "README.md", "AdaptiveBrush.png"]:
-        src_file = src_dir / filename
-        if src_file.exists():
-            shutil.copy2(src_file, dest_dir / filename)
-
-    # Copy module CMakeLists.txt
-    shutil.copy2(cmake_path, dest_module_dir / "CMakeLists.txt")
-
 
 def create_package(
     platform: str,
@@ -131,7 +159,12 @@ def create_package(
     src_dir: Path,
     output_dir: Path,
 ) -> Path:
-    """Create a package for the specified platform and Slicer revision."""
+    """Create a package for the specified platform and Slicer revision.
+
+    Creates platform-specific directory structures:
+    - Linux/Windows: lib/Slicer-X.Y/qt-scripted-modules/
+    - macOS: Slicer.app/Contents/Extensions-{rev}/{ExtName}/lib/Slicer-X.Y/qt-scripted-modules/
+    """
     slicer_version = get_slicer_version(revision)
     package_name = f"{EXTENSION_NAME}-{slicer_version}-{revision}-{platform}-{version}"
 
@@ -145,12 +178,19 @@ def create_package(
 
     package_content_dir.mkdir(parents=True)
 
-    # Copy module files
-    copy_module_files(src_dir, package_content_dir)
+    # Get platform-specific paths
+    modules_dir, share_dir = get_platform_paths(platform, revision, package_content_dir)
 
-    # Create .s4ext file
+    # Create directories
+    modules_dir.mkdir(parents=True, exist_ok=True)
+    share_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy module files to platform-specific location
+    copy_module_files(src_dir, modules_dir)
+
+    # Create .s4ext file in share directory
     s4ext_content = create_s4ext_content(commit_hash)
-    s4ext_path = package_content_dir / f"{EXTENSION_NAME}.s4ext"
+    s4ext_path = share_dir / f"{EXTENSION_NAME}.s4ext"
     s4ext_path.write_text(s4ext_content)
 
     # Create archive
