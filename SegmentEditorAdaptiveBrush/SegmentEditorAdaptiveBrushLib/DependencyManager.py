@@ -294,14 +294,16 @@ class DependencyManager:
                 qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
                 progress = qt.QProgressDialog(
                     f"Installing {spec.name}...\n\nThis may take a few minutes.",
-                    None,  # No cancel button - pip_install can't be cancelled
+                    "",  # Empty string - pip_install is blocking and can't be cancelled
                     0,
-                    0,  # Indeterminate progress
+                    0,  # Indeterminate progress (0,0 shows busy indicator)
                     slicer.util.mainWindow(),
                 )
                 progress.setWindowTitle(f"Installing {spec.name}")
                 progress.setWindowModality(qt.Qt.WindowModal)
+                progress.setCancelButton(None)  # Remove cancel - pip_install can't be stopped
                 progress.setMinimumDuration(0)  # Show immediately
+                progress.setRange(0, 0)  # Ensure indeterminate mode
                 progress.show()
                 qt.QApplication.processEvents()
 
