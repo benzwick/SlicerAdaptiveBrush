@@ -32,6 +32,7 @@ class DependencySpec:
         pip_name: Name for pip install (e.g., "scikit-learn")
         version_constraint: Version constraint (e.g., ">=1.0")
         feature_description: Description of feature requiring this package
+        fallback_description: What happens without this package
         import_check: Module path to check availability (e.g., "sklearn.mixture")
     """
 
@@ -39,6 +40,7 @@ class DependencySpec:
     pip_name: str
     version_constraint: str
     feature_description: str
+    fallback_description: str
     import_check: str
 
 
@@ -85,6 +87,11 @@ class DependencyManager:
                 pip_name="scikit-learn",
                 version_constraint=">=1.0",
                 feature_description="GMM-based intensity analysis",
+                fallback_description=(
+                    "Threshold estimation will use simple statistics (mean ± std) "
+                    "instead of Gaussian Mixture Models. This may be less accurate "
+                    "for images with complex intensity distributions."
+                ),
                 import_check="sklearn.mixture",
             ),
             "skimage": DependencySpec(
@@ -92,6 +99,10 @@ class DependencyManager:
                 pip_name="scikit-image",
                 version_constraint=">=0.19",
                 feature_description="Random Walker algorithm",
+                fallback_description=(
+                    "The Random Walker algorithm will be unavailable. "
+                    "Other algorithms (Geodesic Distance, Watershed, etc.) will still work."
+                ),
                 import_check="skimage.segmentation",
             ),
         }
@@ -265,6 +276,12 @@ class DependencyManager:
             if not user_accepted:
                 logging.info(f"User declined to install {spec.name}")
                 self._user_declined.add(key)
+
+                # Inform user about the fallback behavior
+                slicer.util.infoDisplay(
+                    f"{spec.name} will not be installed.\n\n{spec.fallback_description}",
+                    windowTitle="Using Fallback",
+                )
                 return False
 
             # Attempt installation with progress feedback
