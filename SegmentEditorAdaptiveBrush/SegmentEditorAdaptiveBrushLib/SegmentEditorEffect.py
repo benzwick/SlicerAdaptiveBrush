@@ -1239,13 +1239,31 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.algorithmCombo = qt.QComboBox()
         self.algorithmCombo.addItem(_("Geodesic Distance (Recommended)"), "geodesic_distance")
         self.algorithmCombo.addItem(_("Watershed"), "watershed")
-        self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
+
+        # Random Walker - requires scikit-image
+        if HAS_SKIMAGE_RW:
+            self.algorithmCombo.addItem(_("Random Walker"), "random_walker")
+        else:
+            rw_index = self.algorithmCombo.count
+            self.algorithmCombo.addItem(_("Random Walker (requires scikit-image)"), "random_walker")
+            # Disable the item - can't be used without scikit-image
+            # Use setItemData with empty flags to disable
+            self.algorithmCombo.setItemData(rw_index, 0, qt.Qt.UserRole - 1)
+
+        # Gradient Region Growing - always available
+        self.algorithmCombo.addItem(_("Gradient Region Growing"), "gradient_region_growing")
+
         self.algorithmCombo.addItem(_("Level Set"), "level_set")
         self.algorithmCombo.addItem(_("Connected Threshold (Fast)"), "connected_threshold")
         self.algorithmCombo.addItem(_("Region Growing"), "region_growing")
         self.algorithmCombo.addItem(_("Threshold Brush (Simple)"), "threshold_brush")
         self.algorithmCombo.setToolTip(_("Segmentation algorithm to use"))
         brushLayout.addRow(_("Algorithm:"), self.algorithmCombo)
+
+        # Intensity analysis status indicator
+        self.intensityModeLabel = qt.QLabel()
+        self._updateIntensityModeLabel()
+        brushLayout.addRow(_("Intensity Analysis:"), self.intensityModeLabel)
 
         # Quick Select Parameters Wizard button
         self.wizardButton = qt.QPushButton(_("Quick Select Parameters..."))
@@ -2482,6 +2500,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             self.regionGrowingParamsGroup.setVisible(True)
         elif self.algorithm == "random_walker":
             self.randomWalkerParamsGroup.setVisible(True)
+        elif self.algorithm == "gradient_region_growing":
+            # Uses same parameters as Random Walker
+            self.randomWalkerParamsGroup.setVisible(True)
         elif self.algorithm == "threshold_brush":
             self.thresholdGroup.setVisible(True)
         elif self.algorithm == "connected_threshold":
@@ -2490,6 +2511,36 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Hide the entire section if algorithm has no parameters
         self.algorithmParamsCollapsible.setVisible(hasParams)
+
+    def _updateRandomWalkerAvailability(self):
+        """Update Random Walker dropdown item after scikit-image becomes available."""
+        # Find the Random Walker item and enable it
+        for i in range(self.algorithmCombo.count):
+            if self.algorithmCombo.itemData(i) == "random_walker":
+                # Re-enable the item by restoring default flags
+                # Qt.ItemIsSelectable | Qt.ItemIsEnabled = 1 | 32 = 33
+                self.algorithmCombo.setItemData(i, 33, qt.Qt.UserRole - 1)
+                # Update the text to remove the requirement note
+                self.algorithmCombo.setItemText(i, _("Random Walker"))
+                break
+
+    def _updateIntensityModeLabel(self):
+        """Update the intensity analysis mode label."""
+        if IntensityAnalyzer.is_gmm_available():
+            self.intensityModeLabel.setText(_("GMM (Gaussian Mixture Model)"))
+            self.intensityModeLabel.setToolTip(
+                _("Using scikit-learn for accurate threshold estimation")
+            )
+            self.intensityModeLabel.setStyleSheet("")
+        else:
+            self.intensityModeLabel.setText(_("Simple Statistics (install scikit-learn for GMM)"))
+            self.intensityModeLabel.setToolTip(
+                _(
+                    "Using mean ± std for threshold estimation.\n"
+                    "Install scikit-learn for more accurate GMM-based analysis."
+                )
+            )
+            self.intensityModeLabel.setStyleSheet("color: orange;")
 
     def onAlgorithmChanged(self, index):
         """Handle algorithm selection change."""
@@ -2502,17 +2553,25 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Update visibility
         self._updateAlgorithmParamsVisibility()
 
-        # Prompt to install scikit-image if Random Walker selected without it
+        # Handle Random Walker selection without scikit-image
         if self.algorithm == "random_walker" and not HAS_SKIMAGE_RW:
             # Try to install (will prompt user)
-            if not _ensure_random_walker_available():
-                # User declined or installation failed - warn about fallback
+            if _ensure_random_walker_available():
+                # Installation succeeded - update the dropdown to enable Random Walker
+                self._updateRandomWalkerAvailability()
+            else:
+                # User declined or installation failed - switch to Gradient Region Growing
                 slicer.util.warningDisplay(
-                    "scikit-image is not available. Random Walker will use a fallback "
-                    "algorithm with reduced accuracy.\n\n"
-                    "You can install it manually and restart Slicer for best results.",
-                    windowTitle="Random Walker - Using Fallback",
+                    "Random Walker requires scikit-image which is not installed.\n\n"
+                    "Switching to 'Gradient Region Growing' algorithm instead.\n\n"
+                    "To use Random Walker, install scikit-image and restart Slicer.",
+                    windowTitle="Random Walker Unavailable",
                 )
+                # Find and select Gradient Region Growing
+                for i in range(self.algorithmCombo.count):
+                    if self.algorithmCombo.itemData(i) == "gradient_region_growing":
+                        self.algorithmCombo.setCurrentIndex(i)
+                        break
 
     def onThresholdChanged(self, value):
         """Handle manual threshold slider change."""
@@ -3268,6 +3327,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 )
         except RuntimeError as e:
             # SimpleITK filter failure - show user-facing error
+            # Stop drawing to prevent repeated errors on every mouse move
+            self.isDrawing = False
+            self.lastIjk = None
             logging.exception(f"Algorithm '{self.algorithm}' failed")
             slicer.util.errorDisplay(
                 f"Segmentation algorithm '{self.algorithm}' failed:\n\n{e}\n\n"
@@ -3444,13 +3506,16 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             mask = self._geodesicDistance(roi, localSeed, thresholds, params)
         elif algorithm == "random_walker":
             mask = self._randomWalker(roi, localSeed, thresholds, params)
+        elif algorithm == "gradient_region_growing":
+            mask = self._gradientRegionGrowing(roi, localSeed, thresholds, params)
         elif algorithm == "watershed":
             mask = self._watershed(roi, localSeed, thresholds, params)
         else:
             raise ValueError(
                 f"Unknown algorithm: '{algorithm}'. "
-                f"Valid algorithms: geodesic_distance, watershed, random_walker, level_set, "
-                f"connected_threshold, region_growing, threshold_brush"
+                f"Valid algorithms: geodesic_distance, watershed, random_walker, "
+                f"gradient_region_growing, level_set, connected_threshold, "
+                f"region_growing, threshold_brush"
             )
 
         # Apply circular brush mask as MAXIMUM extent for ALL algorithms
@@ -3921,7 +3986,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         electrical potential problem. Excellent at handling ambiguous boundaries
         by computing probability of random walk reaching foreground vs background.
 
-        Falls back to gradient-weighted region growing if scikit-image unavailable.
+        Requires scikit-image. Use 'Gradient Region Growing' algorithm if unavailable.
 
         Args:
             roi: ROI array (z, y, x).
@@ -3931,7 +3996,17 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         Returns:
             Binary mask array.
+
+        Raises:
+            RuntimeError: If scikit-image is not available.
         """
+        if not HAS_SKIMAGE_RW:
+            raise RuntimeError(
+                "Random Walker requires scikit-image which is not installed. "
+                "Please use 'Gradient Region Growing' algorithm instead, or install "
+                "scikit-image and restart Slicer."
+            )
+
         edge_sensitivity = params.get("edge_sensitivity", 0.5)
         radius_voxels = params.get("radius_voxels", [10, 10, 10])
 
@@ -3940,11 +4015,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Scale beta by edge sensitivity (higher sensitivity = higher beta)
         beta = base_beta * (0.5 + edge_sensitivity)  # 65-195 range at default
 
-        if HAS_SKIMAGE_RW:
-            return self._randomWalkerSkimage(roi, localSeed, thresholds, beta, radius_voxels)
-
-        # scikit-image not available - use gradient-weighted fallback
-        return self._randomWalkerFallback(roi, localSeed, thresholds, params)
+        return self._randomWalkerSkimage(roi, localSeed, thresholds, beta, radius_voxels)
 
     def _randomWalkerSkimage(self, roi, localSeed, thresholds, beta, radius_voxels):
         """Scikit-image Random Walker implementation.
@@ -4036,10 +4107,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         return mask
 
-    def _randomWalkerFallback(self, roi, localSeed, thresholds, params):
-        """Fallback Random Walker using gradient-weighted region growing.
+    def _gradientRegionGrowing(self, roi, localSeed, thresholds, params):
+        """Gradient-weighted region growing algorithm.
 
-        Used when scikit-image is not available.
+        Combines intensity thresholds with gradient magnitude to grow regions
+        that respect image edges. Useful when scikit-image is not available
+        or when a simpler gradient-based approach is preferred.
 
         Args:
             roi: ROI array.
@@ -4091,7 +4164,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         if weight_at_seed <= 0.1:
             raise RuntimeError(
-                f"Random Walker: seed weight too low ({weight_at_seed:.3f}). "
+                f"Gradient Region Growing: seed weight too low ({weight_at_seed:.3f}). "
                 "Seed may be on an edge. Try clicking in a more homogeneous region."
             )
 

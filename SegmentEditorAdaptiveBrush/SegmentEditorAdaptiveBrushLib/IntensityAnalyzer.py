@@ -60,6 +60,24 @@ class IntensityAnalyzer:
         self.use_gmm = use_gmm and HAS_SKLEARN
         self.n_components_range = n_components_range
 
+    @property
+    def mode(self) -> str:
+        """Return the current analysis mode.
+
+        Returns:
+            'GMM' if using Gaussian Mixture Models, 'Simple' if using statistics.
+        """
+        return "GMM" if self.use_gmm else "Simple"
+
+    @staticmethod
+    def is_gmm_available() -> bool:
+        """Check if GMM (scikit-learn) is available.
+
+        Returns:
+            True if scikit-learn is installed and GMM can be used.
+        """
+        return HAS_SKLEARN
+
     def analyze(
         self,
         image: np.ndarray,
