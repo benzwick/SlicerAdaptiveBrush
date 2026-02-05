@@ -267,10 +267,33 @@ class DependencyManager:
                 self._user_declined.add(key)
                 return False
 
-            # Attempt installation
+            # Attempt installation with progress feedback
             try:
                 logging.info(f"Installing {spec.pip_name}{spec.version_constraint}...")
-                slicer.util.pip_install(f"{spec.pip_name}{spec.version_constraint}")
+
+                # Show wait cursor and progress dialog during installation
+                import qt
+
+                qt.QApplication.setOverrideCursor(qt.Qt.WaitCursor)
+                progress = qt.QProgressDialog(
+                    f"Installing {spec.name}...\n\nThis may take a few minutes.",
+                    None,  # No cancel button - pip_install can't be cancelled
+                    0,
+                    0,  # Indeterminate progress
+                    slicer.util.mainWindow(),
+                )
+                progress.setWindowTitle(f"Installing {spec.name}")
+                progress.setWindowModality(qt.Qt.WindowModal)
+                progress.setMinimumDuration(0)  # Show immediately
+                progress.show()
+                qt.QApplication.processEvents()
+
+                try:
+                    slicer.util.pip_install(f"{spec.pip_name}{spec.version_constraint}")
+                finally:
+                    progress.close()
+                    qt.QApplication.restoreOverrideCursor()
+
                 logging.info(f"Successfully installed {spec.name}")
                 return True
 
