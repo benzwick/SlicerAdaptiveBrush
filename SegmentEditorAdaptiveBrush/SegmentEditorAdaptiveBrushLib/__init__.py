@@ -18,7 +18,6 @@ __all__ = [
     "WizardAnalyzer",
     "ParameterRecommender",
     "WizardSampler",
-    "WizardUI",
     "EmbeddedWizardUI",
     "ParameterWizard",
 ]
