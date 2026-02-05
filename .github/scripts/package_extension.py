@@ -114,6 +114,11 @@ def get_platform_paths(platform: str, revision: str, base_dir: Path) -> tuple[Pa
 def copy_module_files(src_dir: Path, modules_dir: Path) -> None:
     """Copy module files according to CMakeLists.txt configuration.
 
+    Slicer expects scripted modules directly in qt-scripted-modules/:
+    - qt-scripted-modules/ModuleName.py
+    - qt-scripted-modules/ModuleNameLib/...
+    - qt-scripted-modules/Resources/...
+
     Args:
         src_dir: Source directory containing SegmentEditorAdaptiveBrush module
         modules_dir: Destination qt-scripted-modules directory
@@ -126,24 +131,20 @@ def copy_module_files(src_dir: Path, modules_dir: Path) -> None:
 
     scripts, resources = parse_cmake_module_files(cmake_path)
 
-    # Create destination module directory
-    dest_module_dir = modules_dir / "SegmentEditorAdaptiveBrush"
-    dest_module_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy Python scripts
+    # Copy Python scripts directly to modules_dir (not a subdirectory)
     for script in scripts:
         src_file = module_dir / script
-        dest_file = dest_module_dir / script
+        dest_file = modules_dir / script
         if src_file.exists():
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dest_file)
         else:
             print(f"Warning: Script not found: {src_file}")
 
-    # Copy resources
+    # Copy resources directly to modules_dir
     for resource in resources:
         src_file = module_dir / resource
-        dest_file = dest_module_dir / resource
+        dest_file = modules_dir / resource
         if src_file.exists():
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src_file, dest_file)
