@@ -56,6 +56,7 @@ dev = [
 testpaths = [
     "SegmentEditorAdaptiveBrush/Testing/Python",
     "SegmentEditorAdaptiveBrushReviewer/Testing/Python",
+    "SegmentEditorAdaptiveBrushNurbs/Testing/Python",
 ]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
