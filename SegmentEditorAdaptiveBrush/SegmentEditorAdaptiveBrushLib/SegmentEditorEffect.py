@@ -2642,6 +2642,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         logging.debug("AdaptiveBrush activate() starting")
         self.cache.clear()
         logging.debug("activate: cache cleared")
+        # Clean up existing pipelines before creating new ones to prevent
+        # duplicate brush outline circles (RC4 fix)
+        self._cleanupOutlinePipelines()
         self._createOutlinePipelines()
         logging.debug("activate: outline pipelines created")
         self._updateThresholdRanges()
