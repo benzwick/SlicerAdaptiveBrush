@@ -2630,6 +2630,15 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
     def activate(self) -> None:
         """Called when the effect is selected."""
+        if not hasattr(self, "_activateCallCount"):
+            self._activateCallCount = 0
+        self._activateCallCount += 1
+
+        logging.info(
+            f"[AdaptiveBrush] activate() call #{self._activateCallCount} starting. "
+            f"BEFORE: algorithm={self.algorithm}, radius={self.radiusMm}mm, "
+            f"sensitivity={self.edgeSensitivity}, threshold_zone={self.thresholdZone}"
+        )
         logging.debug("AdaptiveBrush activate() starting")
         self.cache.clear()
         logging.debug("activate: cache cleared")
@@ -2659,6 +2668,11 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             else:
                 logging.debug("activate: sklearn not available, using fallback")
         logging.debug("AdaptiveBrush activate() complete")
+        logging.info(
+            f"[AdaptiveBrush] activate() call #{self._activateCallCount} complete. "
+            f"AFTER: algorithm={self.algorithm}, radius={self.radiusMm}mm, "
+            f"sensitivity={self.edgeSensitivity}, threshold_zone={self.thresholdZone}"
+        )
 
     def deactivate(self) -> None:
         """Called when the effect is deselected."""
