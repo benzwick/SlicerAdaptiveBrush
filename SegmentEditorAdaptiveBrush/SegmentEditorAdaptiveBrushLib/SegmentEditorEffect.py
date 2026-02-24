@@ -2227,6 +2227,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         ras = (r, a, s)
 
+        logging.info(
+            f"[AdaptiveBrush] paintAt START: RAS=({r}, {a}, {s}), erase={erase}, "
+            f"algorithm={self.algorithm}, radius={self.radiusMm}mm, "
+            f"sensitivity={self.edgeSensitivity}, threshold_zone={self.thresholdZone}"
+        )
+
         # Get the red slice widget (primary 2D view)
         layoutManager = slicer.app.layoutManager()
         sliceWidget = layoutManager.sliceWidget("Red")
@@ -2241,10 +2247,13 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         xy = self._rasToXy(ras, sliceWidget)
 
         if xy is None:
-            logging.warning(f"Could not convert RAS {ras} to XY coordinates")
+            logging.warning(
+                f"[AdaptiveBrush] paintAt FAILED: Could not convert "
+                f"RAS {ras} to XY coordinates in Red slice view"
+            )
             return
 
-        logging.debug(f"paintAt: RAS={ras} -> XY={xy}")
+        logging.info(f"[AdaptiveBrush] paintAt: RAS={ras} -> XY={xy}")
 
         # Apply the brush stroke
         self.scriptedEffect.saveStateForUndo()
@@ -2254,7 +2263,9 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.isDrawing = False
         slicer.app.processEvents()
 
-        logging.debug(f"paintAt RAS=({r}, {a}, {s}), erase={erase}")
+        logging.info(
+            f"[AdaptiveBrush] paintAt DONE: RAS=({r}, {a}, {s}), erase={erase}"
+        )
 
     def _rasToXy(self, ras, sliceWidget):
         """Convert RAS coordinates to screen XY in slice widget.
@@ -3278,10 +3289,17 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         """
         ijk = self._xyToIjk(xy, viewWidget)
         if ijk is None:
+            logging.warning(
+                f"[AdaptiveBrush] processPoint: _xyToIjk returned None "
+                f"for xy={xy}. Point may be outside volume bounds."
+            )
             return
 
         # Skip if same voxel as last time (optimization)
         if self.lastIjk is not None and ijk == self.lastIjk:
+            logging.debug(
+                f"[AdaptiveBrush] processPoint: skipping duplicate ijk={ijk}"
+            )
             return
         self.lastIjk = ijk
 
@@ -3323,9 +3341,17 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 voxels_modified = int(np.sum(mask > 0))
                 self.applyMaskToSegment(mask, erase=self._currentStrokeEraseMode)
                 elapsed_ms = (time.time() - start_time) * 1000
-                logging.debug(
-                    f"Paint stroke: ijk={ijk}, voxels={voxels_modified}, "
-                    f"time={elapsed_ms:.1f}ms, algorithm={self.algorithm}"
+                logging.info(
+                    f"[AdaptiveBrush] processPoint: ijk={ijk}, "
+                    f"voxels={voxels_modified}, time={elapsed_ms:.1f}ms, "
+                    f"algorithm={self.algorithm}, radius={self.radiusMm}mm"
+                )
+            else:
+                elapsed_ms = (time.time() - start_time) * 1000
+                logging.warning(
+                    f"[AdaptiveBrush] processPoint: computeAdaptiveMask "
+                    f"returned None for ijk={ijk}. algorithm={self.algorithm}, "
+                    f"radius={self.radiusMm}mm, time={elapsed_ms:.1f}ms"
                 )
         except RuntimeError as e:
             # SimpleITK filter failure - show user-facing error
