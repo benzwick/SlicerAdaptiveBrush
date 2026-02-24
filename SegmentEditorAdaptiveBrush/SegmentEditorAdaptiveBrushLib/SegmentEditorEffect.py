@@ -2109,6 +2109,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         preset = self._presets[preset_id]
         self._currentPreset = preset_id
+        self._lastAppliedPresetId = preset_id
 
         # Block signals to prevent multiple cache invalidations
         widgets_to_block = [
@@ -2670,6 +2671,17 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 self._updateIntensityModeLabel()
             else:
                 logging.debug("activate: sklearn not available, using fallback")
+
+        # Re-apply the last preset if one was previously set, to preserve
+        # parameters across re-activations (RC2 fix)
+        last_preset = getattr(self, "_lastAppliedPresetId", None)
+        if last_preset:
+            logging.info(
+                f"[AdaptiveBrush] activate: re-applying last preset "
+                f"'{last_preset}'"
+            )
+            self._applyPreset(last_preset)
+
         logging.debug("AdaptiveBrush activate() complete")
         logging.info(
             f"[AdaptiveBrush] activate() call #{self._activateCallCount} complete. "
