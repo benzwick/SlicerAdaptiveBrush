@@ -492,6 +492,108 @@ class BrushOutlinePipeline:
         self.sliceWidget = None
 
 
+class ThresholdRangeBar(qt.QWidget):
+    """Custom widget showing threshold range within data range.
+
+    Displays:
+    - Gray bar for full data range (min to max)
+    - Yellow highlight for threshold range (lower to upper)
+    - Orange line for mean value
+
+    Note: Instance variables use 'Threshold' suffix to avoid conflict with
+    Qt's reserved slot names (lower, upper are Qt slots).
+    """
+
+    def __init__(self, parent=None):
+        """Initialize the range bar widget."""
+        super().__init__(parent)
+        self.setMinimumHeight(30)
+        self.setMaximumHeight(40)
+        self._dataMin = 0
+        self._dataMax = 255
+        self._lowerThreshold = 50
+        self._upperThreshold = 200
+        self._meanValue = None
+
+    def setRange(self, data_min, data_max, lower_threshold, upper_threshold, mean=None):
+        """Set the range values and trigger repaint.
+
+        Args:
+            data_min: Minimum intensity in sampled zone.
+            data_max: Maximum intensity in sampled zone.
+            lower_threshold: Lower threshold value.
+            upper_threshold: Upper threshold value.
+            mean: Optional mean value to display as vertical line.
+        """
+        self._dataMin = data_min
+        self._dataMax = data_max
+        self._lowerThreshold = lower_threshold
+        self._upperThreshold = upper_threshold
+        self._meanValue = mean
+        self.update()
+
+    def paintEvent(self, event):
+        """Custom paint event to draw the range bar."""
+        painter = qt.QPainter()
+        if not painter.begin(self):
+            return  # Failed to begin painting
+
+        try:
+            painter.setRenderHint(qt.QPainter.Antialiasing)
+
+            # PythonQt exposes width/height as properties, not methods
+            w = self.width
+            h = self.height
+            bar_height = 20
+            bar_y = (h - bar_height) // 2
+
+            span = max(self._dataMax - self._dataMin, 1)
+
+            def val_to_x(v):
+                """Convert intensity value to x pixel position."""
+                return int((v - self._dataMin) / span * w)
+
+            # Background (data range) - gray
+            painter.fillRect(0, bar_y, w, bar_height, qt.QColor(180, 180, 180))
+
+            # Threshold range (yellow highlight)
+            lx = val_to_x(self._lowerThreshold)
+            ux = val_to_x(self._upperThreshold)
+            painter.fillRect(lx, bar_y, max(ux - lx, 1), bar_height, qt.QColor(255, 230, 100))
+
+            # Border around bar
+            painter.setPen(qt.QPen(qt.QColor(120, 120, 120), 1))
+            painter.drawRect(0, bar_y, w - 1, bar_height - 1)
+
+            # Mean line (orange) if provided
+            if self._meanValue is not None:
+                mx = val_to_x(self._meanValue)
+                painter.setPen(qt.QPen(qt.QColor(255, 150, 0), 2))
+                painter.drawLine(mx, bar_y - 2, mx, bar_y + bar_height + 2)
+
+            # Labels for lower and upper values
+            painter.setPen(qt.QColor(60, 60, 60))
+            font = painter.font()
+            font.setPointSize(8)
+            painter.setFont(font)
+
+            # Lower value label
+            lower_text = f"{self._lowerThreshold:.0f}"
+            painter.drawText(lx + 2, bar_y + bar_height - 4, lower_text)
+
+            # Upper value label (right-aligned)
+            upper_text = f"{self._upperThreshold:.0f}"
+            fm = qt.QFontMetrics(font)
+            upper_width = (
+                fm.horizontalAdvance(upper_text)
+                if hasattr(fm, "horizontalAdvance")
+                else fm.width(upper_text)
+            )
+            painter.drawText(ux - upper_width - 2, bar_y + bar_height - 4, upper_text)
+        finally:
+            painter.end()
+
+
 class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
     """Adaptive brush segment editor effect.
 
@@ -527,6 +629,11 @@ class SegmentEditorEffect(AbstractScriptedSegmentEditorEffect):
         self._currentStrokeEraseMode = False  # Locked mode for current stroke
         self._isMiddleButtonHeld = False  # Track middle button for erase modifier
         self._updatingThresholdRanges = False  # Reentrancy guard for threshold updates
+
+        # Threshold lock state
+        self._lowerThresholdLocked = False
+        self._upperThresholdLocked = False
+        self._lastThresholdStats = None  # Store computed statistics for display
 
         # Default parameters - Basic
         # Note: Some defaults optimized for brain MRI tumor (MRBrainTumor1).
@@ -1406,6 +1513,23 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         thresholdLayout = qt.QFormLayout(self.thresholdGroup)
         thresholdLayout.setContentsMargins(0, 0, 0, 0)
 
+        # Statistics label showing sampled zone info (always visible for threshold algorithms)
+        self.thresholdStatsLabel = qt.QLabel(_("Click to sample intensity"))
+        self.thresholdStatsLabel.setStyleSheet("color: gray; font-style: italic;")
+        thresholdLayout.addRow(self.thresholdStatsLabel)
+
+        # Threshold range bar visualization (always visible for threshold algorithms)
+        self.thresholdRangeBar = ThresholdRangeBar()
+        self.thresholdRangeBar.setToolTip(
+            _(
+                "Visual representation of threshold range.\n\n"
+                "Gray bar: intensity range of sampled zone\n"
+                "Yellow highlight: current threshold range\n"
+                "Orange line: mean intensity"
+            )
+        )
+        thresholdLayout.addRow(self.thresholdRangeBar)
+
         # Auto threshold checkbox
         self.autoThresholdCheckbox = qt.QCheckBox(_("Auto threshold"))
         self.autoThresholdCheckbox.setToolTip(
@@ -1430,13 +1554,20 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         manualLayout = qt.QFormLayout(self.manualThresholdGroup)
         manualLayout.setContentsMargins(0, 0, 0, 0)
 
+        # Lower threshold row with lock button
+        lowerRowWidget = qt.QWidget()
+        lowerRow = qt.QHBoxLayout(lowerRowWidget)
+        lowerRow.setContentsMargins(0, 0, 0, 0)
+        lowerRow.setSpacing(4)
+
         self.lowerThresholdSlider = ctk.ctkSliderWidget()
         self.lowerThresholdSlider.setToolTip(
             _(
                 "Lower intensity threshold for segmentation.\n\n"
                 "Range automatically adjusts to image intensity (1st-99th percentile).\n"
                 "Voxels with intensity below this value will not be included.\n\n"
-                "Use 'Set from seed' button to set based on clicked location."
+                "Use 'Set from seed' button to set based on clicked location.\n"
+                "Click the lock icon to prevent auto-update during sampling."
             )
         )
         self.lowerThresholdSlider.minimum = -2000
@@ -1444,7 +1575,22 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.lowerThresholdSlider.value = -100
         self.lowerThresholdSlider.singleStep = 1
         self.lowerThresholdSlider.decimals = 0
-        manualLayout.addRow(_("Lower:"), self.lowerThresholdSlider)
+        lowerRow.addWidget(self.lowerThresholdSlider, 1)
+
+        self.lowerLockButton = qt.QToolButton()
+        self.lowerLockButton.setCheckable(True)
+        self.lowerLockButton.setToolTip(_("Lock to prevent auto-update during sampling"))
+        self.lowerLockButton.setFixedSize(qt.QSize(24, 24))
+        self._updateLockIcon(self.lowerLockButton, False)
+        lowerRow.addWidget(self.lowerLockButton)
+
+        manualLayout.addRow(_("Lower:"), lowerRowWidget)
+
+        # Upper threshold row with lock button
+        upperRowWidget = qt.QWidget()
+        upperRow = qt.QHBoxLayout(upperRowWidget)
+        upperRow.setContentsMargins(0, 0, 0, 0)
+        upperRow.setSpacing(4)
 
         self.upperThresholdSlider = ctk.ctkSliderWidget()
         self.upperThresholdSlider.setToolTip(
@@ -1452,7 +1598,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
                 "Upper intensity threshold for segmentation.\n\n"
                 "Range automatically adjusts to image intensity (1st-99th percentile).\n"
                 "Voxels with intensity above this value will not be included.\n\n"
-                "Use 'Set from seed' button to set based on clicked location."
+                "Use 'Set from seed' button to set based on clicked location.\n"
+                "Click the lock icon to prevent auto-update during sampling."
             )
         )
         self.upperThresholdSlider.minimum = -2000
@@ -1460,7 +1607,16 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.upperThresholdSlider.value = 300
         self.upperThresholdSlider.singleStep = 1
         self.upperThresholdSlider.decimals = 0
-        manualLayout.addRow(_("Upper:"), self.upperThresholdSlider)
+        upperRow.addWidget(self.upperThresholdSlider, 1)
+
+        self.upperLockButton = qt.QToolButton()
+        self.upperLockButton.setCheckable(True)
+        self.upperLockButton.setToolTip(_("Lock to prevent auto-update during sampling"))
+        self.upperLockButton.setFixedSize(qt.QSize(24, 24))
+        self._updateLockIcon(self.upperLockButton, False)
+        upperRow.addWidget(self.upperLockButton)
+
+        manualLayout.addRow(_("Upper:"), upperRowWidget)
 
         # Set from seed button
         self.setFromSeedButton = qt.QPushButton(_("Set from seed intensity"))
@@ -1995,6 +2151,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         self.thresholdMethodCombo.currentIndexChanged.connect(self.onThresholdMethodChanged)
         self.setFromSeedButton.clicked.connect(self.onSetFromSeedClicked)
         self.toleranceSlider.valueChanged.connect(self.onThresholdChanged)
+        self.lowerLockButton.toggled.connect(self.onLowerLockToggled)
+        self.upperLockButton.toggled.connect(self.onUpperLockToggled)
 
         # Advanced parameter signals
         self.gaussianSigmaSlider.valueChanged.connect(self.onAdvancedParamChanged)
@@ -2101,11 +2259,49 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
     def _applyPreset(self, preset_id):
         """Apply a parameter preset.
 
+        If threshold parameters are locked, shows a dialog asking the user
+        whether to unlock them before applying the preset.
+
         Args:
             preset_id: The preset identifier (key in self._presets).
         """
         if preset_id not in self._presets:
             return
+
+        # Check if any threshold is locked
+        if self._lowerThresholdLocked or self._upperThresholdLocked:
+            locked_params = []
+            if self._lowerThresholdLocked:
+                locked_params.append(_("Lower threshold"))
+            if self._upperThresholdLocked:
+                locked_params.append(_("Upper threshold"))
+
+            msg = qt.QMessageBox()
+            msg.setIcon(qt.QMessageBox.Question)
+            msg.setWindowTitle(_("Locked Parameters"))
+            msg.setText(
+                _("The following parameters are locked:\n")
+                + "\n".join(f"  \u2022 {p}" for p in locked_params)
+            )
+            msg.setInformativeText(_("Do you want to unlock them before applying the preset?"))
+            msg.setStandardButtons(qt.QMessageBox.Yes | qt.QMessageBox.No | qt.QMessageBox.Cancel)
+            msg.setDefaultButton(qt.QMessageBox.Yes)
+
+            result = msg.exec_()
+            if result == qt.QMessageBox.Cancel:
+                # Restore previous preset selection in combo
+                if hasattr(self, "_currentPreset") and self._currentPreset:
+                    idx = self.presetCombo.findData(self._currentPreset)
+                    if idx >= 0:
+                        self.presetCombo.blockSignals(True)
+                        self.presetCombo.setCurrentIndex(idx)
+                        self.presetCombo.blockSignals(False)
+                return  # Don't apply preset
+            elif result == qt.QMessageBox.Yes:
+                # Unlock all threshold locks
+                self.lowerLockButton.setChecked(False)
+                self.upperLockButton.setChecked(False)
+            # If No, keep locks - preset will apply but locked values won't change
 
         preset = self._presets[preset_id]
         self._currentPreset = preset_id
@@ -2624,6 +2820,110 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             self.cache.threshold_cache = None
             self.cache.threshold_seed_intensity = None
 
+    def onLowerLockToggled(self, locked):
+        """Handle lower threshold lock toggle.
+
+        Args:
+            locked: Whether the lock is now enabled.
+        """
+        self._lowerThresholdLocked = locked
+        self._updateLockIcon(self.lowerLockButton, locked)
+        self._updateSliderLockStyle(self.lowerThresholdSlider, locked)
+        logging.debug(f"Lower threshold lock: {locked}")
+
+    def onUpperLockToggled(self, locked):
+        """Handle upper threshold lock toggle.
+
+        Args:
+            locked: Whether the lock is now enabled.
+        """
+        self._upperThresholdLocked = locked
+        self._updateLockIcon(self.upperLockButton, locked)
+        self._updateSliderLockStyle(self.upperThresholdSlider, locked)
+        logging.debug(f"Upper threshold lock: {locked}")
+
+    def _updateLockIcon(self, button, locked):
+        """Update lock button icon based on state.
+
+        Args:
+            button: The QToolButton to update.
+            locked: Whether to show locked or unlocked icon.
+        """
+        icon_name = "SlicerLock.png" if locked else "SlicerUnlock.png"
+        icon_path = os.path.join(slicer.app.slicerHome, "Resources", "Icons", "Medium", icon_name)
+        if os.path.exists(icon_path):
+            button.setIcon(qt.QIcon(icon_path))
+            button.setIconSize(qt.QSize(20, 20))
+        else:
+            # Fallback: use text
+            button.setText("🔒" if locked else "🔓")
+
+    def _updateSliderLockStyle(self, slider, locked):
+        """Apply visual styling to indicate lock state.
+
+        Args:
+            slider: The slider widget to style.
+            locked: Whether the slider is locked.
+        """
+        if locked:
+            # Blue border to indicate locked state
+            slider.setStyleSheet("border: 2px solid #4A90D9; border-radius: 3px;")
+        else:
+            slider.setStyleSheet("")  # Reset to default
+
+    def _updateThresholdUI(self, computed_lower, computed_upper):
+        """Update threshold sliders and visualization after sampling.
+
+        Called after zone threshold computation to update UI elements
+        while respecting lock states.
+
+        Args:
+            computed_lower: The computed lower threshold value.
+            computed_upper: The computed upper threshold value.
+        """
+        # Update statistics display
+        if hasattr(self, "thresholdStatsLabel") and self._lastThresholdStats:
+            stats = self._lastThresholdStats
+            self.thresholdStatsLabel.setText(
+                f"Sampled: min={stats['min']:.0f}, mean={stats['mean']:.0f}, "
+                f"max={stats['max']:.0f} (n={stats['n_samples']})"
+            )
+            self.thresholdStatsLabel.setStyleSheet("")  # Remove italic style
+
+        # Update range bar
+        if hasattr(self, "thresholdRangeBar") and self._lastThresholdStats:
+            stats = self._lastThresholdStats
+            # Use current slider values for the bar (may differ from computed if locked)
+            self.thresholdRangeBar.setRange(
+                stats["min"],
+                stats["max"],
+                self.lowerThresholdSlider.value,
+                self.upperThresholdSlider.value,
+                stats.get("mean"),
+            )
+
+        # Update sliders (only if not locked)
+        if not self._lowerThresholdLocked:
+            self.lowerThresholdSlider.blockSignals(True)
+            self.lowerThresholdSlider.value = computed_lower
+            self.lowerThresholdSlider.blockSignals(False)
+
+        if not self._upperThresholdLocked:
+            self.upperThresholdSlider.blockSignals(True)
+            self.upperThresholdSlider.value = computed_upper
+            self.upperThresholdSlider.blockSignals(False)
+
+        # Update range bar again with final slider values
+        if hasattr(self, "thresholdRangeBar") and self._lastThresholdStats:
+            stats = self._lastThresholdStats
+            self.thresholdRangeBar.setRange(
+                stats["min"],
+                stats["max"],
+                self.lowerThresholdSlider.value,
+                self.upperThresholdSlider.value,
+                stats.get("mean"),
+            )
+
     def onBackendChanged(self, index):
         """Handle backend selection change."""
         self.backend = self.backendCombo.currentData
@@ -2753,6 +3053,8 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             "thresholdMethodCombo",
             "setFromSeedButton",
             "toleranceSlider",
+            "lowerLockButton",
+            "upperLockButton",
             "gaussianSigmaSlider",
             "percentileLowSlider",
             "percentileHighSlider",
@@ -3164,8 +3466,11 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
                 # Set default values to interquartile range (25th to 75th percentile)
                 # This captures the "middle 50%" of intensities - a sensible starting point
-                self.lowerThresholdSlider.value = p25
-                self.upperThresholdSlider.value = p75
+                # Respect lock states - don't change locked values
+                if not self._lowerThresholdLocked:
+                    self.lowerThresholdSlider.value = p25
+                if not self._upperThresholdLocked:
+                    self.upperThresholdSlider.value = p75
             finally:
                 # Restore signal state
                 self.lowerThresholdSlider.blockSignals(wasLowerBlocked)
@@ -4334,6 +4639,12 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
             return None
         normalized_weights = zone_weights / weight_sum
 
+        # Compute basic statistics for UI display (before method-specific computation)
+        zone_min = float(np.min(zone_intensities))
+        zone_max = float(np.max(zone_intensities))
+        zone_mean = float(np.sum(zone_intensities * normalized_weights))
+        zone_std = float(np.sqrt(np.sum(normalized_weights * (zone_intensities - zone_mean) ** 2)))
+
         # Compute thresholds based on sampling method
         if sampling_method == "mean_std":
             # Weighted mean and std
@@ -4385,7 +4696,33 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         else:
             return None
 
-        return {"lower": float(lower), "upper": float(upper)}
+        # Store statistics for UI display
+        computed_lower = float(lower)
+        computed_upper = float(upper)
+
+        self._lastThresholdStats = {
+            "min": zone_min,
+            "max": zone_max,
+            "mean": zone_mean,
+            "std": zone_std,
+            "n_samples": len(zone_intensities),
+            "computed_lower": computed_lower,
+            "computed_upper": computed_upper,
+        }
+
+        # Respect lock states - use locked slider values instead of computed
+        final_lower = computed_lower
+        final_upper = computed_upper
+
+        if self._lowerThresholdLocked:
+            final_lower = self.lowerThresholdSlider.value
+        if self._upperThresholdLocked:
+            final_upper = self.upperThresholdSlider.value
+
+        # Schedule UI update (use QTimer to avoid updating from computation thread)
+        qt.QTimer.singleShot(0, lambda: self._updateThresholdUI(computed_lower, computed_upper))
+
+        return {"lower": float(final_lower), "upper": float(final_upper)}
 
     def _createInnerZoneMask(self, shape, localSeed, params):
         """Create a mask for the inner threshold zone.
@@ -4493,14 +4830,29 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # Scale factor 2.5 makes 20% tolerance ≈ 0.5 std dev, 100% ≈ 2.5 std dev
         tolerance = local_std * (tolerancePercent / 100.0) * 2.5
 
-        # Update sliders
-        self.lowerThresholdSlider.value = seed_intensity - tolerance
-        self.upperThresholdSlider.value = seed_intensity + tolerance
+        # Update sliders (respecting lock states)
+        new_lower = seed_intensity - tolerance
+        new_upper = seed_intensity + tolerance
+
+        if not self._lowerThresholdLocked:
+            self.lowerThresholdSlider.value = new_lower
+        if not self._upperThresholdLocked:
+            self.upperThresholdSlider.value = new_upper
+
+        # Log what was actually set
+        actual_lower = self.lowerThresholdSlider.value
+        actual_upper = self.upperThresholdSlider.value
+        lock_info = []
+        if self._lowerThresholdLocked:
+            lock_info.append("lower locked")
+        if self._upperThresholdLocked:
+            lock_info.append("upper locked")
 
         logging.info(
             f"Set thresholds from seed: intensity={seed_intensity:.1f}, "
-            f"tolerance={tolerance:.1f}, range=[{seed_intensity - tolerance:.1f}, "
-            f"{seed_intensity + tolerance:.1f}]"
+            f"tolerance={tolerance:.1f}, computed=[{new_lower:.1f}, {new_upper:.1f}], "
+            f"actual=[{actual_lower:.1f}, {actual_upper:.1f}]"
+            + (f" ({', '.join(lock_info)})" if lock_info else "")
         )
 
     def applyMaskToSegment(self, mask: np.ndarray, erase: bool = False) -> None:
