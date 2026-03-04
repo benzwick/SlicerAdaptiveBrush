@@ -2258,15 +2258,14 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Apply the brush stroke
         self.scriptedEffect.saveStateForUndo()
+        self.lastIjk = None  # Reset so same-coordinate paints aren't skipped
         self.isDrawing = True
         self._currentStrokeEraseMode = erase
         self.processPoint(xy, sliceWidget)
         self.isDrawing = False
         slicer.app.processEvents()
 
-        logging.info(
-            f"[AdaptiveBrush] paintAt DONE: RAS=({r}, {a}, {s}), erase={erase}"
-        )
+        logging.info(f"[AdaptiveBrush] paintAt DONE: RAS=({r}, {a}, {s}), erase={erase}")
 
     def _rasToXy(self, ras, sliceWidget):
         """Convert RAS coordinates to screen XY in slice widget.
@@ -2676,10 +2675,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
         # parameters across re-activations (RC2 fix)
         last_preset = getattr(self, "_lastAppliedPresetId", None)
         if last_preset:
-            logging.info(
-                f"[AdaptiveBrush] activate: re-applying last preset "
-                f"'{last_preset}'"
-            )
+            logging.info(f"[AdaptiveBrush] activate: re-applying last preset '{last_preset}'")
             self._applyPreset(last_preset)
 
         logging.debug("AdaptiveBrush activate() complete")
@@ -3326,9 +3322,7 @@ Left-click and drag to paint. Ctrl+click or Middle+click to invert mode. Shift+s
 
         # Skip if same voxel as last time (optimization)
         if self.lastIjk is not None and ijk == self.lastIjk:
-            logging.debug(
-                f"[AdaptiveBrush] processPoint: skipping duplicate ijk={ijk}"
-            )
+            logging.debug(f"[AdaptiveBrush] processPoint: skipping duplicate ijk={ijk}")
             return
         self.lastIjk = ijk
 
