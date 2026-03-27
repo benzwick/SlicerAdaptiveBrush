@@ -22,6 +22,7 @@ include(${Slicer_USE_FILE})
 add_subdirectory(SegmentEditorAdaptiveBrush)
 add_subdirectory(SegmentEditorAdaptiveBrushTester)
 add_subdirectory(SegmentEditorAdaptiveBrushReviewer)
+add_subdirectory(SegmentEditorAdaptiveBrushNurbs)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------
